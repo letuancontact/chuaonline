@@ -66,6 +66,24 @@ import { buildSpace } from "../world/spaces.ts";
 const FOV = 55;
 const NEAR = 0.1;
 const FAR = 600;
+const COLOR_STORAGE_KEY = "santinh.color.v1";
+
+function loadSavedColor(): string | null {
+  try {
+    const val = safeLocalStorage()?.getItem(COLOR_STORAGE_KEY);
+    return val !== null && val !== undefined && (VISITOR_COLORS as readonly string[]).includes(val) ? val : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSavedColor(color: string): void {
+  try {
+    safeLocalStorage()?.setItem(COLOR_STORAGE_KEY, color);
+  } catch {
+    // Private browsing or quota exceeded: session colour still works.
+  }
+}
 
 /** Builds the engine and world. Rejects (→ boot load error) if any core asset fails. */
 export async function start(): Promise<void> {
@@ -131,8 +149,9 @@ export async function start(): Promise<void> {
     });
 
     // The player: own novice, real shadow; contact-shadow slot 0 is ours, the rest are for others (T9).
+    const initialRobeColor = loadSavedColor() ?? VISITOR_COLORS[0] ?? "#b9c3c7";
     const factory = new MonkFactory();
-    const self = new Avatar(factory.create(VISITOR_COLORS[0] ?? "#b9c3c7", "full"));
+    const self = new Avatar(factory.create(initialRobeColor, "full"));
     scene.add(self.object);
     const contacts = new ContactShadows(scene, ROOM_CAPACITY + RESIDENTS.length);
     contacts.setCount(1);
@@ -255,15 +274,34 @@ export async function start(): Promise<void> {
       invite: inviteFriend,
       rename: renameSelf,
     });
-    const settings = new SettingsDialog(audio, chant, now, renameSelf, {
-      // One dialog at a time: both are see-through, stacked they read as one mess.
-      signIn: () => {
-        settings.close();
-        openAccount("register");
+
+    const applyRobeColor = (color: string): void => {
+      self.setColor(color);
+      settings.setColor(color);
+    };
+
+    const settings = new SettingsDialog(
+      audio,
+      chant,
+      now,
+      renameSelf,
+      {
+        // One dialog at a time: both are see-through, stacked they read as one mess.
+        signIn: () => {
+          settings.close();
+          openAccount("register");
+        },
+        signOut,
       },
-      signOut,
-    });
+      document.body,
+      (color) => {
+        saveSavedColor(color);
+        applyRobeColor(color);
+      },
+    );
+
     if (myName !== null) settings.setName(myName);
+    settings.setColor(initialRobeColor);
 
     const sendWishIfAllowed = (wish: string): void => {
       if (!wish || status !== "connected" || session === null) return;
@@ -477,6 +515,9 @@ export async function start(): Promise<void> {
       selfId = s.selfId;
       e2eState.selfId = s.selfId;
       const me = s.visitors.find((v) => v.id === s.selfId);
+      if (me && loadSavedColor() === null) {
+        applyRobeColor(me.color);
+      }
       const near = readNear(location.search);
       // Joined through an invite: the server put us beside the inviter, so adopt that spot instead of our own random spawn.
       if (me && me.cushion === null && near !== null) movement.teleport(me.position);
