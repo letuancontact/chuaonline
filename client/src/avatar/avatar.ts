@@ -73,6 +73,12 @@ export class Avatar {
     return this.current;
   }
 
+  /** Updates the novice's robe colour in place while keeping the active skeleton and pose. */
+  setColor(robeColor: string): void {
+    this.model.setColor(robeColor);
+    this.model.mesh.boundingSphere = POSED_BOUNDS.clone();
+  }
+
   setPose(pose: Pose, opts: SetPoseOptions = {}): void {
     const kneeling = this.current === "kneel" || (this.current === "hello" && this.returnTo === "kneel");
     const bowMoved = opts.bowAt !== undefined && opts.bowAt !== this.bowAt;
