@@ -282,6 +282,7 @@ export function drawFace(size = 256): CanvasTexture {
 export interface MonkModel {
   readonly mesh: SkinnedMesh;
   readonly rig: Rig;
+  setColor(robeColor: string): void;
   dispose(): void;
 }
 
@@ -294,13 +295,19 @@ export class MonkFactory {
   private readonly face = drawFace();
   readonly material = new MeshStandardMaterial({ vertexColors: true, map: this.face, roughness: 0.82, metalness: 0 });
 
-  create(robeColor: string, detail: MonkDetail): MonkModel {
+  private getGeometry(robeColor: string, detail: MonkDetail): BufferGeometry {
     const key = `${robeColor}|${detail}`;
     let geometry = this.geometries.get(key);
     if (!geometry) {
       geometry = createMonkGeometry(new Color(robeColor), detail);
       this.geometries.set(key, geometry);
     }
+    return geometry;
+  }
+
+  create(robeColor: string, detail: MonkDetail): MonkModel {
+    let currentColor = robeColor;
+    const geometry = this.getGeometry(robeColor, detail);
     const rig = createRig();
     const mesh = new SkinnedMesh(geometry, this.material);
     mesh.name = `monk:${detail}`;
@@ -313,6 +320,13 @@ export class MonkFactory {
     return {
       mesh,
       rig,
+      setColor: (nextColor: string) => {
+        if (nextColor === currentColor) return;
+        currentColor = nextColor;
+        const prevSphere = mesh.boundingSphere;
+        mesh.geometry = this.getGeometry(nextColor, detail);
+        if (prevSphere) mesh.boundingSphere = prevSphere;
+      },
       dispose() {
         mesh.removeFromParent();
         skeleton.dispose();
