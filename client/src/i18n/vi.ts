@@ -71,6 +71,12 @@ export const vi = {
     lanternTitle: "Thả đèn hoa đăng",
     lanternDesc: "Thả đóa sen sáng trôi nhẹ trên mặt hồ sen phía đông",
     lanternAction: "Thả hoa đăng",
+    bellTitle: "Thỉnh đại hồng chung",
+    bellDesc: "Ngân tiếng chuông chùa trầm ấm, thức tỉnh tâm niệm",
+    bellAction: "Thỉnh chuông",
+    woodblockTitle: "Gõ mõ tịnh tâm",
+    woodblockDesc: "Gõ nhịp mõ gỗ trầm tĩnh (hoặc bấm phím 4 khi đang ở trong chùa)",
+    woodblockAction: "Gõ mõ",
     stats: "Bạn đã dâng {incense} nén hương · thả {lantern} đèn hoa đăng",
     verseTitle: "Lời kệ tĩnh tâm",
     verses: [
@@ -246,11 +252,11 @@ export const vi = {
     controlsBody: [
       "Bấm xuống sàn, WASD hoặc phím mũi tên để đi",
       "Kéo để nhìn quanh · cuộn để phóng to/thu nhỏ",
-      "1 · E · Space: thiền / dừng · 2: tràng hạt · 3: chắp tay",
+      "1 · E · Space: thiền / dừng · 2: tràng hạt · 3: chắp tay · 4: gõ mõ",
       "Điện thoại: chạm để đi · một ngón để nhìn quanh · hai ngón để phóng to",
     ],
-    author: "@alexlevn",
-    authorMail: "thanhdungvn@gmail.com",
+    author: "@tu tập",
+    authorMail: "letuan.contact@gmail.com",
   },
   chat: {
     title: "Trò chuyện",
@@ -308,6 +314,7 @@ export const vi = {
     chantError: "Không tải được bài tụng kinh",
     incenseOffered: "Đã dâng nén tâm hương lên chánh điện",
     lanternOffered: "Đã thả đèn hoa đăng xuống hồ sen",
+    bellRung: "Tiếng đại hồng chung ngân vang tĩnh lặng",
   },
   debug: {
     fps: "fps",
