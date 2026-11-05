@@ -26,6 +26,8 @@ export interface SceneContext {
 }
 
 export interface BuiltScene {
+  lightIncense(): void;
+  releaseLantern(): void;
   update(dt: number, t: number, daylight: number, camera: Camera): void;
 }
 
@@ -50,6 +52,12 @@ async function buildTichMacDuong({ scene, assets }: SceneContext): Promise<Built
   regions.finalize();
 
   return {
+    lightIncense() {
+      interior.lightIncense();
+    },
+    releaseLantern() {
+      pond.releaseLantern();
+    },
     update(dt, t, day, camera) {
       interior.update(dt, t, day);
       garden.update(day);
