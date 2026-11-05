@@ -39,7 +39,7 @@ export const vi = {
     /** `{n}` = number, `{room}` = name (D26). */
     room: "{room}",
     roomPill: "Phòng {n} · {room}. Chọn phòng",
-    offering: "Cúng dường (sắp có)",
+    offering: "Cúng dường",
     /** `{n}` = people in the room (NPCs not counted). */
     people: "{n} người đang ở đây. Xem ai đang ở đây",
     peopleConnecting: "Đang kết nối. Xem ai đang ở đây",
@@ -58,6 +58,28 @@ export const vi = {
     beads: "Tràng hạt",
     hintPointer: "Bấm xuống sàn hoặc WASD để đi · kéo để nhìn quanh · cuộn để phóng to/thu nhỏ",
     hintTouch: "Chạm để đi · vuốt nhìn quanh · 2 ngón phóng to",
+  },
+  offering: {
+    title: "Cúng dường · Tâm nguyện",
+    close: "Đóng",
+    desc: "Khởi tâm thanh tịnh, dâng nén tâm hương lên chánh điện hoặc thả đèn hoa đăng xuống hồ sen.",
+    wishLabel: "Lời nguyện ước bình an (tùy chọn)",
+    wishPlaceholder: "Cầu bình an, sức khỏe và tịnh tâm…",
+    incenseTitle: "Dâng hương lễ Phật",
+    incenseDesc: "Thắp sáng lư hương trầm trước bàn thờ Phật trong chánh điện",
+    incenseAction: "Dâng hương",
+    lanternTitle: "Thả đèn hoa đăng",
+    lanternDesc: "Thả đóa sen sáng trôi nhẹ trên mặt hồ sen phía đông",
+    lanternAction: "Thả hoa đăng",
+    stats: "Bạn đã dâng {incense} nén hương · thả {lantern} đèn hoa đăng",
+    verseTitle: "Lời kệ tĩnh tâm",
+    verses: [
+      "Tâm bình thế giới bình, tâm tịnh cõi đất tịnh.",
+      "Mỗi bước chân an lạc, mỗi hơi thở thảnh thơi.",
+      "Sen nở trong hồ tĩnh, hương lành tỏa mười phương.",
+      "Buông xả muôn phiền não, lòng sáng tựa trăng rằm.",
+      "Chắp tay nhìn sương sớm, thấy vạn vật hiền hòa.",
+    ],
   },
   beads: {
     title: "Tràng hạt",
@@ -229,11 +251,6 @@ export const vi = {
     ],
     author: "@alexlevn",
     authorMail: "thanhdungvn@gmail.com",
-    // Original attribution, hidden until the statue is replaced (KOGL / CC BY still require it if reused):
-    // { text: "Tượng Phật 3D: Bảo tàng Quốc gia Hàn Quốc, tượng Phật ngồi đồng mạ vàng (Deoksu 2116), giấy phép KOGL loại 1" },
-    // { text: "Tụng kinh: 염불소리1 · Kim Yong-bae · Gongu", link: "CC BY 4.0", href: "https://creativecommons.org/licenses/by/4.0/" },
-    // { text: "Cây thông · chất liệu · bầu trời: Poly Haven (CC0)" },
-    // { text: "Tranh tường, âm nền, chuông: tự tạo bằng code" },
   },
   chat: {
     title: "Trò chuyện",
@@ -289,6 +306,8 @@ export const vi = {
     arrivedNear: "{name} vừa đến ngồi cạnh bạn",
     inviterGone: "Người mời bạn không còn ở đây",
     chantError: "Không tải được bài tụng kinh",
+    incenseOffered: "Đã dâng nén tâm hương lên chánh điện",
+    lanternOffered: "Đã thả đèn hoa đăng xuống hồ sen",
   },
   debug: {
     fps: "fps",
