@@ -34,6 +34,7 @@ import { ExitScreen } from "../ui/exit-screen.ts";
 import { RestScreen } from "../ui/rest-screen.ts";
 import { CeremonyBanner } from "../ui/ceremony-banner.ts";
 import { SettingsDialog } from "../ui/settings-dialog.ts";
+import { OfferingDialog } from "../ui/offering-dialog.ts";
 import { AudioEngine } from "../audio/engine.ts";
 import { Chant } from "../audio/chant.ts";
 import { BeadsScene } from "../beads/beads-scene.ts";
@@ -263,11 +264,36 @@ export async function start(): Promise<void> {
       signOut,
     });
     if (myName !== null) settings.setName(myName);
+
+    const sendWishIfAllowed = (wish: string): void => {
+      if (!wish || status !== "connected" || session === null) return;
+      const n = roomNumber(room);
+      if (n === null || !roomAllowsChat(n)) return;
+      driver.sendChat(wish);
+    };
+    const offering = new OfferingDialog({
+      onIncense: (wish) => {
+        scenery.lightIncense();
+        audio.bell();
+        actions.hello();
+        toasts.show(vi.toast.incenseOffered);
+        sendWishIfAllowed(wish);
+      },
+      onLantern: (wish) => {
+        scenery.releaseLantern();
+        audio.bell();
+        actions.hello();
+        toasts.show(vi.toast.lanternOffered);
+        sendWishIfAllowed(wish);
+      },
+    });
+
     const hud = new Hud({
       rooms: () => rooms.open(),
       hello: () => actions.hello(),
       bow: () => actions.bow(),
       beads: () => actions.toggleBeads(),
+      offering: () => offering.open(),
       people: () => people.open(),
       invite: inviteFriend,
       exit: () => suspend("exit"),
@@ -362,6 +388,7 @@ export async function start(): Promise<void> {
       people.close();
       invite.close();
       settings.close();
+      offering.close();
       nameDialog.dismiss();
       accountDialog.close();
       audio.setSuspended(true);
