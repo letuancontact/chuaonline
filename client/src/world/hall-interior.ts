@@ -154,6 +154,30 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
   }
   stickGeo.dispose();
 
+  // Bronze temple bell bowl (Chuông đồng) on a brocade cushion to the left of the incense burner (x = -0.62).
+  const bellPad = new CylinderGeometry(0.14, 0.16, 0.05, 16);
+  batch.add("cushion", bellPad, m4.makeTranslation(-0.62, INCENSE_BASE_Y + 0.025, INCENSE_Z), { castShadow: false });
+  bellPad.dispose();
+  const bellBowl = new CylinderGeometry(0.15, 0.1, 0.16, 20);
+  batch.add("gold", bellBowl, m4.makeTranslation(-0.62, INCENSE_BASE_Y + 0.13, INCENSE_Z), { uvScale: [2, 1], castShadow: false });
+  bellBowl.dispose();
+  const bellRim = new CylinderGeometry(0.165, 0.15, 0.03, 20);
+  batch.add("gold", bellRim, m4.makeTranslation(-0.62, INCENSE_BASE_Y + 0.22, INCENSE_Z), { uvScale: [2, 1], castShadow: false });
+  bellRim.dispose();
+
+  // Wooden temple block (Mõ gỗ) + striker on a cushion to the right of the incense burner (x = 0.62).
+  const woodblockPad = new CylinderGeometry(0.14, 0.16, 0.05, 16);
+  batch.add("cushion", woodblockPad, m4.makeTranslation(0.62, INCENSE_BASE_Y + 0.025, INCENSE_Z), { castShadow: false });
+  woodblockPad.dispose();
+  const woodblockBody = new SphereGeometry(0.13, 16, 12);
+  woodblockBody.scale(1.18, 0.82, 1.0);
+  batch.add("wood", woodblockBody, m4.makeTranslation(0.62, INCENSE_BASE_Y + 0.14, INCENSE_Z), { worldUV: 1, castShadow: false });
+  woodblockBody.dispose();
+  const malletGeo = new CylinderGeometry(0.014, 0.018, 0.2, 8);
+  malletGeo.rotateZ(Math.PI * 0.42);
+  batch.add("darkWood", malletGeo, m4.makeTranslation(0.8, INCENSE_BASE_Y + 0.06, INCENSE_Z + 0.04), { castShadow: false });
+  malletGeo.dispose();
+
   const group = batch.build("hall-interior", { ...materials, gold, lacquer, cushion, candle });
 
   // Mural plane.
