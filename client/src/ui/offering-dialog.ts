@@ -13,6 +13,8 @@ export interface OfferingStats {
 export interface OfferingHandlers {
   onIncense(wish: string): void;
   onLantern(wish: string): void;
+  onBell?(): void;
+  onWoodblock?(): void;
 }
 
 function safeStorage(): Storage | null {
@@ -54,8 +56,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text?
 }
 
 /**
- * Offering dialog ("Cúng dường · Tâm nguyện"): lets the visitor offer incense at the main altar
- * or release a floating lotus lantern on the pond, with an optional peaceful wish.
+ * Offering dialog ("Cúng dường · Tâm nguyện"): lets the visitor offer incense at the main altar,
+ * release a floating lotus lantern on the pond, ring the deep temple bell or tap the wooden block.
  */
 export class OfferingDialog {
   private readonly dialog: HTMLDialogElement;
@@ -116,6 +118,21 @@ export class OfferingDialog {
     lanternBtn.addEventListener("click", () => this.offerLantern());
     const lanternSec = this.actionSection(t.lanternTitle, t.lanternDesc, lanternBtn);
 
+    // 3. Ring Temple Bell row.
+    const bellBtn = el("button", "btn btn--ghost", t.bellAction);
+    bellBtn.type = "button";
+    bellBtn.addEventListener("click", () => {
+      this.close();
+      this.handlers.onBell?.();
+    });
+    const bellSec = this.actionSection(t.bellTitle, t.bellDesc, bellBtn);
+
+    // 4. Tap Wooden Temple Block row (stays open for rhythmic tapping).
+    const woodblockBtn = el("button", "btn btn--ghost", t.woodblockAction);
+    woodblockBtn.type = "button";
+    woodblockBtn.addEventListener("click", () => this.handlers.onWoodblock?.());
+    const woodblockSec = this.actionSection(t.woodblockTitle, t.woodblockDesc, woodblockBtn);
+
     // Dharma verse & accumulated stats.
     const footerSec = el("section", "section");
     const verseHead = el("h3", "", t.verseTitle);
@@ -123,7 +140,7 @@ export class OfferingDialog {
     this.statsText = el("small", "section-note");
     footerSec.append(verseHead, this.verseText, this.statsText);
 
-    body.append(wishWrap, incenseSec, lanternSec, footerSec);
+    body.append(wishWrap, incenseSec, lanternSec, bellSec, woodblockSec, footerSec);
     this.dialog.append(head, desc, body);
     this.offBackdrop = closeOnBackdrop(this.dialog);
     parent.append(this.dialog);
