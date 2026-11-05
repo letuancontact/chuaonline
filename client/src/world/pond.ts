@@ -26,6 +26,9 @@ const WATER_Y = 0.04;
 const BANK_OUTER = 1.12;
 const LEAF_COUNT = 16;
 const FLOWER_SCALE = 1.8;
+const MAX_LANTERNS = 12;
+const INITIAL_LANTERNS = 4;
+const LANTERN_SCALE = 1.45;
 
 const m4 = new Matrix4();
 const q = new Quaternion();
@@ -64,7 +67,54 @@ function flowerGeometry(): BufferGeometry {
   return merged;
 }
 
+/** Floating lotus lantern: wooden base, warm golden-pink petals and a bright candle core. */
+function lanternGeometry(): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+  const add = (g: BufferGeometry, color: number): void => {
+    const c = new Color(color);
+    const n = g.getAttribute("position").count;
+    g.setAttribute("color", new Float32BufferAttribute(Array.from({ length: n * 3 }, (_, i) => [c.r, c.g, c.b][i % 3] ?? 1), 3));
+    parts.push(g);
+  };
+  const base = new SphereGeometry(0.14, 12, 6);
+  base.scale(1, 0.16, 1);
+  add(base, 0x4a2e1b);
+
+  const ring = (count: number, len: number, tilt: number, color: number, phase: number): void => {
+    for (let i = 0; i < count; i++) {
+      const g = new SphereGeometry(1, 8, 6);
+      g.scale(0.048, 0.024, len);
+      g.translate(0, 0.01, len * 0.85);
+      g.rotateX(-tilt);
+      g.rotateY((i / count) * Math.PI * 2 + phase);
+      add(g, color);
+    }
+  };
+  ring(8, 0.11, 0.42, 0xf59e6c, 0);
+  ring(8, 0.085, 0.88, 0xffd98e, Math.PI / 8);
+
+  const flame = new SphereGeometry(0.048, 10, 8);
+  flame.scale(1, 1.45, 1);
+  flame.translate(0, 0.065, 0);
+  add(flame, 0xfff6d6);
+
+  const merged = mergeGeometries(parts);
+  for (const g of parts) g.dispose();
+  if (!merged) throw new Error("merge: lotus lantern");
+  return merged;
+}
+
+interface DriftingLantern {
+  active: boolean;
+  angle: number;
+  radius: number;
+  speed: number;
+  phase: number;
+}
+
 export interface Pond {
+  /** Releases a glowing lotus lantern onto the pond water. */
+  releaseLantern(): void;
   update(t: number, daylight: number): void;
   dispose(): void;
 }
@@ -169,7 +219,47 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
   flowers.castShadow = true;
   flowers.name = "lotus-flowers";
 
-  for (const o of [water, bank, leaves, flowers]) {
+  // Floating lotus lanterns (Hoa đăng) drifting gently on the pond surface.
+  const lanternGeo = lanternGeometry();
+  const lanternMat = new MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.45,
+    emissive: new Color(0xffae42),
+    emissiveIntensity: 0.85,
+  });
+  const lanterns = new InstancedMesh(lanternGeo, lanternMat, MAX_LANTERNS);
+  lanterns.frustumCulled = false;
+  lanterns.name = "lotus-lanterns";
+
+  const states: DriftingLantern[] = Array.from({ length: MAX_LANTERNS }, (_, i) => ({
+    active: i < INITIAL_LANTERNS,
+    angle: (i / INITIAL_LANTERNS) * Math.PI * 2 + rand() * 0.5,
+    radius: 0.28 + rand() * 0.38,
+    speed: 0.035 + rand() * 0.025,
+    phase: rand() * Math.PI * 2,
+  }));
+  let nextSlot = INITIAL_LANTERNS % MAX_LANTERNS;
+
+  const updateLanternMatrices = (t: number): void => {
+    for (let i = 0; i < MAX_LANTERNS; i++) {
+      const st = states[i]!;
+      if (!st.active) {
+        lanterns.setMatrixAt(i, m4.compose(v3.set(POND.x, WATER_Y - 1, POND.z), q.identity(), s3.setScalar(0)));
+        continue;
+      }
+      const a = st.angle + t * st.speed;
+      const r = st.radius + 0.04 * Math.sin(t * 0.25 + st.phase);
+      const x = POND.x + Math.cos(a) * POND.rx * r;
+      const z = POND.z + Math.sin(a) * POND.rz * r;
+      const y = WATER_Y + 0.04 + 0.008 * Math.sin(t * 2.2 + st.phase);
+      const yaw = a + Math.PI * 0.5 + 0.2 * Math.sin(t * 0.8 + st.phase);
+      lanterns.setMatrixAt(i, m4.compose(v3.set(x, y, z), q.setFromAxisAngle(Y, yaw), s3.setScalar(LANTERN_SCALE)));
+    }
+    lanterns.instanceMatrix.needsUpdate = true;
+  };
+  updateLanternMatrices(0);
+
+  for (const o of [water, bank, leaves, flowers, lanterns]) {
     o.matrixAutoUpdate = false;
     o.updateMatrix();
     group.add(o);
@@ -180,16 +270,31 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
   registerCameraPreset("pond", { position: [POND.x - 12, 4.5, POND.z + 14], target: [POND.x, 0, POND.z] });
 
   return {
+    releaseLantern() {
+      const st = states[nextSlot]!;
+      st.active = true;
+      // Spawn near the western bank (closest to the temple courtyard) and drift across the water.
+      st.angle = Math.PI + (Math.random() - 0.5) * 0.8;
+      st.radius = 0.45 + Math.random() * 0.28;
+      st.speed = 0.04 + Math.random() * 0.025;
+      st.phase = Math.random() * Math.PI * 2;
+      nextSlot = (nextSlot + 1) % MAX_LANTERNS;
+      updateLanternMatrices(uniforms.uTime.value);
+    },
     update(t, daylight) {
       uniforms.uTime.value = t;
-      uniforms.uNight.value = 1 - daylight;
+      const night = 1 - daylight;
+      uniforms.uNight.value = night;
+      lanternMat.emissiveIntensity = 0.7 + night * 1.6 + 0.12 * Math.sin(t * 3.1);
+      updateLanternMatrices(t);
     },
     dispose() {
-      for (const o of [water, bank, leaves, flowers]) group.remove(o);
+      for (const o of [water, bank, leaves, flowers, lanterns]) group.remove(o);
       leaves.dispose();
       flowers.dispose();
-      for (const g of [waterGeo, bankGeo, leafGeo, flowerGeo]) g.dispose();
-      for (const m of [waterMat, bankMat, leafMat, flowerMat]) m.dispose();
+      lanterns.dispose();
+      for (const g of [waterGeo, bankGeo, leafGeo, flowerGeo, lanternGeo]) g.dispose();
+      for (const m of [waterMat, bankMat, leafMat, flowerMat, lanternMat]) m.dispose();
     },
   };
 }
