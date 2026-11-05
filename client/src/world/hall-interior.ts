@@ -1,10 +1,12 @@
-import type {
-  Group} from "three";
+import type { Group } from "three";
 import {
+  AdditiveBlending,
   Box3,
   BoxGeometry,
+  BufferGeometry,
   Color,
   CylinderGeometry,
+  Float32BufferAttribute,
   InstancedMesh,
   Matrix4,
   Mesh,
@@ -13,6 +15,8 @@ import {
   Object3D,
   PlaneGeometry,
   PointLight,
+  Points,
+  PointsMaterial,
   SphereGeometry,
   SpotLight,
   Vector3,
@@ -21,6 +25,7 @@ import {
 } from "three";
 import { ALTAR, CUSHION_COUNT, HALL, cushionPosition } from "@santinh/shared";
 import { registerCameraPreset } from "../debug/params.ts";
+import { radialTexture } from "../engine/radial-texture.ts";
 import type { Assets } from "./assets.ts";
 import { WALL_TOP } from "./hall-exterior.ts";
 import type { MaterialKey, Materials } from "./materials.ts";
@@ -49,6 +54,14 @@ const LANTERN_Y = CEILING_Y - 2.6;
 const GLOW_DAY = 0.5;
 const GLOW_NIGHT = 2.4;
 
+/** Incense burner sits at the centre of the offering table (between the 4 left and 4 right candles). */
+const INCENSE_Z = (TABLE.z0 + TABLE.z1) / 2;
+const INCENSE_BASE_Y = TABLE.top;
+const SMOKE_COUNT = 28;
+const SMOKE_HEIGHT = 1.65;
+/** Seconds the incense smoke and embers stay boosted after an offering. */
+const INCENSE_BOOST_S = 45;
+
 type Key = MaterialKey | "gold" | "lacquer" | "cushion" | "candle";
 
 const m4 = new Matrix4();
@@ -62,6 +75,8 @@ function box(batch: GeometryBatch<Key>, key: Key, x0: number, x1: number, y0: nu
 
 export interface HallInterior {
   readonly group: Group;
+  /** Lights fresh incense at the altar burner and boosts the rising smoke. */
+  lightIncense(): void;
   update(dt: number, t: number, daylight: number): void;
   dispose(): void;
 }
@@ -118,10 +133,26 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
 
   // Candle bodies on the table.
   const candleXs = Array.from({ length: CANDLES }, (_, i) => TABLE.xMin + 0.7 + (i * (TABLE.xMax - TABLE.xMin - 1.4)) / (CANDLES - 1));
-  const candleZ = (TABLE.z0 + TABLE.z1) / 2;
+  const candleZ = INCENSE_Z;
   const candleGeo = new CylinderGeometry(0.06, 0.07, 0.34, 12);
   for (const x of candleXs) batch.add("candle", candleGeo, m4.makeTranslation(x, TABLE.top + 0.17, candleZ), { castShadow: false });
   candleGeo.dispose();
+
+  // Bronze/gold incense burner (Lư hương) at the centre of the offering table (x = 0).
+  const censerFoot = new CylinderGeometry(0.16, 0.19, 0.05, 18);
+  batch.add("lacquer", censerFoot, m4.makeTranslation(0, INCENSE_BASE_Y + 0.025, INCENSE_Z), { castShadow: false });
+  censerFoot.dispose();
+  const censerBowl = new CylinderGeometry(0.22, 0.15, 0.22, 22);
+  batch.add("gold", censerBowl, m4.makeTranslation(0, INCENSE_BASE_Y + 0.16, INCENSE_Z), { uvScale: [2, 1], castShadow: false });
+  censerBowl.dispose();
+  const censerRim = new CylinderGeometry(0.24, 0.22, 0.04, 22);
+  batch.add("gold", censerRim, m4.makeTranslation(0, INCENSE_BASE_Y + 0.28, INCENSE_Z), { uvScale: [2, 1], castShadow: false });
+  censerRim.dispose();
+  const stickGeo = new CylinderGeometry(0.007, 0.007, 0.28, 6);
+  for (const sx of [-0.04, 0, 0.04]) {
+    batch.add("paintRed", stickGeo, m4.makeTranslation(sx, INCENSE_BASE_Y + 0.4, INCENSE_Z), { castShadow: false });
+  }
+  stickGeo.dispose();
 
   const group = batch.build("hall-interior", { ...materials, gold, lacquer, cushion, candle });
 
@@ -182,6 +213,56 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
   });
   flames.name = "candle-flames";
   group.add(flames);
+
+  // Incense glowing embers + rising smoke particles (single Points draw call).
+  const smokeTex = radialTexture();
+  const emberGeo = new BufferGeometry();
+  emberGeo.setAttribute(
+    "position",
+    new Float32BufferAttribute(
+      [-0.04, INCENSE_BASE_Y + 0.55, INCENSE_Z, 0, INCENSE_BASE_Y + 0.56, INCENSE_Z, 0.04, INCENSE_BASE_Y + 0.55, INCENSE_Z],
+      3,
+    ),
+  );
+  const emberMat = own(
+    new PointsMaterial({
+      map: smokeTex,
+      color: new Color(0xff6b2b),
+      size: 0.09,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      fog: false,
+    }),
+  );
+  const embers = new Points(emberGeo, emberMat);
+  embers.name = "incense-embers";
+  group.add(embers);
+
+  const smokePositions = new Float32Array(SMOKE_COUNT * 3);
+  const smokeGeo = new BufferGeometry();
+  const smokeAttr = new Float32BufferAttribute(smokePositions, 3);
+  smokeGeo.setAttribute("position", smokeAttr);
+  const smokeMat = own(
+    new PointsMaterial({
+      map: smokeTex,
+      color: new Color(0xe8dfd1),
+      size: 0.28,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0.22,
+      depthWrite: false,
+      fog: false,
+    }),
+  );
+  const smoke = new Points(smokeGeo, smokeMat);
+  smoke.name = "incense-smoke";
+  smoke.frustumCulled = false;
+  group.add(smoke);
+
+  let incenseBoost = 0;
 
   // Hanji lanterns hanging from the ceiling.
   const lanternGeo = new SphereGeometry(0.42, 16, 12);
@@ -249,11 +330,30 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
 
   return {
     group,
-    update(_dt, t, daylight) {
+    lightIncense() {
+      incenseBoost = INCENSE_BOOST_S;
+    },
+    update(dt, t, daylight) {
       flameTime.value = t;
       const night = 1 - daylight;
       lanternMat.emissiveIntensity = GLOW_DAY + (GLOW_NIGHT - GLOW_DAY) * night;
       for (const p of fills) p.intensity = 4 + 26 * night;
+
+      if (incenseBoost > 0) incenseBoost = Math.max(0, incenseBoost - dt);
+      const boost = incenseBoost > 0 ? 1 : 0;
+      emberMat.size = 0.09 + 0.05 * boost + 0.015 * Math.sin(t * 6);
+      smokeMat.opacity = 0.22 + 0.2 * boost;
+      smokeMat.size = 0.28 + 0.1 * boost;
+
+      for (let i = 0; i < SMOKE_COUNT; i++) {
+        const phase = (t * 0.22 + i / SMOKE_COUNT) % 1;
+        const spread = phase * (0.18 + 0.08 * boost);
+        const sx = Math.sin(t * 1.4 + i * 1.9) * spread;
+        const sz = Math.cos(t * 1.1 + i * 2.3) * spread * 0.6;
+        const sy = INCENSE_BASE_Y + 0.56 + phase * SMOKE_HEIGHT;
+        smokeAttr.setXYZ(i, sx, sy, INCENSE_Z + sz);
+      }
+      smokeAttr.needsUpdate = true;
     },
     dispose() {
       scene.remove(group);
@@ -266,6 +366,9 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
         m.dispose();
       });
       disposeGroupGeometry(group);
+      emberGeo.dispose();
+      smokeGeo.dispose();
+      smokeTex.dispose();
       for (const m of owned) m.dispose();
       muralTex.dispose();
       for (const s of spots) s.dispose();
