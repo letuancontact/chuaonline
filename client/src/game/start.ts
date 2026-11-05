@@ -20,7 +20,7 @@ import { Avatar } from "../avatar/avatar.ts";
 import { ContactShadows } from "../avatar/contact-shadow.ts";
 import { MonkFactory } from "../avatar/monk-model.ts";
 import { CameraRig, cameraWorldOf, pickFloor } from "../controls/camera-rig.ts";
-import { Input, type MoveAxes } from "../controls/input.ts";
+import { Input, ownedByUi, type MoveAxes } from "../controls/input.ts";
 import { Movement } from "../controls/movement.ts";
 import { vi } from "../i18n/vi.ts";
 import { createWalkChip } from "../ui/walk-chip.ts";
@@ -286,6 +286,22 @@ export async function start(): Promise<void> {
         toasts.show(vi.toast.lanternOffered);
         sendWishIfAllowed(wish);
       },
+      onBell: () => {
+        audio.templeBell();
+        actions.hello();
+        toasts.show(vi.toast.bellRung);
+      },
+      onWoodblock: () => {
+        audio.woodblock();
+      },
+    });
+
+    window.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || suspended || ownedByUi(e.target)) return;
+      if (e.code === "Digit4" || e.code === "Numpad4") {
+        e.preventDefault();
+        audio.woodblock();
+      }
     });
 
     const hud = new Hud({
