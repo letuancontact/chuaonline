@@ -199,6 +199,16 @@ export class AudioEngine {
     if (this.audible && this.s.sfxOn) this.sfx?.bell();
   }
 
+  /** Deep bronze temple bell ("Đại hồng chung"). */
+  templeBell(): void {
+    if (this.audible && this.s.sfxOn) this.sfx?.templeBell();
+  }
+
+  /** Wooden temple block ("Mõ gỗ"). */
+  woodblock(): void {
+    if (this.audible && this.s.sfxOn) this.sfx?.woodblock();
+  }
+
   /** Bead "tách" (T13). */
   bead(): void {
     if (this.audible && this.s.sfxOn) this.sfx?.bead();
