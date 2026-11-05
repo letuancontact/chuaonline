@@ -1,4 +1,4 @@
-import { CEREMONY_DURATION_S, CEREMONY_HOURS, ceremonyAt, vnTimeOfDay } from "@santinh/shared";
+import { CEREMONY_DURATION_S, CEREMONY_HOURS, VISITOR_COLORS, ceremonyAt, vnTimeOfDay } from "@santinh/shared";
 import type { Chant } from "../audio/chant.ts";
 import type { AudioEngine, AudioSettings } from "../audio/engine.ts";
 import { vi } from "../i18n/vi.ts";
@@ -47,7 +47,7 @@ export interface AccountActions {
   signOut: () => void;
 }
 
-/** "Cài đặt" (design/settings.html): our name, ambient / chant / effects, background play, controls, credits. */
+/** "Cài đặt" (design/settings.html): our name, robe colour, ambient / chant / effects, background play, controls, credits. */
 export class SettingsDialog {
   private readonly dialog: HTMLDialogElement;
   private readonly desc: HTMLParagraphElement;
@@ -61,6 +61,7 @@ export class SettingsDialog {
   private readonly nameText: HTMLElement;
   private readonly accountText: HTMLElement;
   private readonly accountBtn: HTMLButtonElement;
+  private readonly colorButtons: HTMLButtonElement[] = [];
   private username: string | null = null;
   private readonly sliders: { key: VolumeKey; input: HTMLInputElement; output: HTMLOutputElement }[] = [];
   private readonly offs: (() => void)[] = [];
@@ -72,6 +73,7 @@ export class SettingsDialog {
     onRename: () => void,
     private readonly account: AccountActions,
     parent: HTMLElement = document.body,
+    private readonly onColorChange?: (color: string) => void,
   ) {
     const t = vi.settings;
     this.dialog = el("dialog", "dialog");
@@ -97,6 +99,38 @@ export class SettingsDialog {
     this.nameText = nameSection.querySelector("small") ?? el("small");
     this.nameText.classList.add("section-name");
     body.append(nameSection);
+
+    // Robe colour picker section (Màu pháp phục).
+    const colorWrap = el("section", "section");
+    const colorHead = el("div", "section-text");
+    colorHead.append(el("h3", "", t.robeColor), el("small", "", t.robeColorDesc));
+    const colorRow = el("div", "section-head");
+    colorRow.style.justifyContent = "flex-start";
+    colorRow.style.gap = "10px";
+    colorRow.style.marginTop = "8px";
+
+    VISITOR_COLORS.forEach((hex, i) => {
+      const label = t.robeColorNames[i] ?? hex;
+      const btn = el("button", "tool tool-circle");
+      btn.type = "button";
+      btn.style.width = "30px";
+      btn.style.height = "30px";
+      btn.style.borderRadius = "50%";
+      btn.style.border = "2px solid rgba(255,255,255,0.45)";
+      btn.style.backgroundColor = hex;
+      btn.style.cursor = "pointer";
+      btn.title = label;
+      btn.setAttribute("aria-label", `${t.robeColor}: ${label}`);
+      btn.setAttribute("aria-pressed", "false");
+      btn.addEventListener("click", () => {
+        this.setColor(hex);
+        this.onColorChange?.(hex);
+      });
+      this.colorButtons.push(btn);
+      colorRow.append(btn);
+    });
+    colorWrap.append(colorHead, colorRow);
+    body.append(colorWrap);
 
     this.accountBtn = el("button", "btn btn--ghost");
     this.accountBtn.type = "button";
@@ -144,6 +178,7 @@ export class SettingsDialog {
     this.offs.push(audio.on("change", () => this.render()));
     this.offs.push(chant.onChange(() => this.render()));
     parent.append(this.dialog);
+    this.setColor(VISITOR_COLORS[0] ?? "#b9c3c7");
     this.render();
   }
 
@@ -164,6 +199,19 @@ export class SettingsDialog {
   setName(name: string): void {
     this.nameText.textContent = name;
     this.nameText.title = name;
+  }
+
+  /** Highlights the active robe colour swatch in the settings dialog. */
+  setColor(color: string): void {
+    VISITOR_COLORS.forEach((hex, i) => {
+      const btn = this.colorButtons[i];
+      if (!btn) return;
+      const active = hex === color;
+      btn.setAttribute("aria-pressed", String(active));
+      btn.style.outline = active ? "2px solid #f4e8cc" : "none";
+      btn.style.outlineOffset = active ? "2px" : "0";
+      btn.style.transform = active ? "scale(1.12)" : "scale(1)";
+    });
   }
 
   /** Our username (only we ever see it, P4-D2), or null as a guest. */
