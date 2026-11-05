@@ -13,6 +13,7 @@ export interface HudHandlers {
   hello(): void;
   bow(): void;
   beads(): void;
+  offering?(): void;
   exit?(): void;
   people?(): void;
   invite?(): void;
@@ -92,8 +93,9 @@ export class Hud {
     // Top-right: tool group + chant chip.
     const topRight = el("div", "hud hud-top-right");
     const group = el("div", "tool-group glass");
-    const offering = button("tool tool-circle hide-mobile", icons.offering, vi.hud.offering);
-    offering.disabled = true; // P2
+    const offering = button("tool tool-circle", icons.offering, vi.hud.offering);
+    offering.title = vi.hud.offering;
+    offering.addEventListener("click", () => h.offering?.());
     // 390 px: icon only (the label carries the name); wider: icon + text.
     this.invite = button("tool", icons.invite, vi.hud.invite);
     this.invite.append(el("span", "hide-mobile", vi.hud.inviteShort));
