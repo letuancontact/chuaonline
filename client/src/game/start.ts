@@ -325,7 +325,7 @@ export async function start(): Promise<void> {
     if (myName !== null) settings.setName(myName);
     settings.setColor(initialRobeColor);
 
-    // Floating "Công đức +1" anchor positioned right above the player's nameplate.
+    // Floating "Công đức +1" anchor positioned right above the local player's nameplate only.
     const meritAnchor = document.createElement("div");
     meritAnchor.style.position = "fixed";
     meritAnchor.style.left = "0";
@@ -368,6 +368,7 @@ export async function start(): Promise<void> {
       audio.woodblock();
       self.tap();
       spawnMeritFloat();
+      driver.sendBead();
     };
 
     const sendWishIfAllowed = (wish: string): void => {
@@ -715,10 +716,14 @@ export async function start(): Promise<void> {
     driver.on("inviteArrived", (a) => toasts.show(vi.toast.arrivedNear.replace("{name}", a.name)));
     driver.on("corrected", (p) => movement.teleport(p));
     driver.on("event", (e) => {
-      if (!events.accept(e, serverNow()) || e.visitorId === selfId || e.type !== "hello") return;
-      remotes.greet(e.visitorId);
-      const name = remotes.nameOf(e.visitorId);
-      if (name) toasts.show(vi.toast.helloFrom.replace("{name}", name));
+      if (!events.accept(e, serverNow()) || e.visitorId === selfId) return;
+      if (e.type === "hello") {
+        remotes.greet(e.visitorId);
+        const name = remotes.nameOf(e.visitorId);
+        if (name) toasts.show(vi.toast.helloFrom.replace("{name}", name));
+      } else if (e.type === "bead") {
+        if (remotes.tap(e.visitorId)) audio.woodblock();
+      }
     });
     movement.on("move", (p) => driver.sendMove(p, self.pose));
     // L1: no `?room=` → the emptiest room with space (room 1 when the list is unreachable).
