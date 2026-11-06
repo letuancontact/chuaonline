@@ -1,4 +1,4 @@
-import { PerspectiveCamera, Scene, type Object3D, type WebGLRenderer } from "three";
+import { PerspectiveCamera, Scene, Vector3, type Object3D, type WebGLRenderer } from "three";
 import {
   CAMERA,
   CUSHION_TOP,
@@ -67,6 +67,8 @@ const FOV = 55;
 const NEAR = 0.1;
 const FAR = 600;
 const COLOR_STORAGE_KEY = "santinh.color.v1";
+const WOODBLOCK_STORAGE_KEY = "santinh.woodblock.v1";
+const MAX_MERIT_FLOATS = 8;
 
 function loadSavedColor(): string | null {
   try {
@@ -82,6 +84,25 @@ function saveSavedColor(color: string): void {
     safeLocalStorage()?.setItem(COLOR_STORAGE_KEY, color);
   } catch {
     // Private browsing or quota exceeded: session colour still works.
+  }
+}
+
+function loadWoodblockCount(): number {
+  try {
+    const raw = safeLocalStorage()?.getItem(WOODBLOCK_STORAGE_KEY);
+    if (!raw) return 0;
+    const n = Number(raw);
+    return Number.isSafeInteger(n) && n >= 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveWoodblockCount(count: number): void {
+  try {
+    safeLocalStorage()?.setItem(WOODBLOCK_STORAGE_KEY, String(count));
+  } catch {
+    // Private browsing or quota exceeded: session counter still works.
   }
 }
 
@@ -303,6 +324,51 @@ export async function start(): Promise<void> {
     if (myName !== null) settings.setName(myName);
     settings.setColor(initialRobeColor);
 
+    // Floating "Công đức +1" anchor positioned right above the player's nameplate.
+    const meritAnchor = document.createElement("div");
+    meritAnchor.style.position = "fixed";
+    meritAnchor.style.left = "0";
+    meritAnchor.style.top = "0";
+    meritAnchor.style.width = "0";
+    meritAnchor.style.height = "0";
+    meritAnchor.style.pointerEvents = "none";
+    meritAnchor.style.zIndex = "var(--z-hud, 10)";
+    document.body.append(meritAnchor);
+    const activeMerits: HTMLSpanElement[] = [];
+    const meritWorldPos = new Vector3();
+
+    const spawnMeritFloat = (): void => {
+      if (activeMerits.length >= MAX_MERIT_FLOATS) {
+        activeMerits.shift()?.remove();
+      }
+      const span = document.createElement("span");
+      span.className = "merit-float";
+      span.textContent = vi.hud.meritFloat;
+      activeMerits.push(span);
+      meritAnchor.append(span);
+      let cleaned = false;
+      const cleanup = (): void => {
+        if (cleaned) return;
+        cleaned = true;
+        const idx = activeMerits.indexOf(span);
+        if (idx !== -1) activeMerits.splice(idx, 1);
+        span.remove();
+      };
+      span.addEventListener("animationend", cleanup, { once: true });
+      setTimeout(cleanup, 1250);
+    };
+
+    let woodblockCount = loadWoodblockCount();
+    const tapWoodblock = (): void => {
+      if (suspended || beadsScreen.isOpen) return;
+      woodblockCount += 1;
+      saveWoodblockCount(woodblockCount);
+      hud.setWoodblockCount(woodblockCount, true);
+      audio.woodblock();
+      self.tap();
+      spawnMeritFloat();
+    };
+
     const sendWishIfAllowed = (wish: string): void => {
       if (!wish || status !== "connected" || session === null) return;
       const n = roomNumber(room);
@@ -330,7 +396,7 @@ export async function start(): Promise<void> {
         toasts.show(vi.toast.bellRung);
       },
       onWoodblock: () => {
-        audio.woodblock();
+        tapWoodblock();
       },
     });
 
@@ -338,7 +404,7 @@ export async function start(): Promise<void> {
       if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || suspended || ownedByUi(e.target)) return;
       if (e.code === "Digit4" || e.code === "Numpad4") {
         e.preventDefault();
-        audio.woodblock();
+        tapWoodblock();
       }
     });
 
@@ -347,6 +413,7 @@ export async function start(): Promise<void> {
       hello: () => actions.hello(),
       bow: () => actions.bow(),
       beads: () => actions.toggleBeads(),
+      woodblock: () => tapWoodblock(),
       offering: () => offering.open(),
       people: () => people.open(),
       invite: inviteFriend,
@@ -355,6 +422,8 @@ export async function start(): Promise<void> {
       settings: () => settings.open(),
       chant: () => chant.toggle(),
     });
+    hud.setWoodblockCount(woodblockCount);
+
     // L5: own scene on the same renderer, built on first open; the world stops updating while it shows.
     let beadsScene: BeadsScene | null = null;
     const beadsScreen = new BeadsScreen({
@@ -679,9 +748,19 @@ export async function start(): Promise<void> {
       world((dt) => {
         remotes.update(dt, serverNow());
         labels.begin(camera);
+        const o = self.object.position;
+        const headY = o.y + labelHeight(actions.seated || actions.asleep || self.pose === "beads");
         if (selfId) {
-          const o = self.object.position;
-          labels.place(selfId, o.x, o.y + labelHeight(actions.seated || actions.asleep || self.pose === "beads"), o.z);
+          labels.place(selfId, o.x, headY, o.z);
+        }
+        meritWorldPos.set(o.x, headY, o.z).project(camera);
+        if (meritWorldPos.z > 1) {
+          meritAnchor.hidden = true;
+        } else {
+          const sx = (meritWorldPos.x * 0.5 + 0.5) * window.innerWidth;
+          const sy = (-meritWorldPos.y * 0.5 + 0.5) * window.innerHeight;
+          meritAnchor.hidden = false;
+          meritAnchor.style.transform = `translate3d(${sx}px, ${sy - 30}px, 0)`;
         }
         remotes.forEach(placeLabel);
         labels.end();
