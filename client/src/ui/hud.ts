@@ -13,6 +13,7 @@ export interface HudHandlers {
   hello(): void;
   bow(): void;
   beads(): void;
+  woodblock?(): void;
   offering?(): void;
   exit?(): void;
   people?(): void;
@@ -61,8 +62,11 @@ export class Hud {
   private readonly bowBtn: HTMLButtonElement;
   private readonly bowLabel: HTMLSpanElement;
   private readonly beadsBtn: HTMLButtonElement;
+  private readonly woodblockBtn: HTMLButtonElement;
+  private readonly woodblockBadge: HTMLSpanElement;
   private readonly hint: HTMLDivElement;
   private readonly timers: ReturnType<typeof setTimeout>[] = [];
+  private pulseTimer: ReturnType<typeof setTimeout> | null = null;
   private room = 1;
   private roomName = roomNameOf(null, 1);
   private status: ConnectionStatus = "connecting";
@@ -115,7 +119,7 @@ export class Hud {
     this.chant.addEventListener("click", () => h.chant?.());
     topRight.append(group, this.chant);
 
-    // Bottom dock, in the design's order.
+    // Bottom dock, in the design's order: Chắp tay [3], Thiền [1], Tràng hạt [2], Gõ mõ [4].
     const bottom = el("div", "hud hud-bottom");
     const bar = el("div", "action-bar glass");
     bar.setAttribute("role", "toolbar");
@@ -123,14 +127,21 @@ export class Hud {
     const hello = actionButton(icons.hello, vi.hud.hello, "3");
     const bow = actionButton(icons.bow, vi.hud.bow, "1");
     const beads = actionButton(icons.beads, vi.hud.beads, "2");
+    const woodblock = actionButton(icons.woodblock, vi.hud.woodblock, "4");
     this.helloBtn = hello.button;
     this.bowBtn = bow.button;
     this.bowLabel = bow.label;
     this.beadsBtn = beads.button;
+    this.woodblockBtn = woodblock.button;
+    this.woodblockBadge = el("span", "action-badge");
+    this.woodblockBadge.hidden = true;
+    this.woodblockBtn.append(this.woodblockBadge);
+
     this.helloBtn.addEventListener("click", () => h.hello());
     this.bowBtn.addEventListener("click", () => h.bow());
     this.beadsBtn.addEventListener("click", () => h.beads());
-    bar.append(this.helloBtn, this.bowBtn, this.beadsBtn);
+    this.woodblockBtn.addEventListener("click", () => h.woodblock?.());
+    bar.append(this.helloBtn, this.bowBtn, this.beadsBtn, this.woodblockBtn);
     bottom.append(bar);
 
     // Control hint: pointer and touch copy, CSS picks one.
@@ -182,6 +193,26 @@ export class Hud {
     this.renderActions();
   }
 
+  /** Updates the bronze counter badge on the Gõ mõ action button (hidden when 0) and pulses the button. */
+  setWoodblockCount(count: number, pulse = false): void {
+    const n = Math.max(0, Math.floor(count));
+    if (n > 0) {
+      this.woodblockBadge.textContent = String(n);
+      this.woodblockBadge.hidden = false;
+    } else {
+      this.woodblockBadge.textContent = "";
+      this.woodblockBadge.hidden = true;
+    }
+    if (pulse) {
+      this.woodblockBtn.dataset.pulse = "true";
+      if (this.pulseTimer) clearTimeout(this.pulseTimer);
+      this.pulseTimer = setTimeout(() => {
+        delete this.woodblockBtn.dataset.pulse;
+        this.pulseTimer = null;
+      }, 110);
+    }
+  }
+
   setSound(on: boolean): void {
     this.sound.innerHTML = on ? icons.sound : icons.muted;
     this.sound.setAttribute("aria-label", on ? vi.hud.soundOff : vi.hud.soundOn);
@@ -198,6 +229,7 @@ export class Hud {
 
   dispose(): void {
     for (const t of this.timers) clearTimeout(t);
+    if (this.pulseTimer) clearTimeout(this.pulseTimer);
     this.root.remove();
   }
 
