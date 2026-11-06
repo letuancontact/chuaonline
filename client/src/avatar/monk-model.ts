@@ -5,11 +5,13 @@ import {
   CylinderGeometry,
   Float32BufferAttribute,
   LatheGeometry,
+  Mesh,
   MeshStandardMaterial,
   Skeleton,
   SkinnedMesh,
   SphereGeometry,
   SRGBColorSpace,
+  TorusGeometry,
   Uint16BufferAttribute,
   Vector2,
 } from "three";
@@ -166,6 +168,83 @@ function limb(radiusTop: number, radiusBottom: number, x: number, yTop: number, 
   return g;
 }
 
+function paintGeometry(g: BufferGeometry, hex: number): BufferGeometry {
+  const c = new Color(hex);
+  const n = g.getAttribute("position").count;
+  const colors = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
+  }
+  g.setAttribute("color", new Float32BufferAttribute(colors, 3));
+  return g;
+}
+
+/** Handheld wooden temple block ("Cái mõ") sitting in the left palm (`hand.L`). */
+function createWoodblockPropGeometry(): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  // Brocade cushion ring under the woodblock.
+  const pad = new TorusGeometry(0.038, 0.012, 8, 16);
+  pad.rotateX(Math.PI / 2);
+  pad.translate(-0.015, -0.048, 0.012);
+  parts.push(paintGeometry(pad, 0x9e2b22));
+
+  // Carved hollow wooden body.
+  const body = new SphereGeometry(0.056, 16, 12);
+  body.scale(1.15, 0.85, 0.78);
+  body.translate(-0.015, -0.052, 0.048);
+  parts.push(paintGeometry(body, 0x9c5227));
+
+  // Upper strike crest (warm polished wood).
+  const crest = new SphereGeometry(0.042, 12, 10);
+  crest.scale(1.05, 0.72, 0.65);
+  crest.translate(-0.018, -0.054, 0.068);
+  parts.push(paintGeometry(crest, 0xb56533));
+
+  // Acoustic slit groove along the front/side of the woodblock.
+  const slit = new CylinderGeometry(0.012, 0.012, 0.095, 8);
+  slit.rotateZ(Math.PI / 2);
+  slit.scale(1, 0.35, 0.6);
+  slit.translate(-0.015, -0.088, 0.046);
+  parts.push(paintGeometry(slit, 0x261109));
+
+  const merged = mergeGeometries(parts);
+  for (const p of parts) p.dispose();
+  if (!merged) throw new Error("merge: woodblock prop");
+  merged.computeVertexNormals();
+  return merged;
+}
+
+/** Handheld wooden striker ("Dùi mõ") gripped in the right hand (`hand.R`), pointing toward `hand.L`. */
+function createMalletPropGeometry(): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  // Wooden shaft extending from the right palm toward the left hand (+X).
+  const shaft = new CylinderGeometry(0.009, 0.012, 0.145, 10);
+  shaft.rotateZ(-Math.PI / 2);
+  shaft.translate(0.048, -0.035, 0.022);
+  parts.push(paintGeometry(shaft, 0x5c2e14));
+
+  // Pommel cap at the base of the handle.
+  const pommel = new SphereGeometry(0.015, 8, 8);
+  pommel.translate(-0.025, -0.035, 0.022);
+  parts.push(paintGeometry(pommel, 0xd9962e));
+
+  // Rounded striker head at the tip of the mallet.
+  const head = new SphereGeometry(0.022, 12, 10);
+  head.scale(1.25, 0.95, 0.95);
+  head.translate(0.118, -0.035, 0.022);
+  parts.push(paintGeometry(head, 0xa83824));
+
+  const merged = mergeGeometries(parts);
+  for (const p of parts) p.dispose();
+  if (!merged) throw new Error("merge: mallet prop");
+  merged.computeVertexNormals();
+  return merged;
+}
+
 /**
  * The novice's body as one skinned geometry (vertex colours + face UVs), in the bind pose of createRig().
  * `remote` uses ≥ 3× fewer segments for other people.
@@ -283,6 +362,7 @@ export interface MonkModel {
   readonly mesh: SkinnedMesh;
   readonly rig: Rig;
   setColor(robeColor: string): void;
+  setWoodblockVisible?(visible: boolean): void;
   dispose(): void;
 }
 
@@ -293,6 +373,9 @@ export interface MonkModel {
 export class MonkFactory {
   private readonly geometries = new Map<string, BufferGeometry>();
   private readonly face = drawFace();
+  private readonly woodblockPropGeo = createWoodblockPropGeometry();
+  private readonly malletPropGeo = createMalletPropGeometry();
+  private readonly propMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.58, metalness: 0.05 });
   readonly material = new MeshStandardMaterial({ vertexColors: true, map: this.face, roughness: 0.82, metalness: 0 });
 
   private getGeometry(robeColor: string, detail: MonkDetail): BufferGeometry {
@@ -317,6 +400,19 @@ export class MonkFactory {
     mesh.bind(skeleton);
     mesh.castShadow = detail === "full";
     mesh.receiveShadow = true;
+
+    const woodblockMesh = new Mesh(this.woodblockPropGeo, this.propMaterial);
+    woodblockMesh.name = "prop:woodblock";
+    woodblockMesh.visible = false;
+    woodblockMesh.castShadow = detail === "full";
+    rig.bones["hand.L"].add(woodblockMesh);
+
+    const malletMesh = new Mesh(this.malletPropGeo, this.propMaterial);
+    malletMesh.name = "prop:mallet";
+    malletMesh.visible = false;
+    malletMesh.castShadow = detail === "full";
+    rig.bones["hand.R"].add(malletMesh);
+
     return {
       mesh,
       rig,
@@ -327,7 +423,14 @@ export class MonkFactory {
         mesh.geometry = this.getGeometry(nextColor, detail);
         if (prevSphere) mesh.boundingSphere = prevSphere;
       },
+      setWoodblockVisible: (visible: boolean) => {
+        if (woodblockMesh.visible === visible) return;
+        woodblockMesh.visible = visible;
+        malletMesh.visible = visible;
+      },
       dispose() {
+        woodblockMesh.removeFromParent();
+        malletMesh.removeFromParent();
         mesh.removeFromParent();
         skeleton.dispose();
       },
@@ -337,6 +440,9 @@ export class MonkFactory {
   dispose(): void {
     for (const g of this.geometries.values()) g.dispose();
     this.geometries.clear();
+    this.woodblockPropGeo.dispose();
+    this.malletPropGeo.dispose();
+    this.propMaterial.dispose();
     this.material.dispose();
     this.face.dispose();
   }
