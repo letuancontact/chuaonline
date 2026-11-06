@@ -56,6 +56,8 @@ export const vi = {
     bow: "Thiền",
     stand: "Dừng",
     beads: "Tràng hạt",
+    woodblock: "Gõ mõ",
+    meritFloat: "Công đức +1",
     hintPointer: "Bấm xuống sàn hoặc WASD để đi · kéo để nhìn quanh · cuộn để phóng to/thu nhỏ",
     hintTouch: "Chạm để đi · vuốt nhìn quanh · 2 ngón phóng to",
   },
