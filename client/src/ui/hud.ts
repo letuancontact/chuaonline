@@ -149,7 +149,7 @@ export class Hud {
     this.woodblockBadge.hidden = true;
     this.woodblockBtn.append(this.woodblockBadge);
 
-    // Gesture popover menu above the action dock.
+    // Gesture popover menu above the action dock (with icons + labels).
     this.gestureMenu = el("div", "gesture-menu glass");
     this.gestureMenu.hidden = true;
     const gestureLabels: Record<GestureKind, string> = {
@@ -158,10 +158,16 @@ export class Hud {
       gardenSit: vi.hud.gestureGardenSit,
       blessing: vi.hud.gestureBlessing,
     };
+    const gestureIcons: Record<GestureKind, string> = {
+      bowGreet: icons.gestureBowGreet,
+      kinhHanh: icons.gestureKinhHanh,
+      gardenSit: icons.gestureGardenSit,
+      blessing: icons.gestureBlessing,
+    };
     for (const kind of GESTURE_ORDER) {
-      const item = el("button", "gesture-item", gestureLabels[kind]);
-      item.type = "button";
+      const item = button("gesture-item", gestureIcons[kind]);
       item.setAttribute("aria-pressed", "false");
+      item.append(el("span", "", gestureLabels[kind]));
       item.addEventListener("click", () => {
         this.gestureMenu.hidden = true;
         h.gesture?.(kind);
