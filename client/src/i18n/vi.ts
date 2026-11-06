@@ -142,7 +142,7 @@ export const vi = {
         guidance: "Đừng để nỗi lo ngày mai lấy mất sự bình yên của hôm nay. Hãy hoàn thành từng việc nhỏ với trọn vẹn sự chú tâm.",
       },
       {
-        title: "Buông Xả PhiềnƯu",
+        title: "Buông Xả Phiền Ưu",
         lines: [
           "Tay nắm chặt hoài thêm mỏi mệt,",
           "Mở lòng buông xuống nhẹ như mây,",
@@ -165,7 +165,7 @@ export const vi = {
         title: "Trăng Sáng Đỉnh Đồi",
         lines: [
           "Mây mù che khuất vầng trăng sáng,",
-          "Trăng vẫn tròn đầy phía九 thiên,",
+          "Trăng vẫn tròn đầy phía cửu thiên,",
           "Gió thổi mây tan trời lại tỏ,",
           "Tâm mình vốn tịnh chẳng ưu phiền.",
         ],
