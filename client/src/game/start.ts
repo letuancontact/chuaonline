@@ -24,7 +24,7 @@ import { Input, ownedByUi, type MoveAxes } from "../controls/input.ts";
 import { Movement } from "../controls/movement.ts";
 import { vi } from "../i18n/vi.ts";
 import { createWalkChip } from "../ui/walk-chip.ts";
-import { Hud } from "../ui/hud.ts";
+import { GESTURE_ORDER, Hud, type GestureKind } from "../ui/hud.ts";
 import { RoomsDialog, emptiestRoom, roomFromSearch, writeRoomToUrl } from "../ui/rooms-dialog.ts";
 import { Toasts } from "../ui/toasts.ts";
 import { PeopleDialog } from "../ui/people-dialog.ts";
@@ -369,6 +369,30 @@ export async function start(): Promise<void> {
       spawnMeritFloat();
     };
 
+    let shownHudGesture: GestureKind | null = null;
+    const syncHudGesture = (): void => {
+      if (self.gesture !== shownHudGesture) {
+        shownHudGesture = self.gesture;
+        hud.setGesture(shownHudGesture);
+      }
+    };
+
+    const triggerGesture = (kind: GestureKind): void => {
+      if (suspended || beadsScreen.isOpen) return;
+      if (actions.bowing) actions.interrupt();
+      if (self.gesture === kind) {
+        self.setGesture(null);
+        syncHudGesture();
+        return;
+      }
+      if (kind === "gardenSit" || kind === "bowGreet") {
+        movement.stop();
+      }
+      self.setGesture(kind);
+      audio.hello();
+      syncHudGesture();
+    };
+
     const sendWishIfAllowed = (wish: string): void => {
       if (!wish || status !== "connected" || session === null) return;
       const n = roomNumber(room);
@@ -405,6 +429,17 @@ export async function start(): Promise<void> {
       if (e.code === "Digit4" || e.code === "Numpad4") {
         e.preventDefault();
         tapWoodblock();
+      } else if (e.code === "Digit5" || e.code === "Numpad5") {
+        e.preventDefault();
+        const cur = self.gesture;
+        const idx = cur === null ? -1 : GESTURE_ORDER.indexOf(cur);
+        const next = idx + 1 < GESTURE_ORDER.length ? (GESTURE_ORDER[idx + 1] ?? null) : null;
+        if (next === null) {
+          self.setGesture(null);
+          syncHudGesture();
+        } else {
+          triggerGesture(next);
+        }
       }
     });
 
@@ -414,6 +449,7 @@ export async function start(): Promise<void> {
       bow: () => actions.bow(),
       beads: () => actions.toggleBeads(),
       woodblock: () => tapWoodblock(),
+      gesture: (kind) => triggerGesture(kind),
       offering: () => offering.open(),
       people: () => people.open(),
       invite: inviteFriend,
@@ -730,6 +766,7 @@ export async function start(): Promise<void> {
       self.object.rotation.y = pos.yaw;
       self.setMoving(movement.speed);
       self.update(dt, now());
+      syncHudGesture();
       contacts.place(0, pos.x, y, pos.z);
       if (!fixedCamera) rig.update(dt, pos.x, y, pos.z, movement.heading);
       env.setFocus(pos.x, y, pos.z);
@@ -749,7 +786,7 @@ export async function start(): Promise<void> {
         remotes.update(dt, serverNow());
         labels.begin(camera);
         const o = self.object.position;
-        const headY = o.y + labelHeight(actions.seated || actions.asleep || self.pose === "beads");
+        const headY = o.y + labelHeight(actions.seated || actions.asleep || self.pose === "beads" || self.sitting);
         if (selfId) {
           labels.place(selfId, o.x, headY, o.z);
         }
