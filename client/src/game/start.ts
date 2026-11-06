@@ -24,7 +24,7 @@ import { Input, ownedByUi, type MoveAxes } from "../controls/input.ts";
 import { Movement } from "../controls/movement.ts";
 import { vi } from "../i18n/vi.ts";
 import { createWalkChip } from "../ui/walk-chip.ts";
-import { GESTURE_ORDER, Hud, type GestureKind } from "../ui/hud.ts";
+import { GESTURE_ORDER, Hud, type AvatarGestureKind, type GestureKind } from "../ui/hud.ts";
 import { RoomsDialog, emptiestRoom, roomFromSearch, writeRoomToUrl } from "../ui/rooms-dialog.ts";
 import { Toasts } from "../ui/toasts.ts";
 import { PeopleDialog } from "../ui/people-dialog.ts";
@@ -369,7 +369,7 @@ export async function start(): Promise<void> {
       spawnMeritFloat();
     };
 
-    let shownHudGesture: GestureKind | null = null;
+    let shownHudGesture: AvatarGestureKind | null = null;
     const syncHudGesture = (): void => {
       if (self.gesture !== shownHudGesture) {
         shownHudGesture = self.gesture;
@@ -379,6 +379,19 @@ export async function start(): Promise<void> {
 
     const triggerGesture = (kind: GestureKind): void => {
       if (suspended || beadsScreen.isOpen) return;
+      if (kind === "lantern") {
+        scenery.releaseLantern();
+        audio.bell();
+        actions.hello();
+        toasts.show(vi.toast.lanternOffered);
+        return;
+      }
+      if (kind === "bell") {
+        audio.templeBell();
+        actions.hello();
+        toasts.show(vi.toast.bellRung);
+        return;
+      }
       if (actions.bowing) actions.interrupt();
       if (self.gesture === kind) {
         self.setGesture(null);
