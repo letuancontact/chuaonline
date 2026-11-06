@@ -11,6 +11,8 @@ import {
 } from "./poses.ts";
 import { BONE_NAMES, JOINT } from "./rig.ts";
 
+export type GestureKind = "bowGreet" | "kinhHanh" | "gardenSit" | "blessing";
+
 export const BLEND_SECONDS = 0.25;
 /** Nodding off / waking up is slower than a pose change. */
 export const SLEEP_BLEND_SECONDS = 1.2;
@@ -20,6 +22,12 @@ const TAP_DURATION = 0.24;
 const WOODBLOCK_HOLD_SECONDS = 1.45;
 /** Speed at which the arms raise/lower into the woodblock-holding posture. */
 const HOLD_DAMP = 15;
+/** Speed at which custom gestures blend in and out. */
+const GESTURE_DAMP = 10;
+/** Duration of the timed "Xá chào" bow greeting (seconds). */
+const BOW_GREET_SECONDS = 2.4;
+/** Duration of the timed "Chúc phúc" blessing gesture (seconds). */
+const BLESSING_SECONDS = 2.6;
 /** How fast the shown stride follows setMoving (1/s, for MathUtils.damp). */
 const STRIDE_DAMP = 10;
 /** Below this the cadence would look like slow motion; the stride shrinks instead. */
@@ -65,6 +73,10 @@ export class Avatar {
   private tapTimer = 0;
   private woodblockHold = 0;
   private holdWeight = 0;
+  private activeGesture: GestureKind | null = null;
+  private shownGesture: GestureKind | null = null;
+  private gestureElapsed = 0;
+  private gestureWeight = 0;
 
   private readonly from = createBoneRotations();
   private readonly target = createBoneRotations();
@@ -89,23 +101,49 @@ export class Avatar {
     return this.current;
   }
 
+  get gesture(): GestureKind | null {
+    return this.activeGesture;
+  }
+
+  /** True while seated in the outdoor meditation posture (`gardenSit`). */
+  get sitting(): boolean {
+    return this.shownGesture === "gardenSit" && this.gestureWeight > 0.35;
+  }
+
   /** Updates the novice's robe colour in place while keeping the active skeleton and pose. */
   setColor(robeColor: string): void {
     this.model.setColor(robeColor);
     this.model.mesh.boundingSphere = POSED_BOUNDS.clone();
   }
 
+  /** Activates or clears one of the 4 mindfulness gestures from button [5]. */
+  setGesture(kind: GestureKind | null): void {
+    if (kind !== null) {
+      this.shownGesture = kind;
+      this.gestureElapsed = 0;
+      if (kind !== "gardenSit") {
+        this.woodblockHold = 0;
+        this.tapTimer = 0;
+      }
+    }
+    this.activeGesture = kind;
+  }
+
   /** Raises the woodblock in the left hand and strikes it with the mallet in the right hand. */
   tap(): void {
+    if (this.activeGesture !== null && this.activeGesture !== "gardenSit") {
+      this.activeGesture = null;
+    }
     this.tapTimer = TAP_DURATION;
     this.woodblockHold = WOODBLOCK_HOLD_SECONDS;
     if (this.holdWeight < 0.45) this.holdWeight = 0.45;
   }
 
   setPose(pose: Pose, opts: SetPoseOptions = {}): void {
-    if (pose === "hello" || pose === "beads") {
+    if (pose === "hello" || pose === "beads" || pose === "kneel") {
       this.woodblockHold = 0;
       this.tapTimer = 0;
+      this.activeGesture = null;
     }
     const kneeling = this.current === "kneel" || (this.current === "hello" && this.returnTo === "kneel");
     const bowMoved = opts.bowAt !== undefined && opts.bowAt !== this.bowAt;
@@ -115,12 +153,12 @@ export class Avatar {
     } else if (pose === "kneel" && !kneeling) {
       this.bowAtPending = true;
     }
+    if (pose === "hello" && this.current !== "hello") this.returnTo = this.current;
     if (pose === this.current && pose !== "hello") {
       // A new bowAt jumps to another phase of the bow: ease into it instead of snapping.
       if (pose === "kneel" && bowMoved) this.startBlend();
       return;
     }
-    if (pose === "hello" && this.current !== "hello") this.returnTo = this.current;
     this.current = pose;
     this.elapsed = 0;
     this.startBlend();
@@ -137,6 +175,7 @@ export class Avatar {
     if (asleep) {
       this.woodblockHold = 0;
       this.tapTimer = 0;
+      this.activeGesture = null;
     }
     this.startBlend(SLEEP_BLEND_SECONDS);
   }
@@ -146,6 +185,9 @@ export class Avatar {
     this.targetSpeed = Math.max(0, speed);
     if (this.targetSpeed > 0.05) {
       this.woodblockHold = 0;
+      if (this.activeGesture === "gardenSit" || this.activeGesture === "bowGreet") {
+        this.activeGesture = null;
+      }
     }
   }
 
@@ -190,7 +232,87 @@ export class Avatar {
     for (const name of BONE_NAMES) bones[name].quaternion.copy(this.shown[name]);
     bones.hips.position.copy(JOINT.hips).add(this.shownRoot);
 
-    // Woodblock holding & mallet striking layer.
+    // 1. Custom Gesture Layer (Động tác [5]: Xá chào, Kinh hành, Tọa thiền, Chúc phúc).
+    if (this.activeGesture !== null) {
+      this.gestureElapsed += dt;
+      if (this.activeGesture === "bowGreet" && this.gestureElapsed >= BOW_GREET_SECONDS) {
+        this.activeGesture = null;
+      } else if (this.activeGesture === "blessing" && this.gestureElapsed >= BLESSING_SECONDS) {
+        this.activeGesture = null;
+      }
+    }
+
+    const wantGesture = this.activeGesture !== null && !this.dozing && this.current === "walk" ? 1 : 0;
+    this.gestureWeight = MathUtils.damp(this.gestureWeight, wantGesture, GESTURE_DAMP, dt);
+    if (this.gestureWeight < 0.01 && wantGesture === 0) {
+      this.gestureWeight = 0;
+      this.shownGesture = null;
+    }
+
+    if (this.gestureWeight > 0 && this.shownGesture !== null) {
+      const gw = this.gestureWeight;
+      const breath = Math.sin(this.t * 2.0) * 0.015;
+
+      if (this.shownGesture === "bowGreet") {
+        const p = MathUtils.clamp(this.gestureElapsed / BOW_GREET_SECONDS, 0, 1);
+        const bowCurve = Math.sin(p * Math.PI);
+        bones.spine.quaternion.slerp(setQuatEuler(0.28 * bowCurve, 0, 0), gw);
+        bones.chest.quaternion.slerp(setQuatEuler(0.38 * bowCurve, 0, 0), gw);
+        bones.head.quaternion.slerp(setQuatEuler(0.24 * bowCurve, 0, 0), gw);
+        bones.hips.position.z = MathUtils.lerp(bones.hips.position.z, -0.04 * bowCurve, gw);
+        bones["upper_arm.L"].quaternion.slerp(setQuatEuler(-0.62, -0.24, -0.18), gw);
+        bones["forearm.L"].quaternion.slerp(setQuatEuler(-1.28, 0.36, -0.52), gw);
+        bones["hand.L"].quaternion.slerp(setQuatEuler(0.16, 0.1, -0.28), gw);
+        bones["upper_arm.R"].quaternion.slerp(setQuatEuler(-0.62, 0.24, 0.18), gw);
+        bones["forearm.R"].quaternion.slerp(setQuatEuler(-1.28, -0.36, 0.52), gw);
+        bones["hand.R"].quaternion.slerp(setQuatEuler(0.16, -0.1, 0.28), gw);
+      } else if (this.shownGesture === "kinhHanh") {
+        // Walking meditation: serene upright torso and clasped hands even while walking.
+        bones.spine.quaternion.slerp(setQuatEuler(0.03 + breath * 0.5, 0, 0), gw);
+        bones.chest.quaternion.slerp(setQuatEuler(0.05 + breath, 0, 0), gw);
+        bones.head.quaternion.slerp(setQuatEuler(0.12, 0, 0), gw);
+        bones["upper_arm.L"].quaternion.slerp(setQuatEuler(-0.56, -0.22, -0.16), gw);
+        bones["forearm.L"].quaternion.slerp(setQuatEuler(-1.24, 0.34, -0.48), gw);
+        bones["hand.L"].quaternion.slerp(setQuatEuler(0.14, 0.08, -0.24), gw);
+        bones["upper_arm.R"].quaternion.slerp(setQuatEuler(-0.56, 0.22, 0.16), gw);
+        bones["forearm.R"].quaternion.slerp(setQuatEuler(-1.24, -0.34, 0.48), gw);
+        bones["hand.R"].quaternion.slerp(setQuatEuler(0.14, -0.08, 0.24), gw);
+      } else if (this.shownGesture === "gardenSit") {
+        // Seated lotus/seiza meditation in place anywhere in the courtyard or garden.
+        bones.hips.position.y = MathUtils.lerp(bones.hips.position.y, JOINT.hips.y - 0.25, gw);
+        bones.hips.position.z = MathUtils.lerp(bones.hips.position.z, 0, gw);
+        bones.spine.quaternion.slerp(setQuatEuler(0.02 + breath * 0.5, 0, 0), gw);
+        bones.chest.quaternion.slerp(setQuatEuler(0.03 + breath, 0, 0), gw);
+        bones.head.quaternion.slerp(setQuatEuler(0.1 + breath * 0.4, 0, 0), gw);
+        bones["thigh.L"].quaternion.slerp(setQuatEuler(-1.32, 0.36, -0.14), gw);
+        bones["shin.L"].quaternion.slerp(setQuatEuler(2.12, 0, 0), gw);
+        bones["foot.L"].quaternion.slerp(setQuatEuler(0.52, 0, 0), gw);
+        bones["thigh.R"].quaternion.slerp(setQuatEuler(-1.32, -0.36, 0.14), gw);
+        bones["shin.R"].quaternion.slerp(setQuatEuler(2.12, 0, 0), gw);
+        bones["foot.R"].quaternion.slerp(setQuatEuler(0.52, 0, 0), gw);
+        // Dhyana mudra hands resting in lap (overridden if tapping the woodblock).
+        bones["upper_arm.L"].quaternion.slerp(setQuatEuler(-0.26, -0.12, -0.12), gw);
+        bones["forearm.L"].quaternion.slerp(setQuatEuler(-1.12, 0.28, -0.52), gw);
+        bones["hand.L"].quaternion.slerp(setQuatEuler(0.24, 0, -0.34), gw);
+        bones["upper_arm.R"].quaternion.slerp(setQuatEuler(-0.26, 0.12, 0.12), gw);
+        bones["forearm.R"].quaternion.slerp(setQuatEuler(-1.12, -0.28, 0.52), gw);
+        bones["hand.R"].quaternion.slerp(setQuatEuler(0.24, 0, 0.34), gw);
+      } else if (this.shownGesture === "blessing") {
+        const p = MathUtils.clamp(this.gestureElapsed / BLESSING_SECONDS, 0, 1);
+        const wave = Math.sin(p * Math.PI * 2);
+        bones.spine.quaternion.slerp(setQuatEuler(0.02 + breath * 0.5, 0, 0), gw);
+        bones.chest.quaternion.slerp(setQuatEuler(0.04 + breath, wave * 0.05, 0), gw);
+        bones.head.quaternion.slerp(setQuatEuler(0.08, wave * 0.08, 0), gw);
+        bones["upper_arm.L"].quaternion.slerp(setQuatEuler(-0.54, -0.2, -0.16), gw);
+        bones["forearm.L"].quaternion.slerp(setQuatEuler(-1.22, 0.32, -0.46), gw);
+        bones["hand.L"].quaternion.slerp(setQuatEuler(0.12, 0.06, -0.22), gw);
+        bones["upper_arm.R"].quaternion.slerp(setQuatEuler(-0.98, -0.14, 0.22), gw);
+        bones["forearm.R"].quaternion.slerp(setQuatEuler(-1.06, 0.12, -0.1 + wave * 0.12), gw);
+        bones["hand.R"].quaternion.slerp(setQuatEuler(-0.36 + wave * 0.14, 0, 0.14), gw);
+      }
+    }
+
+    // 2. Woodblock holding & mallet striking layer.
     if (this.woodblockHold > 0) {
       this.woodblockHold = Math.max(0, this.woodblockHold - dt);
     }
