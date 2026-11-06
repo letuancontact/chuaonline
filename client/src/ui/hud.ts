@@ -9,7 +9,70 @@ export const HINT_MS = 8000;
 
 export type GestureKind = "bowGreet" | "kinhHanh" | "gardenSit" | "blessing";
 
-export const GESTURE_ORDER: readonly GestureKind[] = ["bowGreet", "kinhHanh", "gardenSit", "blessing"];
+export interface GestureItemSpec {
+  readonly kind: GestureKind;
+  readonly label: string;
+  readonly icon: string;
+}
+
+/**
+ * Extensible registry for the radial arc menu above the action dock.
+ * Future features can be appended here; `layoutGestureArc` automatically scales
+ * from a single arch (1–6 items) to concentric arches (7+ items).
+ */
+export const GESTURE_ITEMS: readonly GestureItemSpec[] = [
+  { kind: "bowGreet", label: vi.hud.gestureBowGreet, icon: icons.gestureBowGreet },
+  { kind: "kinhHanh", label: vi.hud.gestureKinhHanh, icon: icons.gestureKinhHanh },
+  { kind: "gardenSit", label: vi.hud.gestureGardenSit, icon: icons.gestureGardenSit },
+  { kind: "blessing", label: vi.hud.gestureBlessing, icon: icons.gestureBlessing },
+];
+
+export const GESTURE_ORDER: readonly GestureKind[] = GESTURE_ITEMS.map((item) => item.kind);
+
+/**
+ * Positions circular menu buttons along an upward-curving radial arch centered above the dock.
+ * Keeps horizontal span compact (~256px) so it never overlaps the bottom-left/right Chat or Quiet Room UI.
+ */
+function layoutGestureArc(buttons: readonly HTMLElement[]): void {
+  const total = buttons.length;
+  if (total === 0) return;
+
+  const placeRing = (ringButtons: readonly HTMLElement[], ringIndex: number): void => {
+    const n = ringButtons.length;
+    if (n === 0) return;
+    if (n === 1) {
+      const b = ringButtons[0];
+      if (!b) return;
+      b.style.setProperty("--tx", "0px");
+      b.style.setProperty("--ty", `${-54 - ringIndex * 74}px`);
+      b.style.setProperty("--delay", "0ms");
+      return;
+    }
+    const maxDeg = Math.min(68, 21 + (n - 1) * 10);
+    const maxRad = (maxDeg * Math.PI) / 180;
+    const radius = 128 + Math.max(0, n - 4) * 18 + ringIndex * 76;
+    const baseLift = 44 + ringIndex * 74;
+    const cosEdge = Math.cos(maxRad);
+
+    ringButtons.forEach((btn, i) => {
+      const ratio = n === 1 ? 0 : -1 + (2 * i) / (n - 1);
+      const theta = ratio * maxRad;
+      const tx = Math.round(radius * Math.sin(theta));
+      const ty = Math.round(-baseLift - radius * (Math.cos(theta) - cosEdge));
+      btn.style.setProperty("--tx", `${tx}px`);
+      btn.style.setProperty("--ty", `${ty}px`);
+      btn.style.setProperty("--delay", `${(ringIndex * 5 + i) * 18}ms`);
+    });
+  };
+
+  if (total <= 6) {
+    placeRing(buttons, 0);
+  } else {
+    const innerCount = Math.min(5, Math.ceil(total / 2));
+    placeRing(buttons.slice(0, innerCount), 0);
+    placeRing(buttons.slice(innerCount), 1);
+  }
+}
 
 /** HUD buttons; the optional ones do nothing when left out (previews, tests). */
 export interface HudHandlers {
@@ -149,32 +212,24 @@ export class Hud {
     this.woodblockBadge.hidden = true;
     this.woodblockBtn.append(this.woodblockBadge);
 
-    // Gesture popover menu above the action dock (with icons + labels).
-    this.gestureMenu = el("div", "gesture-menu glass");
+    // Radial arc gesture menu above the action dock.
+    this.gestureMenu = el("div", "gesture-menu");
     this.gestureMenu.hidden = true;
-    const gestureLabels: Record<GestureKind, string> = {
-      bowGreet: vi.hud.gestureBowGreet,
-      kinhHanh: vi.hud.gestureKinhHanh,
-      gardenSit: vi.hud.gestureGardenSit,
-      blessing: vi.hud.gestureBlessing,
-    };
-    const gestureIcons: Record<GestureKind, string> = {
-      bowGreet: icons.gestureBowGreet,
-      kinhHanh: icons.gestureKinhHanh,
-      gardenSit: icons.gestureGardenSit,
-      blessing: icons.gestureBlessing,
-    };
-    for (const kind of GESTURE_ORDER) {
-      const item = button("gesture-item", gestureIcons[kind]);
+    const arcButtons: HTMLButtonElement[] = [];
+    for (const spec of GESTURE_ITEMS) {
+      const item = button("gesture-item", spec.icon, spec.label);
+      item.title = spec.label;
       item.setAttribute("aria-pressed", "false");
-      item.append(el("span", "", gestureLabels[kind]));
+      item.append(el("span", "", spec.label));
       item.addEventListener("click", () => {
         this.gestureMenu.hidden = true;
-        h.gesture?.(kind);
+        h.gesture?.(spec.kind);
       });
-      this.gestureItems.set(kind, item);
+      this.gestureItems.set(spec.kind, item);
+      arcButtons.push(item);
       this.gestureMenu.append(item);
     }
+    layoutGestureArc(arcButtons);
 
     this.helloBtn.addEventListener("click", () => {
       this.gestureMenu.hidden = true;
@@ -257,7 +312,7 @@ export class Hud {
     this.renderActions();
   }
 
-  /** Highlights the active gesture on the Động tác [5] button and its popover menu. */
+  /** Highlights the active gesture on the Động tác [5] button and its radial arc menu. */
   setGesture(kind: GestureKind | null): void {
     this.activeGesture = kind;
     this.gesturesBtn.setAttribute("aria-pressed", String(kind !== null));
