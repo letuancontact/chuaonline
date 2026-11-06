@@ -48,15 +48,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .action[aria-pressed="true"] { background: rgb(163 141 95 / .45); color: var(--color-accent-text); }
 .action[data-pulse="true"] { transform: scale(0.94); background: rgb(217 166 78 / .28); }
 .action:disabled { opacity: .4; cursor: not-allowed; }
-.action-badge { position: absolute; top: 5px; right: 10px; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #c58f36; border: 1px solid rgb(255 246 218 / .65); color: #ffffff; font-size: 11px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; box-shadow: 0 2px 6px rgb(0 0 0 / .38); pointer-events: none; }
+.action-badge { position: absolute; top: 4px; right: 14px; z-index: 1; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #c58f36; border: 1px solid rgb(255 246 218 / .65); color: #ffffff; font-size: 11px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; box-shadow: 0 2px 6px rgb(0 0 0 / .38); pointer-events: none; }
 .action-badge[hidden] { display: none; }
 
 /* Floating merit text ("Công đức +1") above visitor nameplate */
-.merit-float { position: absolute; left: 50%; top: -4px; white-space: nowrap; color: #ffda66; font-size: var(--text-sm); font-weight: 700; letter-spacing: .02em; text-shadow: 0 1px 3px rgb(0 0 0 / .9), 0 0 10px rgb(255 190 60 / .45); pointer-events: none; user-select: none; will-change: transform, opacity; animation: merit-rise 1.15s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.merit-float { position: absolute; left: 50%; bottom: 100%; margin-bottom: 4px; white-space: nowrap; color: #ffda66; font-size: var(--text-sm); font-weight: 700; letter-spacing: .02em; text-shadow: 0 1px 3px rgb(0 0 0 / .9), 0 0 10px rgb(255 190 60 / .45); pointer-events: none; user-select: none; will-change: transform, opacity; animation: merit-rise 1.15s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
 @keyframes merit-rise {
-  0% { opacity: 0; transform: translate3d(-50%, 2px, 0) scale(0.92); }
-  14% { opacity: 1; transform: translate3d(-50%, -6px, 0) scale(1); }
-  100% { opacity: 0; transform: translate3d(-50%, -42px, 0) scale(1.02); }
+  0% { opacity: 0; transform: translate3d(-50%, 4px, 0) scale(0.92); }
+  14% { opacity: 1; transform: translate3d(-50%, -2px, 0) scale(1); }
+  100% { opacity: 0; transform: translate3d(-50%, -38px, 0) scale(1.02); }
 }
 
 .walk-chip { position: fixed; z-index: var(--z-hud); left: 50%; bottom: 112px; transform: translateX(-50%); }
@@ -236,6 +236,7 @@ dialog.overlay--paper .btn { margin-top: 16px; }
 .form-error { margin: 0; color: var(--color-danger); font-size: var(--text-sm); line-height: 1.5; }
 .form-error:empty { display: none; }
 .account-form .btn:disabled { opacity: .65; cursor: wait; }
+.account-form .btn:hover:not(:disabled) { background: #4d5444; }
 .account-note { margin: var(--space-3) 0 0; }
 .account-switch { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px; margin: var(--space-1) 0 0; color: var(--color-dialog-muted); font-size: var(--text-sm); }
 
