@@ -7,7 +7,8 @@ import "./base.css";
 /** The control hint fades out after this (design/game.html note). */
 export const HINT_MS = 8000;
 
-export type GestureKind = "bowGreet" | "kinhHanh" | "gardenSit" | "blessing";
+export type AvatarGestureKind = "bowGreet" | "kinhHanh" | "gardenSit" | "blessing";
+export type GestureKind = AvatarGestureKind | "lantern" | "bell";
 
 export interface GestureItemSpec {
   readonly kind: GestureKind;
@@ -17,21 +18,22 @@ export interface GestureItemSpec {
 
 /**
  * Extensible registry for the radial arc menu above the action dock.
- * Future features can be appended here; `layoutGestureArc` automatically scales
- * from a single compact arch (1–5 items) to concentric arches (6+ items).
+ * Includes the 4 mindfulness postures plus Hoa đăng (Release Lantern) and Thỉnh chuông (Ring Bell).
  */
 export const GESTURE_ITEMS: readonly GestureItemSpec[] = [
   { kind: "bowGreet", label: vi.hud.gestureBowGreet, icon: icons.gestureBowGreet },
   { kind: "kinhHanh", label: vi.hud.gestureKinhHanh, icon: icons.gestureKinhHanh },
   { kind: "gardenSit", label: vi.hud.gestureGardenSit, icon: icons.gestureGardenSit },
   { kind: "blessing", label: vi.hud.gestureBlessing, icon: icons.gestureBlessing },
+  { kind: "lantern", label: vi.hud.gestureLantern, icon: icons.gestureLantern },
+  { kind: "bell", label: vi.hud.gestureBell, icon: icons.gestureBell },
 ];
 
-export const GESTURE_ORDER: readonly GestureKind[] = GESTURE_ITEMS.map((item) => item.kind);
+export const GESTURE_ORDER: readonly AvatarGestureKind[] = ["bowGreet", "kinhHanh", "gardenSit", "blessing"];
 
 /**
- * Positions circular menu buttons along a tight, narrow upward-curving radial arch.
- * Keeps horizontal span very compact (~136px total) so it stays clear of the Quiet Room / Chat UI.
+ * Positions circular menu buttons along a true circular arch with guaranteed chord spacing (`minSpacing = 66px`)
+ * so that `52px` circular buttons always have `14px` of clear air between them and never overlap.
  */
 function layoutGestureArc(buttons: readonly HTMLElement[]): void {
   const total = buttons.length;
@@ -44,31 +46,34 @@ function layoutGestureArc(buttons: readonly HTMLElement[]): void {
       const b = ringButtons[0];
       if (!b) return;
       b.style.setProperty("--tx", "0px");
-      b.style.setProperty("--ty", `${-40 - ringIndex * 58}px`);
+      b.style.setProperty("--ty", `${-48 - ringIndex * 66}px`);
       b.style.setProperty("--delay", "0ms");
       return;
     }
-    const maxDeg = Math.min(44, 14 + (n - 1) * 6.5);
+    // Span up to ±75° across the arch and derive the exact radius from the minimum center-to-center chord distance (66px).
+    const maxDeg = Math.min(75, 22 + (n - 1) * 10.6);
     const maxRad = (maxDeg * Math.PI) / 180;
-    const radius = 84 + Math.max(0, n - 4) * 14 + ringIndex * 58;
-    const baseLift = 34 + ringIndex * 56;
+    const stepRad = (2 * maxRad) / (n - 1);
+    const minSpacing = 66;
+    const radius = Math.max(96, Math.round(minSpacing / (2 * Math.sin(stepRad / 2)))) + ringIndex * 68;
+    const baseLift = 44 + ringIndex * 66;
     const cosEdge = Math.cos(maxRad);
 
     ringButtons.forEach((btn, i) => {
-      const ratio = n === 1 ? 0 : -1 + (2 * i) / (n - 1);
+      const ratio = -1 + (2 * i) / (n - 1);
       const theta = ratio * maxRad;
       const tx = Math.round(radius * Math.sin(theta));
-      const ty = Math.round(-baseLift - radius * (Math.cos(theta) - cosEdge) * 1.35);
+      const ty = Math.round(-baseLift - radius * (Math.cos(theta) - cosEdge));
       btn.style.setProperty("--tx", `${tx}px`);
       btn.style.setProperty("--ty", `${ty}px`);
-      btn.style.setProperty("--delay", `${(ringIndex * 4 + i) * 16}ms`);
+      btn.style.setProperty("--delay", `${(ringIndex * 6 + i) * 16}ms`);
     });
   };
 
-  if (total <= 5) {
+  if (total <= 6) {
     placeRing(buttons, 0);
   } else {
-    const innerCount = Math.min(4, Math.ceil(total / 2));
+    const innerCount = Math.min(5, Math.ceil(total / 2));
     placeRing(buttons.slice(0, innerCount), 0);
     placeRing(buttons.slice(innerCount), 1);
   }
@@ -146,7 +151,7 @@ export class Hud {
   private bowLocked = true;
   private action: ActionState = "idle";
   private bowing = false;
-  private activeGesture: GestureKind | null = null;
+  private activeGesture: AvatarGestureKind | null = null;
 
   constructor(h: HudHandlers, parent: HTMLElement = document.body) {
     this.root = document.createElement("div");
@@ -212,7 +217,7 @@ export class Hud {
     this.woodblockBadge.hidden = true;
     this.woodblockBtn.append(this.woodblockBadge);
 
-    // Compact radial arc gesture menu above the action dock.
+    // Radial arc gesture menu above the action dock.
     this.gestureMenu = el("div", "gesture-menu");
     this.gestureMenu.hidden = true;
     const arcButtons: HTMLButtonElement[] = [];
@@ -313,7 +318,7 @@ export class Hud {
   }
 
   /** Highlights the active gesture on the Động tác [5] button and its radial arc menu. */
-  setGesture(kind: GestureKind | null): void {
+  setGesture(kind: AvatarGestureKind | null): void {
     this.activeGesture = kind;
     this.gesturesBtn.setAttribute("aria-pressed", String(kind !== null));
     for (const [k, btn] of this.gestureItems) {
