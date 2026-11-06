@@ -45,6 +45,9 @@ export const icons = {
   gestureBell: svg(
     '<path d="M6 4h12M12 4v2.5"/><path d="M8 15.5c0-4.2 1.6-7 4-7s4 2.8 4 7l1.5 2.5h-11L8 15.5Z"/><path d="M10.5 18a1.5 1.5 0 0 0 3 0"/><path d="M4.5 11.5a8 8 0 0 1 1.2-3.5m13.8 3.5a8 8 0 0 0-1.2-3.5"/>',
   ),
+  gestureDharma: svg(
+    '<rect x="6.5" y="3.5" width="11" height="17" rx="2"/><path d="M9.5 7.5h5M12 10.5v5.5M9.5 13.2h5"/><circle cx="12" cy="17.5" r=".8" fill="currentColor"/>',
+  ),
   chat: svg('<path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4Z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01" stroke-width="2.2"/>'),
   chatOff: svg('<path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4Z"/><path d="M3 3l18 18"/>'),
   stop: svg('<rect x="7" y="7" width="10" height="10" rx="2"/>'),
