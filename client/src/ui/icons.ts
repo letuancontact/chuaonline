@@ -27,6 +27,18 @@ export const icons = {
   gestures: svg(
     '<path d="M12 4.5c2 2.8 2.8 5.6 0 8.5-2.8-2.9-2-5.7 0-8.5Z"/><path d="M12 13c2.6-1.8 5.4-1.8 7.5.5-1.8 2.6-4.5 3.2-7.5-.5Z"/><path d="M12 13c-2.6-1.8-5.4-1.8-7.5.5 1.8 2.6 4.5 3.2 7.5-.5Z"/><path d="M7 18.5h10"/>',
   ),
+  gestureBowGreet: svg(
+    '<circle cx="13.5" cy="6" r="2.2"/><path d="M7 20v-5.5c0-2 1.8-3.8 4.2-3.8l4.3 2.3-2.8 2.5"/><path d="M14.5 10.5c1.2.4 2.2 1.2 2.8 2.5"/>',
+  ),
+  gestureKinhHanh: svg(
+    '<circle cx="12" cy="5.2" r="2.1"/><path d="M9.5 13.5 12 9.2l2.5 4.3"/><path d="M10.2 14.5 8.5 20m5.3-5.5L15.5 20"/><path d="M5 20h14"/>',
+  ),
+  gestureGardenSit: svg(
+    '<circle cx="12" cy="5.5" r="2.2"/><path d="M7.5 15.5c1-3.2 2.5-5 4.5-5s3.5 1.8 4.5 5"/><path d="M5.5 18.5c2-1.8 4.2-2.2 6.5-2.2s4.5.4 6.5 2.2"/><path d="M9.5 13.5 12 15l2.5-1.5"/>',
+  ),
+  gestureBlessing: svg(
+    '<circle cx="11" cy="6.5" r="2.2"/><path d="M6.5 19.5c.5-4 2.2-6.5 4.8-6.5h1.5l3.7-4.5"/><path d="M17.5 4.5v2.2m2.5-.2-1.5 1.5m2 2h-2.2"/>',
+  ),
   chat: svg('<path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4Z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01" stroke-width="2.2"/>'),
   chatOff: svg('<path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4Z"/><path d="M3 3l18 18"/>'),
   stop: svg('<rect x="7" y="7" width="10" height="10" rx="2"/>'),
