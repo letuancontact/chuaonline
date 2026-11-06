@@ -41,12 +41,23 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* bottom action dock (.game-modes) */
 .action-bar { display: flex; gap: 0; padding: 3px; border-radius: var(--radius-pill); }
-.action { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 88px; min-height: 64px; padding: var(--space-2) var(--space-4); border: 0; border-radius: 24px; background: transparent; color: var(--color-gold); font-size: var(--text-sm); font-weight: 500; }
+.action { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 88px; min-height: 64px; padding: var(--space-2) var(--space-4); border: 0; border-radius: 24px; background: transparent; color: var(--color-gold); font-size: var(--text-sm); font-weight: 500; transition: transform .1s var(--ease), background-color .15s var(--ease); }
 .action svg { width: 22px; height: 22px; }
 .action kbd { font: inherit; font-size: var(--text-2xs); color: var(--color-text-muted); }
 .action:hover:not(:disabled) { background: rgb(255 255 255 / .07); }
 .action[aria-pressed="true"] { background: rgb(163 141 95 / .45); color: var(--color-accent-text); }
+.action[data-pulse="true"] { transform: scale(0.94); background: rgb(217 166 78 / .28); }
 .action:disabled { opacity: .4; cursor: not-allowed; }
+.action-badge { position: absolute; top: 5px; right: 10px; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #c58f36; border: 1px solid rgb(255 246 218 / .65); color: #ffffff; font-size: 11px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; box-shadow: 0 2px 6px rgb(0 0 0 / .38); pointer-events: none; }
+.action-badge[hidden] { display: none; }
+
+/* Floating merit text ("Công đức +1") above visitor nameplate */
+.merit-float { position: absolute; left: 50%; top: -4px; white-space: nowrap; color: #ffda66; font-size: var(--text-sm); font-weight: 700; letter-spacing: .02em; text-shadow: 0 1px 3px rgb(0 0 0 / .9), 0 0 10px rgb(255 190 60 / .45); pointer-events: none; user-select: none; will-change: transform, opacity; animation: merit-rise 1.15s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+@keyframes merit-rise {
+  0% { opacity: 0; transform: translate3d(-50%, 2px, 0) scale(0.92); }
+  14% { opacity: 1; transform: translate3d(-50%, -6px, 0) scale(1); }
+  100% { opacity: 0; transform: translate3d(-50%, -42px, 0) scale(1.02); }
+}
 
 .walk-chip { position: fixed; z-index: var(--z-hud); left: 50%; bottom: 112px; transform: translateX(-50%); }
 .walk-chip[hidden] { display: none; }
@@ -187,6 +198,7 @@ dialog.overlay--paper .btn { margin-top: 16px; }
   .room-pill small { padding-left: 0; border-left: 0; }
   .action { min-width: 0; flex: 1; padding: var(--space-2); }
   .action kbd { display: none; }
+  .action-badge { top: 4px; right: 6px; }
   .action-bar { width: calc(100vw - 32px); max-width: 420px; }
   .hud-hint { top: 132px; }
   .hint { white-space: normal; width: max-content; max-width: min(300px, calc(100vw - 32px)); }
