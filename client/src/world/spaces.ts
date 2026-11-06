@@ -9,6 +9,7 @@ import { createHallExterior } from "./hall-exterior.ts";
 import { createHallInterior } from "./hall-interior.ts";
 import { createLanternGlow } from "./lantern-glow.ts";
 import { createMaterials } from "./materials.ts";
+import { createNature } from "./nature.ts";
 import { createPond } from "./pond.ts";
 import { Regions } from "./regions.ts";
 
@@ -49,6 +50,7 @@ async function buildTichMacDuong({ scene, assets }: SceneContext): Promise<Built
   const pond = createPond(regions.group("garden-east"), materials, scene.fog?.color ?? new Color());
   const grass = createGrass(regions);
   const glow = createLanternGlow(scene, garden.lanterns);
+  const nature = createNature(scene);
   regions.finalize();
 
   return {
@@ -64,6 +66,7 @@ async function buildTichMacDuong({ scene, assets }: SceneContext): Promise<Built
       pond.update(t, day);
       grass.update(t);
       glow.update(day);
+      nature.update(dt, t, day);
       regions.update(camera);
     },
   };
