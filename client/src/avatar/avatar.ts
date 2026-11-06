@@ -9,7 +9,7 @@ import {
   type BoneRotations,
   type PoseContext,
 } from "./poses.ts";
-import { BONE_NAMES, JOINT } from "./rig.ts";
+import { BONE_NAMES, JOINT, type BoneName } from "./rig.ts";
 
 export type GestureKind = "bowGreet" | "kinhHanh" | "gardenSit" | "blessing";
 
@@ -23,11 +23,11 @@ const WOODBLOCK_HOLD_SECONDS = 1.45;
 /** Speed at which the arms raise/lower into the woodblock-holding posture. */
 const HOLD_DAMP = 15;
 /** Speed at which custom gestures blend in and out. */
-const GESTURE_DAMP = 10;
-/** Duration of the timed "Xá chào" bow greeting (seconds). */
-const BOW_GREET_SECONDS = 2.4;
+const GESTURE_DAMP = 9;
+/** Duration of the timed "Xá chào" deep bow greeting (seconds). */
+const BOW_GREET_SECONDS = 2.6;
 /** Duration of the timed "Chúc phúc" blessing gesture (seconds). */
-const BLESSING_SECONDS = 2.6;
+const BLESSING_SECONDS = 2.8;
 /** How fast the shown stride follows setMoving (1/s, for MathUtils.damp). */
 const STRIDE_DAMP = 10;
 /** Below this the cadence would look like slow motion; the stride shrinks instead. */
@@ -37,6 +37,26 @@ const MIN_CADENCE = 1.2;
  * The geometry's bind-pose sphere (r 0.6) misses the bowed head, so the avatar was culled at screen edges.
  */
 const POSED_BOUNDS = new Sphere(new Vector3(0, 0.5, 0.15), 0.8);
+
+const ARM_BONES: readonly BoneName[] = [
+  "upper_arm.L",
+  "forearm.L",
+  "hand.L",
+  "upper_arm.R",
+  "forearm.R",
+  "hand.R",
+];
+
+const LEFT_ARM_BONES: readonly BoneName[] = ["upper_arm.L", "forearm.L", "hand.L"];
+
+const LEG_BONES: readonly BoneName[] = [
+  "thigh.L",
+  "shin.L",
+  "foot.L",
+  "thigh.R",
+  "shin.R",
+  "foot.R",
+];
 
 const tmpEuler = new Euler();
 const tmpQuat = new Quaternion();
@@ -81,10 +101,20 @@ export class Avatar {
   private readonly from = createBoneRotations();
   private readonly target = createBoneRotations();
   private readonly shown = createBoneRotations();
+  private readonly gestureRot = createBoneRotations();
   private readonly fromRoot = new Vector3();
   private readonly targetRoot = new Vector3();
   private readonly shownRoot = new Vector3();
+  private readonly gestureRoot = new Vector3();
   private readonly ctx: PoseContext = { now: 0, bowAt: 0, elapsed: 0, stride: 0, walkPhase: 0, seated: false };
+  private readonly gestureCtx: PoseContext = {
+    now: 0,
+    bowAt: 0,
+    elapsed: HELLO_SECONDS * 0.5,
+    stride: 0,
+    walkPhase: 0,
+    seated: false,
+  };
 
   /** `clockOffset` (s) de-syncs breathing between people; the bow stays synced through bowAt. */
   constructor(model: MonkModel, clockOffset = 0) {
@@ -204,7 +234,9 @@ export class Avatar {
       this.startBlend();
     }
 
-    this.speed = MathUtils.damp(this.speed, this.current === "walk" ? this.targetSpeed : 0, STRIDE_DAMP, dt);
+    // Slow down stride cadence slightly during Kinh hành walking meditation for a serene pace.
+    const effectiveSpeed = this.shownGesture === "kinhHanh" ? this.targetSpeed * 0.78 : this.targetSpeed;
+    this.speed = MathUtils.damp(this.speed, this.current === "walk" ? effectiveSpeed : 0, STRIDE_DAMP, dt);
     const amount = MathUtils.clamp(this.speed / MOVE_SPEED, 0, 1);
     const cadence = Math.max(MIN_CADENCE, this.speed / STRIDE_LENGTH);
     this.walkPhase = (this.walkPhase + dt * cadence * Math.PI * 2) % (Math.PI * 2);
@@ -251,64 +283,90 @@ export class Avatar {
 
     if (this.gestureWeight > 0 && this.shownGesture !== null) {
       const gw = this.gestureWeight;
-      const breath = Math.sin(this.t * 2.0) * 0.015;
+      const breath = Math.sin(this.t * 2.0) * 0.018;
+
+      // Sample canonical `POSES.hello` at peak clasp (elapsed = HELLO_SECONDS * 0.5) so both palms meet seamlessly.
+      const gCtx = this.gestureCtx;
+      gCtx.now = now;
+      gCtx.bowAt = this.bowAt;
+      gCtx.elapsed = HELLO_SECONDS * 0.5;
+      gCtx.seated = this.shownGesture === "gardenSit";
+      POSES.hello(this.t, this.gestureRot, this.gestureRoot, gCtx);
 
       if (this.shownGesture === "bowGreet") {
+        // 3-phase reverent bow: smooth bow down (0..0.32), calm hold at bottom (0.32..0.68), smooth rise (0.68..1.0).
         const p = MathUtils.clamp(this.gestureElapsed / BOW_GREET_SECONDS, 0, 1);
-        const bowCurve = Math.sin(p * Math.PI);
-        bones.spine.quaternion.slerp(setQuatEuler(0.28 * bowCurve, 0, 0), gw);
-        bones.chest.quaternion.slerp(setQuatEuler(0.38 * bowCurve, 0, 0), gw);
-        bones.head.quaternion.slerp(setQuatEuler(0.24 * bowCurve, 0, 0), gw);
-        bones.hips.position.z = MathUtils.lerp(bones.hips.position.z, -0.04 * bowCurve, gw);
-        bones["upper_arm.L"].quaternion.slerp(setQuatEuler(-0.62, -0.24, -0.18), gw);
-        bones["forearm.L"].quaternion.slerp(setQuatEuler(-1.28, 0.36, -0.52), gw);
-        bones["hand.L"].quaternion.slerp(setQuatEuler(0.16, 0.1, -0.28), gw);
-        bones["upper_arm.R"].quaternion.slerp(setQuatEuler(-0.62, 0.24, 0.18), gw);
-        bones["forearm.R"].quaternion.slerp(setQuatEuler(-1.28, -0.36, 0.52), gw);
-        bones["hand.R"].quaternion.slerp(setQuatEuler(0.16, -0.1, 0.28), gw);
+        let bow = 0;
+        if (p < 0.32) {
+          bow = MathUtils.smoothstep(p, 0, 0.32);
+        } else if (p < 0.68) {
+          bow = 1 - 0.03 * Math.sin(((p - 0.32) / 0.36) * Math.PI);
+        } else {
+          bow = 1 - MathUtils.smoothstep(p, 0.68, 1.0);
+        }
+
+        // Exact clasped palms in front of the heart from POSES.hello.
+        for (const b of ARM_BONES) {
+          bones[b].quaternion.slerp(this.gestureRot[b], gw);
+        }
+
+        // Deep respectful waist + chest + head bow with natural knee softening and hip counterbalance.
+        bones.spine.quaternion.slerp(setQuatEuler(0.32 * bow + breath * 0.4, 0, 0), gw);
+        bones.chest.quaternion.slerp(setQuatEuler(0.44 * bow + breath * 0.6, 0, 0), gw);
+        bones.head.quaternion.slerp(setQuatEuler(0.28 * bow, 0, 0), gw);
+        bones["thigh.L"].quaternion.slerp(setQuatEuler(-0.12 * bow, 0, 0), gw);
+        bones["thigh.R"].quaternion.slerp(setQuatEuler(-0.12 * bow, 0, 0), gw);
+        bones["shin.L"].quaternion.slerp(setQuatEuler(0.22 * bow, 0, 0), gw);
+        bones["shin.R"].quaternion.slerp(setQuatEuler(0.22 * bow, 0, 0), gw);
+        bones.hips.position.y = MathUtils.lerp(bones.hips.position.y, JOINT.hips.y - 0.025 * bow, gw);
+        bones.hips.position.z = MathUtils.lerp(bones.hips.position.z, -0.055 * bow, gw);
       } else if (this.shownGesture === "kinhHanh") {
-        // Walking meditation: serene upright torso and clasped hands even while walking.
-        bones.spine.quaternion.slerp(setQuatEuler(0.03 + breath * 0.5, 0, 0), gw);
-        bones.chest.quaternion.slerp(setQuatEuler(0.05 + breath, 0, 0), gw);
-        bones.head.quaternion.slerp(setQuatEuler(0.12, 0, 0), gw);
-        bones["upper_arm.L"].quaternion.slerp(setQuatEuler(-0.56, -0.22, -0.16), gw);
-        bones["forearm.L"].quaternion.slerp(setQuatEuler(-1.24, 0.34, -0.48), gw);
-        bones["hand.L"].quaternion.slerp(setQuatEuler(0.14, 0.08, -0.24), gw);
-        bones["upper_arm.R"].quaternion.slerp(setQuatEuler(-0.56, 0.22, 0.16), gw);
-        bones["forearm.R"].quaternion.slerp(setQuatEuler(-1.24, -0.34, 0.48), gw);
-        bones["hand.R"].quaternion.slerp(setQuatEuler(0.14, -0.08, 0.24), gw);
+        // Walking meditation: exact clasped palms from POSES.hello + gentle breathing and step sway while legs walk.
+        for (const b of ARM_BONES) {
+          bones[b].quaternion.slerp(this.gestureRot[b], gw);
+        }
+        const stepSway = Math.sin(this.walkPhase) * 0.035 * amount;
+        bones["forearm.L"].rotateX((0.025 * Math.sin(this.t * 2.2) + Math.abs(stepSway) * 0.4) * gw);
+        bones["forearm.R"].rotateX((0.025 * Math.sin(this.t * 2.2) + Math.abs(stepSway) * 0.4) * gw);
+        bones.spine.quaternion.slerp(setQuatEuler(0.04 + breath * 0.5, stepSway * 0.6, stepSway * 0.3), gw);
+        bones.chest.quaternion.slerp(setQuatEuler(0.06 + breath, stepSway, -stepSway * 0.3), gw);
+        bones.head.quaternion.slerp(setQuatEuler(0.12 + breath * 0.3, -stepSway * 0.5, 0), gw);
       } else if (this.shownGesture === "gardenSit") {
-        // Seated lotus/seiza meditation in place anywhere in the courtyard or garden.
-        bones.hips.position.y = MathUtils.lerp(bones.hips.position.y, JOINT.hips.y - 0.25, gw);
-        bones.hips.position.z = MathUtils.lerp(bones.hips.position.z, 0, gw);
-        bones.spine.quaternion.slerp(setQuatEuler(0.02 + breath * 0.5, 0, 0), gw);
-        bones.chest.quaternion.slerp(setQuatEuler(0.03 + breath, 0, 0), gw);
-        bones.head.quaternion.slerp(setQuatEuler(0.1 + breath * 0.4, 0, 0), gw);
-        bones["thigh.L"].quaternion.slerp(setQuatEuler(-1.32, 0.36, -0.14), gw);
-        bones["shin.L"].quaternion.slerp(setQuatEuler(2.12, 0, 0), gw);
-        bones["foot.L"].quaternion.slerp(setQuatEuler(0.52, 0, 0), gw);
-        bones["thigh.R"].quaternion.slerp(setQuatEuler(-1.32, -0.36, 0.14), gw);
-        bones["shin.R"].quaternion.slerp(setQuatEuler(2.12, 0, 0), gw);
-        bones["foot.R"].quaternion.slerp(setQuatEuler(0.52, 0, 0), gw);
-        // Dhyana mudra hands resting in lap (overridden if tapping the woodblock).
-        bones["upper_arm.L"].quaternion.slerp(setQuatEuler(-0.26, -0.12, -0.12), gw);
-        bones["forearm.L"].quaternion.slerp(setQuatEuler(-1.12, 0.28, -0.52), gw);
-        bones["hand.L"].quaternion.slerp(setQuatEuler(0.24, 0, -0.34), gw);
-        bones["upper_arm.R"].quaternion.slerp(setQuatEuler(-0.26, 0.12, 0.12), gw);
-        bones["forearm.R"].quaternion.slerp(setQuatEuler(-1.12, -0.28, 0.52), gw);
-        bones["hand.R"].quaternion.slerp(setQuatEuler(0.24, 0, 0.34), gw);
+        // Seated meditation in place: exact seated legs & root drop from POSES.hello(seated=true) + clasped mudra hands.
+        for (const b of LEG_BONES) {
+          bones[b].quaternion.slerp(this.gestureRot[b], gw);
+        }
+        for (const b of ARM_BONES) {
+          bones[b].quaternion.slerp(this.gestureRot[b], gw);
+        }
+        // Lower the clasped hands slightly toward the lap for calm seated meditation while keeping palms touching.
+        bones["upper_arm.L"].rotateX(0.2 * gw);
+        bones["upper_arm.R"].rotateX(0.2 * gw);
+        bones.hips.position.y = MathUtils.lerp(bones.hips.position.y, JOINT.hips.y + this.gestureRoot.y, gw);
+        bones.hips.position.z = MathUtils.lerp(bones.hips.position.z, JOINT.hips.z + this.gestureRoot.z, gw);
+        bones.spine.quaternion.slerp(setQuatEuler(0.03 + breath * 0.5, 0, 0), gw);
+        bones.chest.quaternion.slerp(setQuatEuler(0.04 + breath, 0, 0), gw);
+        bones.head.quaternion.slerp(setQuatEuler(0.12 + breath * 0.4, 0, 0), gw);
       } else if (this.shownGesture === "blessing") {
+        // Joyful lotus blessing: left hand folded respectfully at the heart (from POSES.hello), right hand waving warmly.
         const p = MathUtils.clamp(this.gestureElapsed / BLESSING_SECONDS, 0, 1);
-        const wave = Math.sin(p * Math.PI * 2);
-        bones.spine.quaternion.slerp(setQuatEuler(0.02 + breath * 0.5, 0, 0), gw);
-        bones.chest.quaternion.slerp(setQuatEuler(0.04 + breath, wave * 0.05, 0), gw);
-        bones.head.quaternion.slerp(setQuatEuler(0.08, wave * 0.08, 0), gw);
-        bones["upper_arm.L"].quaternion.slerp(setQuatEuler(-0.54, -0.2, -0.16), gw);
-        bones["forearm.L"].quaternion.slerp(setQuatEuler(-1.22, 0.32, -0.46), gw);
-        bones["hand.L"].quaternion.slerp(setQuatEuler(0.12, 0.06, -0.22), gw);
-        bones["upper_arm.R"].quaternion.slerp(setQuatEuler(-0.98, -0.14, 0.22), gw);
-        bones["forearm.R"].quaternion.slerp(setQuatEuler(-1.06, 0.12, -0.1 + wave * 0.12), gw);
-        bones["hand.R"].quaternion.slerp(setQuatEuler(-0.36 + wave * 0.14, 0, 0.14), gw);
+        const env = Math.sin(Math.min(1, p * 4) * (Math.PI * 0.5)) * Math.sin(Math.min(1, (1 - p) * 4) * (Math.PI * 0.5));
+        const wave = Math.sin(this.gestureElapsed * 6.5) * env;
+        const nod = Math.cos(this.gestureElapsed * 6.5) * env;
+
+        for (const b of LEFT_ARM_BONES) {
+          bones[b].quaternion.slerp(this.gestureRot[b], gw);
+        }
+
+        // Right arm raised comfortably to the right (-Z abduction) waving left-and-right with open palm.
+        bones["upper_arm.R"].quaternion.slerp(setQuatEuler(-1.12 + 0.06 * nod, -0.22, -0.28 + 0.08 * wave), gw * env);
+        bones["forearm.R"].quaternion.slerp(setQuatEuler(-1.05 + 0.08 * wave, 0.15, 0.26 * wave), gw * env);
+        bones["hand.R"].quaternion.slerp(setQuatEuler(-0.15 + 0.12 * nod, 0, 0.32 * wave), gw * env);
+
+        bones.spine.quaternion.slerp(setQuatEuler(0.03 + breath * 0.5, 0.05 * wave, 0.025 * wave), gw);
+        bones.chest.quaternion.slerp(setQuatEuler(0.05 + breath, 0.08 * wave, 0.045 * wave), gw);
+        bones.head.quaternion.slerp(setQuatEuler(0.08 + 0.04 * Math.abs(wave), 0.09 * wave, -0.07 * wave), gw);
+        bones.hips.position.y = MathUtils.lerp(bones.hips.position.y, JOINT.hips.y - 0.012 * Math.abs(wave), gw);
       }
     }
 
