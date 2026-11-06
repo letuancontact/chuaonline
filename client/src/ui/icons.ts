@@ -24,6 +24,9 @@ export const icons = {
   woodblock: svg(
     '<path d="M4.5 12.5a7.5 7.5 0 0 1 15 0c0 3-2.4 5-5.8 5H10.3c-3.4 0-5.8-2-5.8-5Z"/><circle cx="9.5" cy="11.5" r="1.1" fill="currentColor"/><path d="M13.2 13h6"/><path d="M6 20h12"/>',
   ),
+  gestures: svg(
+    '<path d="M12 4.5c2 2.8 2.8 5.6 0 8.5-2.8-2.9-2-5.7 0-8.5Z"/><path d="M12 13c2.6-1.8 5.4-1.8 7.5.5-1.8 2.6-4.5 3.2-7.5-.5Z"/><path d="M12 13c-2.6-1.8-5.4-1.8-7.5.5 1.8 2.6 4.5 3.2 7.5-.5Z"/><path d="M7 18.5h10"/>',
+  ),
   chat: svg('<path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4Z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01" stroke-width="2.2"/>'),
   chatOff: svg('<path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4Z"/><path d="M3 3l18 18"/>'),
   stop: svg('<rect x="7" y="7" width="10" height="10" rx="2"/>'),
