@@ -39,6 +39,12 @@ export const icons = {
   gestureBlessing: svg(
     '<circle cx="11" cy="6.5" r="2.2"/><path d="M6.5 19.5c.5-4 2.2-6.5 4.8-6.5h1.5l3.7-4.5"/><path d="M17.5 4.5v2.2m2.5-.2-1.5 1.5m2 2h-2.2"/>',
   ),
+  gestureLantern: svg(
+    '<path d="M12 4.5c2 2.5 2.5 5 0 7.5-2.5-2.5-2-5 0-7.5Z"/><path d="M12 12c2.5-1.6 5.2-1.4 7 1-1.8 2.2-4.2 2.6-7-1Zm0 0c-2.5-1.6-5.2-1.4-7 1 1.8 2.2 4.2 2.6 7-1Z"/><path d="M4 17.5c2-1 4-1 6 0s4 1 6 0 4-1 4 0"/><path d="M6 20.5c2-.8 4-.8 6 0s4 .8 6 0"/>',
+  ),
+  gestureBell: svg(
+    '<path d="M6 4h12M12 4v2.5"/><path d="M8 15.5c0-4.2 1.6-7 4-7s4 2.8 4 7l1.5 2.5h-11L8 15.5Z"/><path d="M10.5 18a1.5 1.5 0 0 0 3 0"/><path d="M4.5 11.5a8 8 0 0 1 1.2-3.5m13.8 3.5a8 8 0 0 0-1.2-3.5"/>',
+  ),
   chat: svg('<path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4Z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01" stroke-width="2.2"/>'),
   chatOff: svg('<path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4Z"/><path d="M3 3l18 18"/>'),
   stop: svg('<rect x="7" y="7" width="10" height="10" rx="2"/>'),
