@@ -181,33 +181,33 @@ function paintGeometry(g: BufferGeometry, hex: number): BufferGeometry {
   return g;
 }
 
-/** Handheld wooden temple block ("Cái mõ") sitting in the left palm (`hand.L`). */
+/** Handheld wooden temple block ("Cái mõ") cradled on top of the left palm (`hand.L`). */
 function createWoodblockPropGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  // Brocade cushion ring under the woodblock.
-  const pad = new TorusGeometry(0.038, 0.012, 8, 16);
+  // Brocade cushion ring resting in the upturned left palm.
+  const pad = new TorusGeometry(0.044, 0.014, 8, 18);
   pad.rotateX(Math.PI / 2);
-  pad.translate(-0.015, -0.048, 0.012);
+  pad.translate(-0.02, -0.04, 0.032);
   parts.push(paintGeometry(pad, 0x9e2b22));
 
-  // Carved hollow wooden body.
-  const body = new SphereGeometry(0.056, 16, 12);
-  body.scale(1.15, 0.85, 0.78);
-  body.translate(-0.015, -0.052, 0.048);
-  parts.push(paintGeometry(body, 0x9c5227));
+  // Carved hollow wooden body sitting clearly above the cushion.
+  const body = new SphereGeometry(0.068, 18, 14);
+  body.scale(1.18, 0.88, 0.92);
+  body.translate(-0.02, -0.045, 0.078);
+  parts.push(paintGeometry(body, 0xa45729));
 
-  // Upper strike crest (warm polished wood).
-  const crest = new SphereGeometry(0.042, 12, 10);
-  crest.scale(1.05, 0.72, 0.65);
-  crest.translate(-0.018, -0.054, 0.068);
-  parts.push(paintGeometry(crest, 0xb56533));
+  // Upper strike dome (warm polished wood).
+  const crest = new SphereGeometry(0.052, 14, 10);
+  crest.scale(1.08, 0.78, 0.75);
+  crest.translate(-0.02, -0.048, 0.105);
+  parts.push(paintGeometry(crest, 0xc26e38));
 
-  // Acoustic slit groove along the front/side of the woodblock.
-  const slit = new CylinderGeometry(0.012, 0.012, 0.095, 8);
+  // Acoustic slit groove + side eyes of the traditional fish woodblock (Mõ cá).
+  const slit = new CylinderGeometry(0.014, 0.014, 0.115, 8);
   slit.rotateZ(Math.PI / 2);
-  slit.scale(1, 0.35, 0.6);
-  slit.translate(-0.015, -0.088, 0.046);
+  slit.scale(1, 0.35, 0.65);
+  slit.translate(-0.02, -0.095, 0.075);
   parts.push(paintGeometry(slit, 0x261109));
 
   const merged = mergeGeometries(parts);
@@ -217,26 +217,27 @@ function createWoodblockPropGeometry(): BufferGeometry {
   return merged;
 }
 
-/** Handheld wooden striker ("Dùi mõ") gripped in the right hand (`hand.R`), pointing toward `hand.L`. */
+/** Handheld wooden striker ("Dùi mõ") gripped in the right hand (`hand.R`) and angled to strike down & inward. */
 function createMalletPropGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  // Wooden shaft extending from the right palm toward the left hand (+X).
-  const shaft = new CylinderGeometry(0.009, 0.012, 0.145, 10);
-  shaft.rotateZ(-Math.PI / 2);
-  shaft.translate(0.048, -0.035, 0.022);
+  // Wooden shaft extending forward (-Y in hand bone space) and inward (+X toward left hand).
+  const shaft = new CylinderGeometry(0.011, 0.014, 0.17, 10);
+  shaft.rotateZ(0.62);
+  shaft.rotateX(0.28);
+  shaft.translate(0.045, -0.075, 0.035);
   parts.push(paintGeometry(shaft, 0x5c2e14));
 
-  // Pommel cap at the base of the handle.
-  const pommel = new SphereGeometry(0.015, 8, 8);
-  pommel.translate(-0.025, -0.035, 0.022);
+  // Gold pommel cap at the grip end.
+  const pommel = new SphereGeometry(0.017, 8, 8);
+  pommel.translate(-0.005, -0.012, 0.015);
   parts.push(paintGeometry(pommel, 0xd9962e));
 
-  // Rounded striker head at the tip of the mallet.
-  const head = new SphereGeometry(0.022, 12, 10);
-  head.scale(1.25, 0.95, 0.95);
-  head.translate(0.118, -0.035, 0.022);
-  parts.push(paintGeometry(head, 0xa83824));
+  // Rounded red-lacquered striker head at the tip of the mallet.
+  const head = new SphereGeometry(0.026, 12, 10);
+  head.scale(1.2, 1.0, 1.0);
+  head.translate(0.095, -0.138, 0.055);
+  parts.push(paintGeometry(head, 0xb83723));
 
   const merged = mergeGeometries(parts);
   for (const p of parts) p.dispose();
@@ -375,7 +376,7 @@ export class MonkFactory {
   private readonly face = drawFace();
   private readonly woodblockPropGeo = createWoodblockPropGeometry();
   private readonly malletPropGeo = createMalletPropGeometry();
-  private readonly propMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.58, metalness: 0.05 });
+  private readonly propMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.06 });
   readonly material = new MeshStandardMaterial({ vertexColors: true, map: this.face, roughness: 0.82, metalness: 0 });
 
   private getGeometry(robeColor: string, detail: MonkDetail): BufferGeometry {
