@@ -35,6 +35,18 @@ function saveStoredDharma(state: DharmaStoredState): void {
   }
 }
 
+/** Universal rounded-rectangle path helper compatible with all browsers and TypeScript DOM libs. */
+function drawRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
 function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const words = text.split(/\s+/);
   const lines: string[] = [];
@@ -224,7 +236,8 @@ export class DharmaDialog {
   private shareCurrentCard(): void {
     const card = vi.dharma.cards[this.state.lastIndex] ?? vi.dharma.cards[0];
     if (!card) return;
-    const verse = `【${card.title}】 ${card.lines.join(" / ")}`;
+    // Keep under 120 characters so free-tier room chat accepts the shared verse without truncation.
+    const verse = `【${card.title}】 ${card.lines[0]} ${card.lines[1]}`;
     this.handlers.onShare?.(verse);
   }
 
@@ -250,21 +263,18 @@ export class DharmaDialog {
     paperGrad.addColorStop(0.5, "#f5e6c8");
     paperGrad.addColorStop(1, "#ebd4ab");
     ctx.fillStyle = paperGrad;
-    ctx.beginPath();
-    ctx.roundRect(22, 22, w - 44, h - 44, 18);
+    drawRoundRect(ctx, 22, 22, w - 44, h - 44, 18);
     ctx.fill();
 
     // 3. Double ornamental gold-bronze border + corner lotus flourishes.
     ctx.strokeStyle = "#b58332";
     ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.roundRect(32, 32, w - 64, h - 64, 12);
+    drawRoundRect(ctx, 32, 32, w - 64, h - 64, 12);
     ctx.stroke();
 
     ctx.strokeStyle = "rgba(156, 104, 34, 0.55)";
     ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.roundRect(40, 40, w - 80, h - 80, 8);
+    drawRoundRect(ctx, 40, 40, w - 80, h - 80, 8);
     ctx.stroke();
 
     // Corner ornaments
@@ -353,8 +363,7 @@ export class DharmaDialog {
     ctx.fillStyle = "rgba(181, 131, 50, 0.11)";
     ctx.strokeStyle = "rgba(156, 104, 34, 0.4)";
     ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.roundRect(boxX, boxY, boxW, boxH, 12);
+    drawRoundRect(ctx, boxX, boxY, boxW, boxH, 12);
     ctx.fill();
     ctx.stroke();
 
