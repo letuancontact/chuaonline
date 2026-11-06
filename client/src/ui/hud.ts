@@ -7,6 +7,10 @@ import "./base.css";
 /** The control hint fades out after this (design/game.html note). */
 export const HINT_MS = 8000;
 
+export type GestureKind = "bowGreet" | "kinhHanh" | "gardenSit" | "blessing";
+
+export const GESTURE_ORDER: readonly GestureKind[] = ["bowGreet", "kinhHanh", "gardenSit", "blessing"];
+
 /** HUD buttons; the optional ones do nothing when left out (previews, tests). */
 export interface HudHandlers {
   rooms(): void;
@@ -14,6 +18,7 @@ export interface HudHandlers {
   bow(): void;
   beads(): void;
   woodblock?(): void;
+  gesture?(kind: GestureKind): void;
   offering?(): void;
   exit?(): void;
   people?(): void;
@@ -64,9 +69,13 @@ export class Hud {
   private readonly beadsBtn: HTMLButtonElement;
   private readonly woodblockBtn: HTMLButtonElement;
   private readonly woodblockBadge: HTMLSpanElement;
+  private readonly gesturesBtn: HTMLButtonElement;
+  private readonly gestureMenu: HTMLDivElement;
+  private readonly gestureItems = new Map<GestureKind, HTMLButtonElement>();
   private readonly hint: HTMLDivElement;
   private readonly timers: ReturnType<typeof setTimeout>[] = [];
   private pulseTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly onDocPointerDown: (e: PointerEvent) => void;
   private room = 1;
   private roomName = roomNameOf(null, 1);
   private status: ConnectionStatus = "connecting";
@@ -74,6 +83,7 @@ export class Hud {
   private bowLocked = true;
   private action: ActionState = "idle";
   private bowing = false;
+  private activeGesture: GestureKind | null = null;
 
   constructor(h: HudHandlers, parent: HTMLElement = document.body) {
     this.root = document.createElement("div");
@@ -119,7 +129,7 @@ export class Hud {
     this.chant.addEventListener("click", () => h.chant?.());
     topRight.append(group, this.chant);
 
-    // Bottom dock, in the design's order: Chắp tay [3], Thiền [1], Tràng hạt [2], Gõ mõ [4].
+    // Bottom dock: Chắp tay [3], Thiền [1], Tràng hạt [2], Gõ mõ [4], Động tác [5].
     const bottom = el("div", "hud hud-bottom");
     const bar = el("div", "action-bar glass");
     bar.setAttribute("role", "toolbar");
@@ -128,21 +138,69 @@ export class Hud {
     const bow = actionButton(icons.bow, vi.hud.bow, "1");
     const beads = actionButton(icons.beads, vi.hud.beads, "2");
     const woodblock = actionButton(icons.woodblock, vi.hud.woodblock, "4");
+    const gestures = actionButton(icons.gestures, vi.hud.gestures, "5");
     this.helloBtn = hello.button;
     this.bowBtn = bow.button;
     this.bowLabel = bow.label;
     this.beadsBtn = beads.button;
     this.woodblockBtn = woodblock.button;
+    this.gesturesBtn = gestures.button;
     this.woodblockBadge = el("span", "action-badge");
     this.woodblockBadge.hidden = true;
     this.woodblockBtn.append(this.woodblockBadge);
 
-    this.helloBtn.addEventListener("click", () => h.hello());
-    this.bowBtn.addEventListener("click", () => h.bow());
-    this.beadsBtn.addEventListener("click", () => h.beads());
-    this.woodblockBtn.addEventListener("click", () => h.woodblock?.());
-    bar.append(this.helloBtn, this.bowBtn, this.beadsBtn, this.woodblockBtn);
-    bottom.append(bar);
+    // Gesture popover menu above the action dock.
+    this.gestureMenu = el("div", "gesture-menu glass");
+    this.gestureMenu.hidden = true;
+    const gestureLabels: Record<GestureKind, string> = {
+      bowGreet: vi.hud.gestureBowGreet,
+      kinhHanh: vi.hud.gestureKinhHanh,
+      gardenSit: vi.hud.gestureGardenSit,
+      blessing: vi.hud.gestureBlessing,
+    };
+    for (const kind of GESTURE_ORDER) {
+      const item = el("button", "gesture-item", gestureLabels[kind]);
+      item.type = "button";
+      item.setAttribute("aria-pressed", "false");
+      item.addEventListener("click", () => {
+        this.gestureMenu.hidden = true;
+        h.gesture?.(kind);
+      });
+      this.gestureItems.set(kind, item);
+      this.gestureMenu.append(item);
+    }
+
+    this.helloBtn.addEventListener("click", () => {
+      this.gestureMenu.hidden = true;
+      h.hello();
+    });
+    this.bowBtn.addEventListener("click", () => {
+      this.gestureMenu.hidden = true;
+      h.bow();
+    });
+    this.beadsBtn.addEventListener("click", () => {
+      this.gestureMenu.hidden = true;
+      h.beads();
+    });
+    this.woodblockBtn.addEventListener("click", () => {
+      this.gestureMenu.hidden = true;
+      h.woodblock?.();
+    });
+    this.gesturesBtn.addEventListener("click", () => {
+      this.gestureMenu.hidden = !this.gestureMenu.hidden;
+    });
+
+    this.onDocPointerDown = (e: PointerEvent) => {
+      if (this.gestureMenu.hidden) return;
+      const target = e.target as Node | null;
+      if (target && !bottom.contains(target)) {
+        this.gestureMenu.hidden = true;
+      }
+    };
+    window.addEventListener("pointerdown", this.onDocPointerDown, { passive: true });
+
+    bar.append(this.helloBtn, this.bowBtn, this.beadsBtn, this.woodblockBtn, this.gesturesBtn);
+    bottom.append(this.gestureMenu, bar);
 
     // Control hint: pointer and touch copy, CSS picks one.
     this.hint = el("div", "hud hud-hint");
@@ -193,6 +251,15 @@ export class Hud {
     this.renderActions();
   }
 
+  /** Highlights the active gesture on the Động tác [5] button and its popover menu. */
+  setGesture(kind: GestureKind | null): void {
+    this.activeGesture = kind;
+    this.gesturesBtn.setAttribute("aria-pressed", String(kind !== null));
+    for (const [k, btn] of this.gestureItems) {
+      btn.setAttribute("aria-pressed", String(k === kind));
+    }
+  }
+
   /** Updates the bronze counter badge on the Gõ mõ action button (hidden when 0) and pulses the button. */
   setWoodblockCount(count: number, pulse = false): void {
     const n = Math.max(0, Math.floor(count));
@@ -228,6 +295,7 @@ export class Hud {
   }
 
   dispose(): void {
+    window.removeEventListener("pointerdown", this.onDocPointerDown);
     for (const t of this.timers) clearTimeout(t);
     if (this.pulseTimer) clearTimeout(this.pulseTimer);
     this.root.remove();
@@ -261,6 +329,7 @@ export class Hud {
     const bowing = this.bowing;
     this.helloBtn.setAttribute("aria-pressed", String(a === "hello"));
     this.beadsBtn.setAttribute("aria-pressed", String(a === "beads"));
+    this.gesturesBtn.setAttribute("aria-pressed", String(this.activeGesture !== null));
     this.bowLabel.textContent = bowing ? vi.hud.stand : vi.hud.bow;
     // Standing up must stay possible even if the link drops mid-bow.
     this.bowBtn.disabled = this.bowLocked && !bowing;
