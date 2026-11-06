@@ -35,6 +35,7 @@ import { RestScreen } from "../ui/rest-screen.ts";
 import { CeremonyBanner } from "../ui/ceremony-banner.ts";
 import { SettingsDialog } from "../ui/settings-dialog.ts";
 import { OfferingDialog } from "../ui/offering-dialog.ts";
+import { DharmaDialog } from "../ui/dharma-dialog.ts";
 import { AudioEngine } from "../audio/engine.ts";
 import { Chant } from "../audio/chant.ts";
 import { BeadsScene } from "../beads/beads-scene.ts";
@@ -369,6 +370,34 @@ export async function start(): Promise<void> {
       spawnMeritFloat();
     };
 
+    const sendWishIfAllowed = (wish: string): void => {
+      if (!wish || status !== "connected" || session === null) return;
+      const n = roomNumber(room);
+      if (n === null || !roomAllowsChat(n)) return;
+      driver.sendChat(wish);
+    };
+
+    const dharma = new DharmaDialog({
+      onShakeTick: () => {
+        audio.bead();
+      },
+      onDrawn: (title) => {
+        audio.bell();
+        actions.hello();
+        toasts.show(vi.toast.dharmaDrawn.replace("{title}", title));
+      },
+      onShare: (verse) => {
+        const n = roomNumber(room);
+        if (status === "connected" && session !== null && n !== null && roomAllowsChat(n)) {
+          driver.sendChat(verse);
+          dharma.close();
+          toasts.show(vi.toast.dharmaShared);
+        } else {
+          toasts.show(vi.toast.dharmaShareQuiet, "warn");
+        }
+      },
+    });
+
     let shownHudGesture: AvatarGestureKind | null = null;
     const syncHudGesture = (): void => {
       if (self.gesture !== shownHudGesture) {
@@ -392,6 +421,10 @@ export async function start(): Promise<void> {
         toasts.show(vi.toast.bellRung);
         return;
       }
+      if (kind === "dharma") {
+        dharma.open();
+        return;
+      }
       if (actions.bowing) actions.interrupt();
       if (self.gesture === kind) {
         self.setGesture(null);
@@ -406,12 +439,6 @@ export async function start(): Promise<void> {
       syncHudGesture();
     };
 
-    const sendWishIfAllowed = (wish: string): void => {
-      if (!wish || status !== "connected" || session === null) return;
-      const n = roomNumber(room);
-      if (n === null || !roomAllowsChat(n)) return;
-      driver.sendChat(wish);
-    };
     const offering = new OfferingDialog({
       onIncense: (wish) => {
         scenery.lightIncense();
@@ -561,6 +588,7 @@ export async function start(): Promise<void> {
       invite.close();
       settings.close();
       offering.close();
+      dharma.close();
       nameDialog.dismiss();
       accountDialog.close();
       audio.setSuspended(true);
