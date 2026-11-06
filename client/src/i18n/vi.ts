@@ -62,6 +62,8 @@ export const vi = {
     gestureKinhHanh: "Kinh hành",
     gestureGardenSit: "Tọa thiền",
     gestureBlessing: "Chúc phúc",
+    gestureLantern: "Hoa đăng",
+    gestureBell: "Thỉnh chuông",
     meritFloat: "Công đức +1",
     hintPointer: "Bấm xuống sàn hoặc WASD để đi · kéo để nhìn quanh · cuộn để phóng to/thu nhỏ",
     hintTouch: "Chạm để đi · vuốt nhìn quanh · 2 ngón phóng to",
