@@ -64,7 +64,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* Dharma Fortune Slip Card Dialog */
 .dharma-wrap { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); }
-.dharma-canvas { width: min(296px, 100%); height: auto; aspect-ratio: 540 / 760; border-radius: 14px; box-shadow: 0 10px 28px rgb(0 0 0 / .45); transition: transform .3s var(--ease), opacity .3s var(--ease); }
+.dharma-canvas { display: block; width: auto; max-width: min(280px, 100%); max-height: min(390px, 48vh); height: auto; aspect-ratio: 540 / 760; border-radius: 14px; box-shadow: 0 10px 28px rgb(0 0 0 / .45); transition: transform .3s var(--ease), opacity .3s var(--ease); }
 .dharma-canvas[data-shaking="true"] { animation: dharma-shake .55s ease-in-out infinite; opacity: .82; }
 @keyframes dharma-shake {
   0%, 100% { transform: rotate(0deg) translateY(0); }
@@ -73,7 +73,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   75% { transform: rotate(-1.8deg) translateY(-2px); }
 }
 .dharma-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; width: 100%; }
-.dharma-actions .btn { flex: 1; min-width: 120px; min-height: 42px; padding: 8px 14px; font-size: var(--text-sm); }
+.dharma-actions .btn { flex: 1; min-width: 112px; min-height: 40px; padding: 8px 12px; font-size: var(--text-sm); }
 .dharma-stats { margin: 0; color: var(--color-dialog-muted); font-size: var(--text-sm); text-align: center; }
 
 /* Floating merit text ("Công đức +1") above visitor nameplate */
