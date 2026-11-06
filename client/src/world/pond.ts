@@ -2,6 +2,7 @@ import {
   CircleGeometry,
   Color,
   DoubleSide,
+  Euler,
   Float32BufferAttribute,
   InstancedMesh,
   Matrix4,
@@ -29,12 +30,15 @@ const FLOWER_SCALE = 1.8;
 const MAX_LANTERNS = 12;
 const INITIAL_LANTERNS = 4;
 const LANTERN_SCALE = 1.45;
+const KOI_COUNT = 18;
+const RIPPLE_COUNT = 16;
 
 const m4 = new Matrix4();
 const q = new Quaternion();
 const v3 = new Vector3();
 const s3 = new Vector3();
 const Y = new Vector3(0, 1, 0);
+const tmpEuler = new Euler();
 
 /** One lotus: two rings of petals (squashed spheres) around a yellow seed head, coloured per vertex. */
 function flowerGeometry(): BufferGeometry {
@@ -104,6 +108,111 @@ function lanternGeometry(): BufferGeometry {
   return merged;
 }
 
+/**
+ * Sculpted 3D Koi fish facing +Z: tapered multi-segment body, high-contrast dorsal markings,
+ * raised pectoral & pelvic fins, dorsal ridge, dark eyes, and a sweeping forked tail fin.
+ */
+function koiGeometry(): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+  const add = (g: BufferGeometry, color: number): void => {
+    const c = new Color(color);
+    const n = g.getAttribute("position").count;
+    g.setAttribute("color", new Float32BufferAttribute(Array.from({ length: n * 3 }, (_, i) => [c.r, c.g, c.b][i % 3] ?? 1), 3));
+    parts.push(g);
+  };
+
+  // 1. Main streamlined body (head at +Z tapering toward tail peduncle at -Z).
+  const head = new SphereGeometry(1, 10, 6);
+  head.scale(0.048, 0.011, 0.075);
+  head.translate(0, 0.002, 0.11);
+  add(head, 0xfff8ee);
+
+  const chest = new SphereGeometry(1, 10, 6);
+  chest.scale(0.056, 0.012, 0.095);
+  chest.translate(0, 0.003, 0.03);
+  add(chest, 0xffffff);
+
+  const midBody = new SphereGeometry(1, 10, 6);
+  midBody.scale(0.045, 0.011, 0.085);
+  midBody.translate(0, 0.003, -0.055);
+  add(midBody, 0xfff6ea);
+
+  const tailStalk = new SphereGeometry(1, 8, 5);
+  tailStalk.scale(0.024, 0.008, 0.068);
+  tailStalk.translate(0, 0.002, -0.135);
+  add(tailStalk, 0xfff0df);
+
+  // 2. Crisp vermilion-red Kohaku dorsal markings on the crown and back.
+  const headSpot = new SphereGeometry(1, 8, 5);
+  headSpot.scale(0.035, 0.006, 0.045);
+  headSpot.translate(0, 0.011, 0.105);
+  add(headSpot, 0xf03e18);
+
+  const backPatch = new SphereGeometry(1, 9, 5);
+  backPatch.scale(0.045, 0.007, 0.07);
+  backPatch.translate(0, 0.012, 0.015);
+  add(backPatch, 0xe83212);
+
+  const rearSpot = new SphereGeometry(1, 8, 5);
+  rearSpot.scale(0.032, 0.006, 0.046);
+  rearSpot.translate(0, 0.01, -0.075);
+  add(rearSpot, 0xf0451d);
+
+  // 3. Dorsal fin along the spine.
+  const dorsal = new SphereGeometry(1, 8, 5);
+  dorsal.scale(0.009, 0.009, 0.065);
+  dorsal.translate(0, 0.014, -0.015);
+  add(dorsal, 0xfffdf7);
+
+  // 4. Pectoral & pelvic fins kept above y = +0.002 so they never clip into the water plane.
+  for (const side of [-1, 1] as const) {
+    const pec = new SphereGeometry(1, 8, 4);
+    pec.scale(0.058, 0.0035, 0.032);
+    pec.rotateY(side * -0.42);
+    pec.translate(side * 0.06, 0.0025, 0.045);
+    add(pec, 0xfffaf2);
+
+    const pel = new SphereGeometry(1, 6, 4);
+    pel.scale(0.032, 0.003, 0.02);
+    pel.rotateY(side * -0.52);
+    pel.translate(side * 0.035, 0.002, -0.055);
+    add(pel, 0xfff6eb);
+
+    // Eyes on the sides of the head.
+    const eye = new SphereGeometry(1, 6, 4);
+    eye.scale(0.008, 0.005, 0.009);
+    eye.translate(side * 0.036, 0.007, 0.135);
+    add(eye, 0x1c1614);
+  }
+
+  // 5. Forked butterfly-koi caudal tail fin (two lobes fanning back at -Z).
+  for (const side of [-1, 1] as const) {
+    const lobe = new SphereGeometry(1, 8, 4);
+    lobe.scale(0.025, 0.0035, 0.07);
+    lobe.rotateY(side * 0.28);
+    lobe.translate(side * 0.022, 0.0025, -0.21);
+    add(lobe, 0xfff9f0);
+  }
+
+  const merged = mergeGeometries(parts);
+  for (const g of parts) g.dispose();
+  if (!merged) throw new Error("merge: koi fish");
+  return merged;
+}
+
+/** Concentric double water-ripple ring on the pond surface. */
+function rippleGeometry(): BufferGeometry {
+  const outer = new RingGeometry(0.88, 1.0, 32, 1);
+  outer.rotateX(-Math.PI / 2);
+  const inner = new RingGeometry(0.48, 0.56, 28, 1);
+  inner.rotateX(-Math.PI / 2);
+  const merged = mergeGeometries([outer, inner]);
+  outer.dispose();
+  inner.dispose();
+  if (!merged) throw new Error("merge: pond ripple");
+  return merged;
+}
+
 interface DriftingLantern {
   active: boolean;
   angle: number;
@@ -111,6 +220,39 @@ interface DriftingLantern {
   speed: number;
   phase: number;
 }
+
+interface KoiState {
+  baseAngle: number;
+  speed: number;
+  radius: number;
+  radialAmp: number;
+  radialFreq: number;
+  lobeFreq: number;
+  swimFreq: number;
+  phase: number;
+  scale: number;
+  dir: 1 | -1;
+}
+
+interface RippleState {
+  followLantern: boolean;
+  targetIndex: number;
+  rate: number;
+  phase: number;
+}
+
+/**
+ * High-value tint palette so `vertexColors * instanceColor` preserves the crisp contrast
+ * between the pale body and the vermilion dorsal spots.
+ */
+const KOI_TINTS = [
+  0xffffff, // Pure white & vermilion-red Kohaku
+  0xffe27a, // Golden Yamabuki / Hariwake
+  0xffb870, // Warm tangerine-orange Orenji
+  0xfff5d6, // Platinum-ivory Kohaku
+  0xffcf6e, // Bright amber-gold
+  0xff9e66, // Coral-red Kohaku
+] as const;
 
 export interface Pond {
   /** Releases a glowing lotus lantern onto the pond water. */
@@ -121,7 +263,7 @@ export interface Pond {
 
 /**
  * Ellipse of water (stack §2: onBeforeCompile ripples, sky-tinted fresnel, lantern glints at night),
- * a stone bank, lotus leaves and three flowers.
+ * a stone bank, lotus leaves, three flowers, drifting lanterns, swimming 3D Koi fish, and surface ripples.
  * `sky` is a live colour (the fog colour) that the surface reflects.
  */
 export function createPond(group: Group, materials: Materials, sky: Color): Pond {
@@ -205,7 +347,7 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
       z = POND.z + Math.sin(a) * POND.rz * r;
     }
     const s = 0.35 + rand() * 0.35;
-    leaves.setMatrixAt(i, m4.compose(v3.set(x, WATER_Y + 0.015 + i * 0.0005, z), q.setFromAxisAngle(Y, rand() * Math.PI * 2), s3.set(s, 1, s)));
+    leaves.setMatrixAt(i, m4.compose(v3.set(x, WATER_Y + 0.016 + i * 0.0005, z), q.setFromAxisAngle(Y, rand() * Math.PI * 2), s3.set(s, 1, s)));
   }
   leaves.receiveShadow = true;
   leaves.name = "lotus-leaves";
@@ -240,7 +382,89 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
   }));
   let nextSlot = INITIAL_LANTERNS % MAX_LANTERNS;
 
-  const updateLanternMatrices = (t: number): void => {
+  // 3D Koi fish school with GPU S-wave spine/tail undulation.
+  const koiGeo = koiGeometry();
+  const koiMat = new MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.22,
+    metalness: 0.05,
+    emissive: new Color(0x381906),
+    emissiveIntensity: 0.22,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
+  koiMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = uniforms.uTime;
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nuniform float uTime;")
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        float koiPhase = (instanceMatrix[3][0] + instanceMatrix[3][2]) * 1.35;
+        float tailWeight = clamp((0.12 - transformed.z) / 0.36, 0.0, 1.0);
+        transformed.x += sin(uTime * 8.2 + koiPhase - transformed.z * 15.0) * tailWeight * tailWeight * 0.038;`,
+      );
+  };
+  const koiMesh = new InstancedMesh(koiGeo, koiMat, KOI_COUNT);
+  koiMesh.frustumCulled = false;
+  koiMesh.name = "pond-koi";
+
+  const koiColor = new Color();
+  const koiStates: KoiState[] = Array.from({ length: KOI_COUNT }, (_, i) => {
+    const hex = KOI_TINTS[i % KOI_TINTS.length] ?? 0xffffff;
+    koiMesh.setColorAt(i, koiColor.setHex(hex));
+    return {
+      baseAngle: (i / KOI_COUNT) * Math.PI * 2 + rand() * 0.45,
+      speed: 0.11 + rand() * 0.09,
+      radius: 0.22 + rand() * 0.54,
+      radialAmp: 0.08 + rand() * 0.12,
+      radialFreq: 0.35 + rand() * 0.35,
+      lobeFreq: i % 2 === 0 ? 1 : 2,
+      swimFreq: 6.5 + rand() * 3.0,
+      phase: rand() * Math.PI * 2,
+      scale: 0.88 + rand() * 0.4,
+      dir: i % 3 === 0 ? -1 : 1,
+    };
+  });
+  if (koiMesh.instanceColor) koiMesh.instanceColor.needsUpdate = true;
+
+  // Expanding concentric surface ripples around drifting lanterns and swimming Koi.
+  const rippleGeo = rippleGeometry();
+  const rippleMat = new MeshStandardMaterial({
+    color: 0xd8f0ec,
+    emissive: new Color(0x4c7a74),
+    emissiveIntensity: 0.35,
+    roughness: 0.25,
+    transparent: true,
+    opacity: 0.34,
+    depthWrite: false,
+    side: DoubleSide,
+  });
+  const ripples = new InstancedMesh(rippleGeo, rippleMat, RIPPLE_COUNT);
+  ripples.frustumCulled = false;
+  ripples.name = "pond-ripples";
+
+  const rippleStates: RippleState[] = Array.from({ length: RIPPLE_COUNT }, (_, i) => ({
+    followLantern: i < 6,
+    targetIndex: i < 6 ? i % MAX_LANTERNS : (i - 6) % KOI_COUNT,
+    rate: 0.42 + rand() * 0.28,
+    phase: rand(),
+  }));
+
+  const evalKoiPos = (st: KoiState, t: number, out: { x: number; z: number }): void => {
+    const a = st.baseAngle + st.dir * t * st.speed;
+    const r = Math.min(0.84, Math.max(0.14, st.radius + Math.sin(t * st.radialFreq + st.phase) * st.radialAmp));
+    const swerve = 0.05 * Math.sin(a * st.lobeFreq + st.phase);
+    out.x = POND.x + Math.cos(a + swerve) * POND.rx * r;
+    out.z = POND.z + Math.sin(a - swerve) * POND.rz * r;
+  };
+
+  const pNow = { x: 0, z: 0 };
+  const pAhead = { x: 0, z: 0 };
+
+  const updateDynamicPond = (t: number): void => {
+    // 1. Update drifting lotus lanterns.
     for (let i = 0; i < MAX_LANTERNS; i++) {
       const st = states[i]!;
       if (!st.active) {
@@ -256,10 +480,75 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
       lanterns.setMatrixAt(i, m4.compose(v3.set(x, y, z), q.setFromAxisAngle(Y, yaw), s3.setScalar(LANTERN_SCALE)));
     }
     lanterns.instanceMatrix.needsUpdate = true;
-  };
-  updateLanternMatrices(0);
 
-  for (const o of [water, bank, leaves, flowers, lanterns]) {
+    // 2. Update swimming 3D Koi fish.
+    const dtLook = 0.05;
+    for (let i = 0; i < KOI_COUNT; i++) {
+      const k = koiStates[i];
+      if (!k) continue;
+      evalKoiPos(k, t, pNow);
+      evalKoiPos(k, t + dtLook, pAhead);
+      const dx = pAhead.x - pNow.x;
+      const dz = pAhead.z - pNow.z;
+      const heading = Math.atan2(dx, dz);
+
+      const wag = Math.sin(t * k.swimFreq + k.phase);
+      const yaw = heading + wag * 0.06;
+      const roll = wag * 0.035;
+      const y = WATER_Y + 0.0085 + 0.0008 * Math.sin(t * 1.9 + k.phase);
+
+      tmpEuler.set(0, yaw, roll, "YXZ");
+      q.setFromEuler(tmpEuler);
+      koiMesh.setMatrixAt(i, m4.compose(v3.set(pNow.x, y, pNow.z), q, s3.setScalar(k.scale)));
+    }
+    koiMesh.instanceMatrix.needsUpdate = true;
+
+    // 3. Update expanding water ripples around lanterns and Koi.
+    for (let i = 0; i < RIPPLE_COUNT; i++) {
+      const rp = rippleStates[i];
+      if (!rp) continue;
+      const cycle = (t * rp.rate + rp.phase) % 1;
+      let rx = POND.x;
+      let rz = POND.z;
+      let visible = true;
+
+      if (rp.followLantern) {
+        const lSt = states[rp.targetIndex];
+        if (!lSt || !lSt.active) {
+          visible = false;
+        } else {
+          const a = lSt.angle + t * lSt.speed;
+          const r = lSt.radius + 0.04 * Math.sin(t * 0.25 + lSt.phase);
+          rx = POND.x + Math.cos(a) * POND.rx * r;
+          rz = POND.z + Math.sin(a) * POND.rz * r;
+        }
+      } else {
+        const kSt = koiStates[rp.targetIndex];
+        if (kSt) {
+          evalKoiPos(kSt, t - cycle * 0.55, pNow);
+          rx = pNow.x;
+          rz = pNow.z;
+        }
+      }
+
+      if (!visible) {
+        ripples.setMatrixAt(i, m4.compose(v3.set(POND.x, WATER_Y - 1, POND.z), q.identity(), s3.setScalar(0)));
+        continue;
+      }
+
+      const envelope = Math.sin(cycle * Math.PI);
+      const radiusScale = (0.16 + cycle * 0.52) * envelope;
+      ripples.setMatrixAt(
+        i,
+        m4.compose(v3.set(rx, WATER_Y + 0.0025, rz), q.identity(), s3.set(radiusScale, 1, radiusScale)),
+      );
+    }
+    ripples.instanceMatrix.needsUpdate = true;
+  };
+
+  updateDynamicPond(0);
+
+  for (const o of [water, bank, leaves, flowers, lanterns, koiMesh, ripples]) {
     o.matrixAutoUpdate = false;
     o.updateMatrix();
     group.add(o);
@@ -279,22 +568,26 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
       st.speed = 0.04 + Math.random() * 0.025;
       st.phase = Math.random() * Math.PI * 2;
       nextSlot = (nextSlot + 1) % MAX_LANTERNS;
-      updateLanternMatrices(uniforms.uTime.value);
+      updateDynamicPond(uniforms.uTime.value);
     },
     update(t, daylight) {
       uniforms.uTime.value = t;
       const night = 1 - daylight;
       uniforms.uNight.value = night;
       lanternMat.emissiveIntensity = 0.7 + night * 1.6 + 0.12 * Math.sin(t * 3.1);
-      updateLanternMatrices(t);
+      koiMat.emissiveIntensity = 0.18 + night * 0.28;
+      rippleMat.opacity = 0.26 + daylight * 0.14;
+      updateDynamicPond(t);
     },
     dispose() {
-      for (const o of [water, bank, leaves, flowers, lanterns]) group.remove(o);
+      for (const o of [water, bank, leaves, flowers, lanterns, koiMesh, ripples]) group.remove(o);
       leaves.dispose();
       flowers.dispose();
       lanterns.dispose();
-      for (const g of [waterGeo, bankGeo, leafGeo, flowerGeo, lanternGeo]) g.dispose();
-      for (const m of [waterMat, bankMat, leafMat, flowerMat, lanternMat]) m.dispose();
+      koiMesh.dispose();
+      ripples.dispose();
+      for (const g of [waterGeo, bankGeo, leafGeo, flowerGeo, lanternGeo, koiGeo, rippleGeo]) g.dispose();
+      for (const m of [waterMat, bankMat, leafMat, flowerMat, lanternMat, koiMat, rippleMat]) m.dispose();
     },
   };
 }
