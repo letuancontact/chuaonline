@@ -189,6 +189,14 @@ export class RemoteAvatars {
     if (r && r.avatar.pose !== "hello") r.avatar.setPose("hello");
   }
 
+  /** A `bead` event while not in the beads screen pose: show the 3D woodblock tap on this visitor. */
+  tap(id: string): boolean {
+    const r = this.remotes.get(id);
+    if (!r || r.visitor.asleep === true || r.avatar.pose === "beads") return false;
+    r.avatar.tap();
+    return r.avatar.object.visible && r.avatar.object.parent !== null;
+  }
+
   applySnapshot(s: RoomSnapshot): void {
     this.clear();
     this.selfId = s.selfId;
@@ -311,4 +319,3 @@ function isResident(v: Visitor): boolean {
 export function labelHeight(kneeling: boolean): number {
   return kneeling ? 1.05 : 1.32;
 }
-
