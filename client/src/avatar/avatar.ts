@@ -14,6 +14,8 @@ import { BONE_NAMES, JOINT } from "./rig.ts";
 export const BLEND_SECONDS = 0.25;
 /** Nodding off / waking up is slower than a pose change. */
 export const SLEEP_BLEND_SECONDS = 1.2;
+/** Duration of one rhythmic woodblock tap impulse (seconds). */
+const TAP_DURATION = 0.18;
 /** How fast the shown stride follows setMoving (1/s, for MathUtils.damp). */
 const STRIDE_DAMP = 10;
 /** Below this the cadence would look like slow motion; the stride shrinks instead. */
@@ -49,6 +51,7 @@ export class Avatar {
   private blend = BLEND_SECONDS;
   private blendSeconds = BLEND_SECONDS;
   private dozing = false;
+  private tapTimer = 0;
 
   private readonly from = createBoneRotations();
   private readonly target = createBoneRotations();
@@ -77,6 +80,11 @@ export class Avatar {
   setColor(robeColor: string): void {
     this.model.setColor(robeColor);
     this.model.mesh.boundingSphere = POSED_BOUNDS.clone();
+  }
+
+  /** Triggers a subtle rhythmic woodblock tap impulse without interrupting the current pose. */
+  tap(): void {
+    this.tapTimer = TAP_DURATION;
   }
 
   setPose(pose: Pose, opts: SetPoseOptions = {}): void {
@@ -155,6 +163,17 @@ export class Avatar {
     const bones = this.model.rig.bones;
     for (const name of BONE_NAMES) bones[name].quaternion.copy(this.shown[name]);
     bones.hips.position.copy(JOINT.hips).add(this.shownRoot);
+
+    if (this.tapTimer > 0) {
+      this.tapTimer = Math.max(0, this.tapTimer - dt);
+      const phase = 1 - this.tapTimer / TAP_DURATION;
+      const pulse = Math.sin(phase * Math.PI);
+      bones.chest.rotateX(0.06 * pulse);
+      bones.head.rotateX(0.08 * pulse);
+      bones["forearm.R"].rotateX(-0.22 * pulse);
+      bones["hand.R"].rotateX(0.18 * pulse);
+      bones.hips.position.y -= 0.012 * pulse;
+    }
   }
 
   dispose(): void {
