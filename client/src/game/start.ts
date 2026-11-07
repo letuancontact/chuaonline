@@ -19,6 +19,7 @@ import {
 import { Avatar } from "../avatar/avatar.ts";
 import { ContactShadows } from "../avatar/contact-shadow.ts";
 import { MonkFactory } from "../avatar/monk-model.ts";
+import { SpiritualEffects } from "../avatar/spiritual-effects.ts";
 import { CameraRig, cameraWorldOf, pickFloor } from "../controls/camera-rig.ts";
 import { Input, ownedByUi, type MoveAxes } from "../controls/input.ts";
 import { Movement } from "../controls/movement.ts";
@@ -26,6 +27,7 @@ import { vi } from "../i18n/vi.ts";
 import { createWalkChip } from "../ui/walk-chip.ts";
 import { GESTURE_ORDER, Hud, type AvatarGestureKind, type GestureKind } from "../ui/hud.ts";
 import { Joystick } from "../ui/joystick.ts";
+import { ProgressionDialog } from "../ui/progression-dialog.ts";
 import { RoomsDialog, emptiestRoom, roomFromSearch, writeRoomToUrl } from "../ui/rooms-dialog.ts";
 import { Toasts } from "../ui/toasts.ts";
 import { PeopleDialog } from "../ui/people-dialog.ts";
@@ -60,6 +62,7 @@ import { createRenderer, isWebGLAvailable } from "../engine/renderer.ts";
 import { createDebugOverlay } from "../debug/overlay.ts";
 import { e2eState, installE2EHooks, type E2EState, type PerfInfo } from "../debug/e2e-hooks.ts";
 import { Actions, installActionKeys } from "./actions.ts";
+import { Progression } from "./progression.ts";
 import { applyCameraPreset, params, registerCameraPreset } from "../debug/params.ts";
 import { hideBoot, showBootError } from "../ui/boot.ts";
 import { Assets } from "../world/assets.ts";
@@ -177,6 +180,7 @@ export async function start(): Promise<void> {
     const factory = new MonkFactory();
     const self = new Avatar(factory.create(initialRobeColor, "full"));
     scene.add(self.object);
+    const spiritualEffects = new SpiritualEffects(self.object);
     const contacts = new ContactShadows(scene, ROOM_CAPACITY + RESIDENTS.length);
     contacts.setCount(1);
 
@@ -197,6 +201,25 @@ export async function start(): Promise<void> {
     const serverNow = (): number => Date.now() + driver.clockOffset;
     const remotes = new RemoteAvatars(scene, factory, contacts, space);
 
+    let woodblockCount = loadWoodblockCount();
+    const progression = new Progression(now, safeLocalStorage(), woodblockCount);
+    const labels = new NameLabels();
+    let selfId: string | null = null;
+    let selfName: string | null = null;
+
+    const syncEquippedCosmetics = (): void => {
+      spiritualEffects.setAura(progression.equippedAura);
+      spiritualEffects.setArtifact(progression.equippedArtifact);
+      if (selfId !== null) {
+        labels.setTitle(selfId, progression.equippedTitleBadge);
+      }
+    };
+    syncEquippedCosmetics();
+    progression.onChange(syncEquippedCosmetics);
+    progression.onQuestComplete((def) => {
+      toasts.show(`Hoàn thành nhiệm vụ: ${def.title} (+${def.reward} Công đức)`);
+    });
+
     const actions = new Actions({
       space,
       net: driver,
@@ -209,12 +232,39 @@ export async function start(): Promise<void> {
     actions.on("toast", (t) => toasts.show(t.text, t.kind));
     const audio = new AudioEngine();
     const chant = new Chant(audio, now);
-    actions.on("bell", () => audio.bell());
-    actions.on("hello", () => audio.hello());
+    actions.on("bell", () => {
+      audio.bell();
+      progression.recordAction("bow", 1);
+    });
+    actions.on("hello", () => {
+      audio.hello();
+      progression.recordAction("hello", 1);
+    });
     actions.on("teleport", (at) => {
       if (!fixedCamera) rig.snap(at.x, CUSHION_TOP, at.z);
     });
     installActionKeys(actions);
+
+    const progressionDialog = new ProgressionDialog(progression, {
+      onClaimReward: (_merit, label) => {
+        audio.bell();
+        toasts.show(label);
+      },
+      onShopAction: (res) => {
+        if (res.action === "bought") {
+          audio.templeBell();
+          toasts.show(`Đã thỉnh và trang bị: ${res.item.name}`);
+        } else if (res.action === "equipped") {
+          audio.bead();
+          toasts.show(`Đã trang bị: ${res.item.name}`);
+        } else if (res.action === "unequipped") {
+          audio.bead();
+          toasts.show(`Đã gỡ: ${res.item.name}`);
+        } else if (res.action === "insufficient") {
+          toasts.show(`Cần thêm ${res.missing} Công đức để thỉnh ${res.item.name}`, "warn");
+        }
+      },
+    });
 
     const rooms = new RoomsDialog({
       net: driver,
@@ -369,12 +419,14 @@ export async function start(): Promise<void> {
       setTimeout(cleanup, 1250);
     };
 
-    let woodblockCount = loadWoodblockCount();
     const tapWoodblock = (): void => {
       if (suspended || beadsScreen.isOpen) return;
       woodblockCount += 1;
       saveWoodblockCount(woodblockCount);
       hud.setWoodblockCount(woodblockCount, true);
+      progression.addMerit(1);
+      progression.recordAction("woodblock", 1);
+      spiritualEffects.triggerTap();
       audio.woodblock();
       self.tap();
       spawnMeritFloat();
@@ -395,6 +447,7 @@ export async function start(): Promise<void> {
       onDrawn: (title) => {
         audio.bell();
         actions.hello();
+        progression.recordAction("offering", 1);
         toasts.show(vi.toast.dharmaDrawn.replace("{title}", title));
       },
       onShare: (verse) => {
@@ -414,6 +467,7 @@ export async function start(): Promise<void> {
         scenery.hangWish();
         audio.bell();
         actions.hello();
+        progression.recordAction("offering", 1);
         toasts.show(vi.toast.wishHung);
         sendWishIfAllowed(wishText);
       },
@@ -442,12 +496,14 @@ export async function start(): Promise<void> {
         scenery.releaseLantern();
         audio.bell();
         actions.hello();
+        progression.recordAction("offering", 1);
         toasts.show(vi.toast.lanternOffered);
         return;
       }
       if (kind === "bell") {
         audio.templeBell();
         actions.hello();
+        progression.recordAction("offering", 1);
         toasts.show(vi.toast.bellRung);
         return;
       }
@@ -482,6 +538,7 @@ export async function start(): Promise<void> {
         }
         audio.bell();
         actions.hello();
+        progression.recordAction("offering", 1);
         toasts.show(vi.toast.incenseOffered);
         sendWishIfAllowed(wish);
       },
@@ -493,12 +550,14 @@ export async function start(): Promise<void> {
         }
         audio.bell();
         actions.hello();
+        progression.recordAction("offering", 1);
         toasts.show(vi.toast.lanternOffered);
         sendWishIfAllowed(wish);
       },
       onBell: () => {
         audio.templeBell();
         actions.hello();
+        progression.recordAction("offering", 1);
         toasts.show(vi.toast.bellRung);
       },
       onWoodblock: () => {
@@ -522,6 +581,9 @@ export async function start(): Promise<void> {
         } else {
           triggerGesture(next);
         }
+      } else if (e.code === "Digit6" || e.code === "Numpad6" || e.code === "KeyJ") {
+        e.preventDefault();
+        progressionDialog.toggle();
       }
     });
 
@@ -544,12 +606,18 @@ export async function start(): Promise<void> {
 
     // L5: own scene on the same renderer, built on first open; the world stops updating while it shows.
     let beadsScene: BeadsScene | null = null;
+    let sessionBeads = 0;
     const beadsScreen = new BeadsScreen({
       storage: safeLocalStorage(),
       onClose: () => actions.closeBeads(),
       onBead: () => {
         audio.bead();
         actions.bead();
+        sessionBeads += 1;
+        progression.recordAction("beads", 1);
+        if (sessionBeads % 9 === 0) {
+          progression.addMerit(1);
+        }
       },
       onCount: (c, animate) => {
         e2eState.beads = c;
@@ -642,6 +710,7 @@ export async function start(): Promise<void> {
       offering.close();
       dharma.close();
       wishTree.close();
+      progressionDialog.close();
       nameDialog.dismiss();
       accountDialog.close();
       joystick.reset();
@@ -698,10 +767,7 @@ export async function start(): Promise<void> {
       movement.stop();
     });
     movement.on("walking", (walking) => chip.setVisible(walking));
-    const labels = new NameLabels();
     const events = new EventFilter();
-    let selfId: string | null = null;
-    let selfName: string | null = null;
     remotes.onChange(() => {
       movement.setObstacles(remotes.obstacles);
       const keep = new Set<string>();
@@ -736,6 +802,7 @@ export async function start(): Promise<void> {
       stripNearFromUrl();
       if (me) {
         labels.set(me.id, me.name, true);
+        labels.setTitle(me.id, progression.equippedTitleBadge);
         labels.setAsleep(me.id, actions.asleep);
       }
       selfName = me?.name ?? null;
@@ -757,6 +824,7 @@ export async function start(): Promise<void> {
       if (me && me.name !== selfName) {
         selfName = me.name;
         labels.set(me.id, selfName, true);
+        labels.setTitle(me.id, progression.equippedTitleBadge);
         e2eState.selfName = selfName;
       }
       remotes.applyUpdate(u);
@@ -881,6 +949,7 @@ export async function start(): Promise<void> {
       self.object.rotation.y = pos.yaw;
       self.setMoving(movement.speed);
       self.update(dt, now());
+      spiritualEffects.update(dt);
       syncHudGesture();
       contacts.place(0, pos.x, y, pos.z);
       if (!fixedCamera) rig.update(dt, pos.x, y, pos.z, movement.heading);
