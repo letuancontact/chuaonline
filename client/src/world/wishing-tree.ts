@@ -17,7 +17,7 @@ import {
   type Object3D,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { BOUNDARY, GATE_Z, HALL, LANTERN_LOOP, PROP_COLLIDERS, ROOF, STEPS } from "@santinh/shared";
+import { BOUNDARY, GATE_Z, HALL, LANTERN_LOOP, PATH, PROP_COLLIDERS, ROOF, STEPS } from "@santinh/shared";
 import { registerCameraPreset } from "../debug/params.ts";
 import { seeded } from "./random.ts";
 
@@ -39,54 +39,62 @@ function distToSegment(x: number, z: number, ax: number, az: number, bx: number,
 }
 
 /**
- * Finds the ideal open spot on the outer-left side (-X) near the front-left end of the perimeter wall,
- * guaranteed clear of the Hall roof, steps, lantern path, boundary wall, and existing garden props.
+ * Computes the exact outer-left courtyard position just inside the left perimeter wall
+ * near the front-left corner, guaranteed clear of the Hall, paths, and garden props.
  */
 function resolveWishTreePos(): { x: number; z: number } {
-  const candidates: readonly (readonly [number, number])[] = [
-    [-20.5, GATE_Z - 7.2],
-    [-21.5, GATE_Z - 8.5],
-    [-19.5, GATE_Z - 6.5],
-    [-22.0, GATE_Z - 10.2],
-    [-19.8, GATE_Z - 9.2],
-    [-21.2, GATE_Z - 12.0],
-    [-18.8, GATE_Z - 7.8],
-  ];
-
-  let bestX = -20.5;
-  let bestZ = GATE_Z - 7.2;
+  let bestX = BOUNDARY.x - BOUNDARY.rx * 0.72;
+  let bestZ = Math.min(GATE_Z - 5.5, STEPS.zMax + 3.5);
   let bestScore = -Infinity;
 
-  for (const [cx, cz] of candidates) {
-    // 1. Keep well inside the perimeter wall so the 3.4m canopy never clips the outer wall.
-    const bu = (cx - BOUNDARY.x) / Math.max(1, BOUNDARY.rx - 3.6);
-    const bv = (cz - BOUNDARY.z) / Math.max(1, BOUNDARY.rz - 3.6);
-    if (bu * bu + bv * bv > 1 || cz > GATE_Z - 4.2) continue;
+  const zStart = GATE_Z - 4.2;
+  const zEnd = HALL.zMin;
 
-    // 2. Keep completely outside the Hall roof and front steps.
-    if (cx > ROOF.xMin - 4.8 && cx < ROOF.xMax + 4.8 && cz > HALL.zMin - 4.5 && cz < STEPS.zMax + 3.5) {
-      continue;
-    }
+  for (let cz = zStart; cz >= zEnd; cz -= 0.8) {
+    const bv = (cz - BOUNDARY.z) / BOUNDARY.rz;
+    if (Math.abs(bv) >= 0.94) continue;
+    const xWallLeft = BOUNDARY.x - BOUNDARY.rx * Math.sqrt(1 - bv * bv);
 
-    // 3. Measure clearance to the lantern loop path and existing tree/rock colliders.
-    let minClearance = 99;
-    const pts = LANTERN_LOOP.points;
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1];
-      const b = pts[i];
-      if (!a || !b) continue;
-      const d = distToSegment(cx, cz, a.x, a.z, b.x, b.z) - LANTERN_LOOP.width * 0.5;
-      if (d < minClearance) minClearance = d;
-    }
-    for (const c of PROP_COLLIDERS) {
-      const d = Math.hypot(cx - c.x, cz - c.z) - c.r;
-      if (d < minClearance) minClearance = d;
-    }
+    for (const wallInset of [4.2, 4.8, 5.5, 6.2]) {
+      const cx = xWallLeft + wallInset;
 
-    if (minClearance > bestScore) {
-      bestScore = minClearance;
-      bestX = cx;
-      bestZ = cz;
+      // 1. Must stay well outside the Hall roof and front steps.
+      if (cx > ROOF.xMin - 4.2 && cx < ROOF.xMax + 4.2 && cz > HALL.zMin - 4.0 && cz < STEPS.zMax + 3.2) {
+        continue;
+      }
+
+      // 2. Must stay clear of the main central entrance path.
+      if (Math.abs(cx - PATH.from.x) < PATH.width * 0.5 + 3.4) {
+        continue;
+      }
+
+      // 3. Measure clearance to the lantern loop path and existing tree/rock colliders.
+      let minClearance = 99;
+      const pts = LANTERN_LOOP.points;
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1];
+        const b = pts[i];
+        if (!a || !b) continue;
+        const d = distToSegment(cx, cz, a.x, a.z, b.x, b.z) - LANTERN_LOOP.width * 0.5;
+        if (d < minClearance) minClearance = d;
+      }
+      for (const c of PROP_COLLIDERS) {
+        const d = Math.hypot(cx - c.x, cz - c.z) - c.r;
+        if (d < minClearance) minClearance = d;
+      }
+
+      if (minClearance < 2.6) continue;
+
+      // Prefer outer-left spots closer to the front-left end of the wall with comfortable clearance.
+      const forwardBonus = (cz - HALL.zMax) * 0.35;
+      const wallProximityBonus = (6.5 - wallInset) * 0.4;
+      const score = Math.min(minClearance, 4.2) + forwardBonus + wallProximityBonus;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestX = cx;
+        bestZ = cz;
+      }
     }
   }
 
@@ -138,8 +146,6 @@ function buildCurvedTube(
   const c1 = new Color(colorEnd);
   const cTmp = new Color();
 
-  const rings: { x: number; y: number; z: number }[][] = [];
-
   for (let i = 0; i <= lengthSegs; i++) {
     const t = i / lengthSegs;
     const inv = 1 - t;
@@ -181,10 +187,8 @@ function buildCurvedTube(
     const baseR = rStart + (rEnd - rStart) * Math.pow(t, 0.85);
     cTmp.copy(c0).lerp(c1, t);
 
-    const ring: { x: number; y: number; z: number }[] = [];
     for (let j = 0; j < radialSegs; j++) {
       const a = (j / radialSegs) * Math.PI * 2;
-      // Gnarled bark fluting stronger near the base
       const flute = 1 + fluteAmp * (1 - 0.65 * t) * Math.sin(a * 5 + t * 4.5);
       const r = baseR * flute;
       const cos = Math.cos(a);
@@ -196,9 +200,7 @@ function buildCurvedTube(
       positions.push(vx, vy, vz);
       colors.push(cTmp.r, cTmp.g, cTmp.b);
       uvs.push(j / radialSegs, t * 0.15);
-      ring.push({ x: vx, y: vy, z: vz });
     }
-    rings.push(ring);
   }
 
   for (let i = 0; i < lengthSegs; i++) {
@@ -226,22 +228,18 @@ function buildCurvedTube(
 function buildPlanterGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  // Stepped stone base plinth
   const baseStep = new CylinderGeometry(2.72, 2.82, 0.14, 8);
   baseStep.translate(0, 0.07, 0);
   parts.push(paintGeometry(baseStep.toNonIndexed(), 0x6e695f));
 
-  // Main octagonal stone curb wall
   const curbWall = new CylinderGeometry(2.42, 2.52, 0.34, 8);
   curbWall.translate(0, 0.28, 0);
   parts.push(paintGeometry(curbWall.toNonIndexed(), 0x857f73));
 
-  // Top carved granite coping lip
   const topLip = new CylinderGeometry(2.56, 2.56, 0.07, 8);
   topLip.translate(0, 0.46, 0);
   parts.push(paintGeometry(topLip.toNonIndexed(), 0x9c9587));
 
-  // 8 corner lotus-post finials on the octagonal planter
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
     const px = Math.cos(a) * 2.46;
@@ -256,7 +254,6 @@ function buildPlanterGeometry(): BufferGeometry {
     parts.push(paintGeometry(cap.toNonIndexed(), 0xa69f90));
   }
 
-  // Rich dark soil bed + lush green moss dome
   const soil = new CylinderGeometry(2.3, 2.3, 0.38, 16);
   soil.translate(0, 0.22, 0);
   parts.push(paintGeometry(soil.toNonIndexed(), 0x382a1d));
@@ -363,11 +360,9 @@ function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[];
     tips.push({ x: p2[0], y: p2[1] + 0.25, z: p2[2], r: 1.32, isOuter: true });
     tips.push({ x: p1[0] * 0.9, y: p1[1] + 0.85, z: p1[2] * 0.9, r: 1.42, isOuter: false });
 
-    // Record hanging spots along the main bough underside
     hangSpots.push({ x: p1[0], y: p1[1] - 0.12, z: p1[2], r: 1, isOuter: false });
     hangSpots.push({ x: p2[0] * 0.88, y: p2[1] - 0.22, z: p2[2] * 0.88, r: 1, isOuter: true });
 
-    // 2 lateral secondary forks + 1 upward crown fork per main bough
     for (const forkSide of [-1, 1] as const) {
       const fa = a + forkSide * 0.42;
       const fca = Math.cos(fa);
@@ -384,7 +379,6 @@ function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[];
       hangSpots.push({ x: fp1[0] * 0.96, y: fp1[1] - 0.25, z: fp1[2] * 0.96, r: 1, isOuter: true });
     }
 
-    // High inner sub-branch filling the upper dome
     const ua = a + 0.52;
     const uca = Math.cos(ua);
     const usa = Math.sin(ua);
@@ -395,7 +389,7 @@ function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[];
     tips.push({ x: up2[0], y: up2[1] + 0.2, z: up2[2], r: 1.25, isOuter: false });
   }
 
-  // 4. 12 sacred Bodhi aerial roots (rễ phụ bồ đề) draping down from the boughs
+  // 4. 12 sacred Bodhi aerial roots draping down from the boughs
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2 + 0.14;
     const r = i % 2 === 0 ? 1.38 : 1.92;
@@ -451,17 +445,15 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
     const phaseB = rand() * Math.PI * 2;
 
     for (let i = 0; i < count; i++) {
-      let vx = pos.getX(i);
-      let vy = pos.getY(i);
-      let vz = pos.getZ(i);
+      const vx = pos.getX(i);
+      const vy = pos.getY(i);
+      const vz = pos.getZ(i);
 
-      // Organic leaf-clump lobes: ruffle the sphere surface so it looks like layered leaf pads
       const lobe =
         1 +
         0.22 * Math.sin(vx * 4.2 + phaseA) * Math.cos(vz * 4.2 + phaseB) +
         0.12 * Math.sin(vy * 6.0 + vx * 3.0);
 
-      // Flatten the bottom of each foliage pad like real tree boughs
       const flatVy = vy < 0 ? vy * 0.58 : vy;
 
       const wx = cx + vx * rx * lobe;
@@ -469,7 +461,6 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
       const wz = cz + vz * rz * lobe;
       pos.setXYZ(i, wx, wy, wz);
 
-      // Natural ambient occlusion + sunlight gradient from underside to top crown
       const heightNorm = Math.max(0, Math.min(1, (wy - 2.6) / 3.1));
       const localTop = Math.max(0, Math.min(1, (vy + 0.7) / 1.65));
       const lightFactor = Math.max(0, Math.min(1, localTop * 0.68 + heightNorm * 0.32));
@@ -487,7 +478,6 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
       colors[i * 3 + 1] = cTmp.g;
       colors[i * 3 + 2] = cTmp.b;
 
-      // uv.x = spatial phase, uv.y = wind sway flexibility weight (outer/upper leaves sway more)
       const radialDist = Math.hypot(wx, wz);
       const swayWeight = Math.min(1, 0.35 + (radialDist / 4.2) * 0.45 + localTop * 0.2);
       uvs[i * 2] = (wx + wz) * 0.4;
@@ -500,14 +490,12 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
     parts.push(g);
   };
 
-  // Place primary and satellite leaf pads around every branch tip
   for (let i = 0; i < tips.length; i++) {
     const t = tips[i];
     if (!t) continue;
     const golden = i % 4 === 0 ? 0.45 : 0.12;
     addFoliageCluster(t.x, t.y, t.z, t.r, t.r * 0.54, t.r, golden);
 
-    // 2 satellite leaf puffs around each branch tip for billowy depth
     for (let s = 0; s < 2; s++) {
       const sa = rand() * Math.PI * 2;
       const dist = t.r * (0.48 + rand() * 0.28);
@@ -525,7 +513,6 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
     }
   }
 
-  // Crown dome clusters at the top of the sacred Bodhi tree
   addFoliageCluster(0, 5.15, 0, 1.85, 0.95, 1.85, 0.4);
   addFoliageCluster(0.75, 4.85, 0.65, 1.45, 0.78, 1.45, 0.3);
   addFoliageCluster(-0.78, 4.8, -0.6, 1.45, 0.78, 1.45, 0.3);
@@ -575,32 +562,26 @@ function buildTreeLanternsGeometry(): BufferGeometry {
 function buildPlaqueGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  // 1. Golden silk hanging cord from y = 0 down to y = -0.10
   const cord = new CylinderGeometry(0.0045, 0.0045, 0.1, 5);
   cord.translate(0, -0.05, 0);
   parts.push(paintGeometry(cord.toNonIndexed(), 0xf2c96d, 0.1));
 
-  // 2. Top gold-bronze roof clasp
   const topCap = new BoxGeometry(0.096, 0.022, 0.018);
   topCap.translate(0, -0.108, 0);
   parts.push(paintGeometry(topCap.toNonIndexed(), 0xe5b142, 0.2));
 
-  // 3. Vermilion-red lacquered wooden wishing tablet
   const tablet = new BoxGeometry(0.088, 0.19, 0.014);
   tablet.translate(0, -0.21, 0);
   parts.push(paintGeometry(tablet.toNonIndexed(), 0xc92a1d, 0.35));
 
-  // 4. Central vertical gold leaf calligraphy slip on front & back
   const slip = new BoxGeometry(0.032, 0.15, 0.017);
   slip.translate(0, -0.21, 0);
   parts.push(paintGeometry(slip.toNonIndexed(), 0xffe28a, 0.35));
 
-  // 5. Bottom gold-bronze clasp
   const botCap = new BoxGeometry(0.09, 0.018, 0.016);
   botCap.translate(0, -0.31, 0);
   parts.push(paintGeometry(botCap.toNonIndexed(), 0xe5b142, 0.45));
 
-  // 6. Multi-segment curved crimson silk ribbon tail fluttering below the tablet
   const segs = 4;
   for (let s = 0; s < segs; s++) {
     const t = s / segs;
@@ -660,9 +641,8 @@ export function createWishingTree(parent: Object3D): WishingTree {
 
   const canopyGeo = buildCanopyGeometry(tips);
   const canopyMat = new MeshStandardMaterial({ vertexColors: true, roughness: 0.74, metalness: 0.02 });
-  // Gentle GPU wind rustle on the Bodhi foliage canopy
   canopyMat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = uTime;
+    shader.uniforms["uTime"] = uTime;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nuniform float uTime;")
       .replace(
@@ -701,7 +681,6 @@ export function createWishingTree(parent: Object3D): WishingTree {
   plaqueMesh.castShadow = true;
   plaqueMesh.name = "wishing-plaques";
 
-  // Distribute 36 wishing plaques naturally along the boughs and outer canopy rim at eye level
   const plaques: PlaqueState[] = Array.from({ length: MAX_PLAQUES }, (_, i) => {
     const anchor = hangSpots[i % hangSpots.length];
     const jitterAngle = (i / MAX_PLAQUES) * Math.PI * 2 + (rand() - 0.5) * 0.22;
