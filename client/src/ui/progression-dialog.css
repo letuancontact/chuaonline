@@ -264,6 +264,13 @@
   line-height: 1;
 }
 
+/* Force-hide any legacy top-left / top-right HUD toolbars */
+.game-hud .hud-top-left,
+.game-hud .hud-top-right .tool-group,
+.game-hud .hud-top-right > button.chip {
+  display: none !important;
+}
+
 /* ============================================================================
    2. COMPACT TOP-RIGHT CURRENCY BAR + SETTINGS GEAR + SINGLE `Nhiệm Vụ` BUTTON
    ============================================================================ */
