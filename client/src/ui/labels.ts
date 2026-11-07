@@ -95,8 +95,8 @@ export class NameLabels {
     l.bubble.textContent = text;
     l.bubble.hidden = false;
     l.bubbleUntil = now + CHAT_BUBBLE_MS;
-    // One layout read per chat line, not per frame; 0 while the label is hidden.
-    l.bubbleHalf = (l.bubble.offsetWidth || BUBBLE_MAX_PX) / 2;
+    // One layout read per chat line, not per frame; 0 while the label is hidden (measured once shown in end()).
+    l.bubbleHalf = l.el.hidden ? 0 : (l.bubble.offsetWidth || BUBBLE_MAX_PX) / 2;
     l.sx = NaN;
   }
 
@@ -109,6 +109,9 @@ export class NameLabels {
 
   private hideBubble(l: Label): void {
     l.bubbleUntil = 0;
+    l.bubbleHalf = 0;
+    l.bubbleDx = 0;
+    l.bubble.style.marginLeft = "";
     l.bubble.hidden = true;
     l.bubble.textContent = "";
   }
@@ -157,7 +160,10 @@ export class NameLabels {
 
   /** Bubbles are wider than tags: near the screen edge slide them sideways instead of clipping. */
   private nudgeBubble(l: Label, sx: number): void {
-    const half = l.bubbleHalf;
+    if (l.bubbleHalf === 0 && !l.el.hidden) {
+      l.bubbleHalf = (l.bubble.offsetWidth || BUBBLE_MAX_PX) / 2;
+    }
+    const half = l.bubbleHalf || BUBBLE_MAX_PX / 2;
     const dx = Math.max(0, half + EDGE_PX - sx) - Math.max(0, sx + half + EDGE_PX - this.width);
     if (dx !== l.bubbleDx) {
       l.bubbleDx = dx;
@@ -171,6 +177,9 @@ export class NameLabels {
       if (l.placed !== l.shown) {
         l.shown = l.placed;
         l.el.hidden = !l.placed;
+        if (l.placed && l.bubbleUntil !== 0 && !Number.isNaN(l.sx)) {
+          this.nudgeBubble(l, l.sx);
+        }
       }
       l.placed = false;
     }
