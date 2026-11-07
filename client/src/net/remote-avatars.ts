@@ -12,6 +12,8 @@ export const STALE_MS = 1000;
 /** Legs keep walking while we wait this long for the next sample (hides the gap between 5 Hz ticks). */
 const HOLD_WALK_MS = 250;
 const BUFFER_SIZE = 8;
+/** Distance jump (metres) above which a remote walker snaps instead of gliding through walls. */
+const SNAP_DISTANCE = 4;
 /** Seated people block the floor for walkers (Movement.setObstacles). */
 export const SEATED_RADIUS = 0.4;
 /** Events older than this are dropped (stack §6). */
@@ -36,6 +38,11 @@ export class SampleBuffer {
 
   get lastTime(): number {
     return this.n > 0 ? (this.items[this.n - 1]?.t ?? -Infinity) : -Infinity;
+  }
+
+  /** Last recorded sample, or undefined when empty. */
+  get lastSample(): Readonly<Sample> | undefined {
+    return this.n > 0 ? this.items[this.n - 1] : undefined;
   }
 
   clear(): void {
@@ -264,10 +271,13 @@ export class RemoteAvatars {
       r.avatar.setPose(v.pose, v.bowAt === undefined ? {} : { bowAt: v.bowAt });
       r.netPose = v.pose;
       r.netBowAt = v.bowAt;
-    } else if (v.pose !== r.netPose || v.bowAt !== r.netBowAt) {
-      r.avatar.setPose(v.pose, v.bowAt === undefined ? {} : { bowAt: v.bowAt });
-      r.netPose = v.pose;
-      r.netBowAt = v.bowAt;
+    } else {
+      if (v.color !== r.visitor.color) r.avatar.setColor(v.color);
+      if (v.pose !== r.netPose || v.bowAt !== r.netBowAt) {
+        r.avatar.setPose(v.pose, v.bowAt === undefined ? {} : { bowAt: v.bowAt });
+        r.netPose = v.pose;
+        r.netBowAt = v.bowAt;
+      }
     }
     r.visitor = v;
     r.avatar.setAsleep(v.asleep === true);
@@ -282,6 +292,13 @@ export class RemoteAvatars {
       obj.position.set(c.x, CUSHION_TOP, c.z);
       obj.rotation.y = c.yaw;
     } else {
+      const prev = r.buffer.lastSample;
+      if (
+        prev &&
+        (serverTime - prev.t > STALE_MS || Math.hypot(v.position.x - prev.x, v.position.z - prev.z) > SNAP_DISTANCE)
+      ) {
+        r.buffer.clear();
+      }
       r.buffer.push(serverTime, v.position.x, v.position.z, v.position.yaw);
     }
   }
