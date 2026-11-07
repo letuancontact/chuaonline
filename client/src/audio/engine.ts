@@ -115,7 +115,7 @@ export class AudioEngine {
   constructor(private readonly store: KeyValueStore | null = browserStorage()) {
     this.s = loadSettings(store);
     this.muted_ = !this.s.soundOn;
-    for (const type of UNLOCK_EVENTS) window.addEventListener(type, this.unlock, { capture: true, passive: true });
+    this.listenUnlock();
   }
 
   get settings(): Readonly<AudioSettings> {
@@ -157,9 +157,14 @@ export class AudioEngine {
         console.warn(err);
         return;
       }
-      for (const type of UNLOCK_EVENTS) window.removeEventListener(type, this.unlock, { capture: true });
     }
-    if (!this.suspended && this.ctx?.state === "suspended") void this.ctx.resume().catch(() => undefined);
+    const state = this.ctx?.state as string | undefined;
+    if (!this.suspended && state !== undefined && state !== "running" && state !== "closed") {
+      void this.ctx?.resume().catch(() => undefined);
+    }
+    if (this.ctx?.state === "running") {
+      this.unlistenUnlock();
+    }
   };
 
   setMuted(muted: boolean): void {
@@ -220,12 +225,20 @@ export class AudioEngine {
   }
 
   dispose(): void {
-    for (const type of UNLOCK_EVENTS) window.removeEventListener(type, this.unlock, { capture: true });
+    this.unlistenUnlock();
     this.ambient?.dispose();
     this.sfx?.dispose();
     void this.ctx?.close().catch(() => undefined);
     this.ctx = null;
     for (const set of Object.values(this.listeners)) set.clear();
+  }
+
+  private listenUnlock(): void {
+    for (const type of UNLOCK_EVENTS) window.addEventListener(type, this.unlock, { capture: true, passive: true });
+  }
+
+  private unlistenUnlock(): void {
+    for (const type of UNLOCK_EVENTS) window.removeEventListener(type, this.unlock, { capture: true });
   }
 
   private build(ctx: AudioContext): void {
@@ -242,6 +255,16 @@ export class AudioEngine {
     this.sfx = new Sfx(ctx, this.sfxBus);
     // Created during an exit / rest screen: stay silent until it resumes.
     if (this.suspended) void ctx.suspend().catch(() => undefined);
+    ctx.addEventListener("statechange", () => {
+      if (this.ctx !== ctx) return;
+      const st = ctx.state as string;
+      if (st === "running") {
+        this.unlistenUnlock();
+        this.emit("change", undefined);
+      } else if (!this.suspended && st !== "closed") {
+        this.listenUnlock();
+      }
+    });
     this.startAmbient();
     this.applyGains(true);
     this.emit("unlock", ctx);
