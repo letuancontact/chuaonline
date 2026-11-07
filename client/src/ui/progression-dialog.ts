@@ -1,3 +1,4 @@
+import { type ConnectionStatus } from "@santinh/shared";
 import {
   ALL_QUESTS_BONUS,
   SHOP_ITEMS,
@@ -15,6 +16,7 @@ export interface ProgressionDialogCallbacks {
   onShopAction?: (res: BuyOrEquipResult) => void;
   onOpenSettings?: () => void;
   onOpenOffering?: () => void;
+  onOpenRooms?: () => void;
   onRename?: () => void;
 }
 
@@ -92,11 +94,6 @@ const GOLD_LOTUS_ICON = `<svg viewBox="0 0 32 26" fill="none" xmlns="http://www.
   <path d="M16 21C11 13 5.5 11 3 15.5C5.5 20.5 11 22 16 21Z" fill="#f7b731" stroke="#8a4f05" stroke-width="1.4"/>
 </svg>`;
 
-const HEART_ICON = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <path d="M12 21s-7.5-4.6-9.6-9C.8 8.4 2.8 4.5 6.8 4.5c2.2 0 3.9 1.2 5.2 2.8 1.3-1.6 3-2.8 5.2-2.8 4 0 6 3.9 4.4 7.5-2.1 4.4-9.6 9-9.6 9Z" fill="#ff3b30" stroke="#7d0d06" stroke-width="1.6"/>
-  <ellipse cx="7.5" cy="8.5" rx="2" ry="1.2" transform="rotate(-25 7.5 8.5)" fill="#ffaba6"/>
-</svg>`;
-
 const STAR_ICON = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9L12 2.5Z" fill="#c850ff" stroke="#4a0e6e" stroke-width="1.6" stroke-linejoin="round"/>
   <circle cx="10" cy="9" r="1.5" fill="#f3ccff"/>
@@ -130,17 +127,6 @@ const GEAR_ICON = `<svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org
   <circle cx="14" cy="14" r="4.2" fill="#5e3108" stroke="#ffe885" stroke-width="1.6"/>
 </svg>`;
 
-const GIFT_BOX_ICON = `<svg viewBox="0 0 56 52" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <ellipse cx="28" cy="42" rx="22" ry="7" fill="#5c2808" stroke="#f5b82e" stroke-width="2.2"/>
-  <rect x="13" y="21" width="30" height="20" rx="3" fill="#f7b731" stroke="#7d3c05" stroke-width="2"/>
-  <rect x="11" y="14" width="34" height="8" rx="2.5" fill="#ffd452" stroke="#7d3c05" stroke-width="2"/>
-  <rect x="25" y="14" width="6" height="27" fill="#e62e25" stroke="#7d0d06" stroke-width="1.5"/>
-  <rect x="13" y="26" width="30" height="5" fill="#e62e25" stroke="#7d0d06" stroke-width="1.5"/>
-  <path d="M28 14C22 6 14 8 17 14C20 16 25 15 28 14Z" fill="#ff453a" stroke="#7d0d06" stroke-width="1.8"/>
-  <path d="M28 14C34 6 42 8 39 14C36 16 31 15 28 14Z" fill="#ff453a" stroke="#7d0d06" stroke-width="1.8"/>
-  <circle cx="28" cy="14" r="3" fill="#ffd452" stroke="#7d0d06" stroke-width="1.4"/>
-</svg>`;
-
 const QUEST_SCROLL_ICON = `<svg viewBox="0 0 56 52" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <ellipse cx="28" cy="42" rx="22" ry="7" fill="#5c2808" stroke="#f5b82e" stroke-width="2.2"/>
   <path d="M16 11H42L38 39H12L16 11Z" fill="#fff0c7" stroke="#7d4408" stroke-width="2" stroke-linejoin="round"/>
@@ -154,8 +140,8 @@ const QUEST_SCROLL_ICON = `<svg viewBox="0 0 56 52" fill="none" xmlns="http://ww
 </svg>`;
 
 /**
- * Renders the top-left Player Status Frame (Avatar, Name, Level, HP, EXP),
- * the top-right 3-Currency Bar + Settings Gear + Quick Buttons (`Quà Tặng`, `Nhiệm Vụ`),
+ * Renders the compact top-left Player Status Frame (Avatar, Name, Level, EXP bar, Room selector below EXP),
+ * the compact top-right 3-Currency Bar + Settings Gear + single `Nhiệm Vụ` button,
  * and the 3-tab modal dialog (Daily Check-in, Daily Quests, Spiritual Shop).
  */
 export class ProgressionDialog {
@@ -163,9 +149,11 @@ export class ProgressionDialog {
   private readonly avatarBtn: HTMLButtonElement;
   private readonly playerNameEl: HTMLSpanElement;
   private readonly levelBadgeEl: HTMLButtonElement;
-  private readonly hpFillEl: HTMLDivElement;
-  private readonly hpTextEl: HTMLSpanElement;
   private readonly expFillEl: HTMLDivElement;
+  private readonly expTextEl: HTMLSpanElement;
+  private readonly roomBtn: HTMLButtonElement;
+  private readonly roomDotEl: HTMLSpanElement;
+  private readonly roomTextEl: HTMLSpanElement;
 
   private readonly topRightWrap: HTMLDivElement;
   private readonly meritValueEl: HTMLSpanElement;
@@ -185,7 +173,7 @@ export class ProgressionDialog {
     private readonly cb: ProgressionDialogCallbacks = {},
     parent: HTMLElement = document.body,
   ) {
-    // 1. TOP-LEFT PLAYER STATUS FRAME (Avatar chú tiểu + Tên + Level + HP + EXP)
+    // 1. COMPACT TOP-LEFT PLAYER STATUS FRAME (Avatar + Tên + Level + EXP + Chọn Phòng dưới EXP)
     this.playerCard = document.createElement("div");
     this.playerCard.className = "lotus-player-card";
 
@@ -229,25 +217,7 @@ export class ProgressionDialog {
     const barsBox = document.createElement("div");
     barsBox.className = "lotus-bars-box";
 
-    // HP Row
-    const hpRow = document.createElement("div");
-    hpRow.className = "lotus-stat-row";
-    const hpIcon = document.createElement("span");
-    hpIcon.className = "lotus-stat-icon";
-    hpIcon.innerHTML = HEART_ICON;
-    const hpLabel = document.createElement("span");
-    hpLabel.className = "lotus-stat-label lotus-stat-label--hp";
-    hpLabel.textContent = "HP";
-    const hpTrack = document.createElement("div");
-    hpTrack.className = "lotus-bar-track";
-    this.hpFillEl = document.createElement("div");
-    this.hpFillEl.className = "lotus-bar-fill lotus-bar-fill--hp";
-    this.hpTextEl = document.createElement("span");
-    this.hpTextEl.className = "lotus-bar-text";
-    hpTrack.append(this.hpFillEl, this.hpTextEl);
-    hpRow.append(hpIcon, hpLabel, hpTrack);
-
-    // EXP Row
+    // Single EXP Row (moved up to replace HP bar per user request)
     const expRow = document.createElement("div");
     expRow.className = "lotus-stat-row";
     const expIcon = document.createElement("span");
@@ -260,19 +230,38 @@ export class ProgressionDialog {
     expTrack.className = "lotus-bar-track";
     this.expFillEl = document.createElement("div");
     this.expFillEl.className = "lotus-bar-fill lotus-bar-fill--exp";
-    expTrack.append(this.expFillEl);
+    this.expTextEl = document.createElement("span");
+    this.expTextEl.className = "lotus-bar-text";
+    expTrack.append(this.expFillEl, this.expTextEl);
     expRow.append(expIcon, expLabel, expTrack);
 
     const cornerLotus = document.createElement("span");
     cornerLotus.className = "lotus-panel-flower";
     cornerLotus.innerHTML = PINK_LOTUS_ICON;
 
-    barsBox.append(hpRow, expRow, cornerLotus);
-    infoPanel.append(topRow, barsBox);
+    barsBox.append(expRow, cornerLotus);
+
+    // Room / Server selector button placed neatly right below the EXP bar
+    this.roomBtn = document.createElement("button");
+    this.roomBtn.type = "button";
+    this.roomBtn.className = "lotus-room-btn";
+    this.roomBtn.title = "Đổi phòng / Chọn sân chùa";
+    this.roomDotEl = document.createElement("span");
+    this.roomDotEl.className = "status-dot status-dot--connecting";
+    this.roomTextEl = document.createElement("span");
+    this.roomTextEl.className = "lotus-room-text";
+    this.roomTextEl.textContent = "Phòng 1 · Tĩnh Tâm";
+    const roomChevron = document.createElement("span");
+    roomChevron.className = "lotus-room-chevron";
+    roomChevron.textContent = "▾";
+    this.roomBtn.append(this.roomDotEl, this.roomTextEl, roomChevron);
+    this.roomBtn.addEventListener("click", () => this.cb.onOpenRooms?.());
+
+    infoPanel.append(topRow, barsBox, this.roomBtn);
     this.playerCard.append(this.avatarBtn, infoPanel);
     parent.append(this.playerCard);
 
-    // 2. TOP-RIGHT CURRENCY BAR + SETTINGS GEAR + QUICK ACTION BUTTONS (Quà Tặng, Nhiệm Vụ)
+    // 2. COMPACT TOP-RIGHT CURRENCY BAR + SETTINGS GEAR + SINGLE `Nhiệm Vụ` BUTTON
     this.topRightWrap = document.createElement("div");
     this.topRightWrap.className = "lotus-top-right";
 
@@ -331,27 +320,14 @@ export class ProgressionDialog {
 
     currencyBar.append(leftFlower, meritSlot, gemsSlot, lotusSlot, settingsBtn, rightFlower);
 
-    // Quick Action Row below Currency Bar (Quà Tặng & Nhiệm Vụ — XP badge removed per user request)
+    // Single Quick Button below Currency Bar: `Nhiệm Vụ` (Quà Tặng removed to avoid duplication)
     const quickRow = document.createElement("div");
     quickRow.className = "lotus-quick-row";
-
-    const giftBtn = document.createElement("button");
-    giftBtn.type = "button";
-    giftBtn.className = "lotus-quick-btn";
-    giftBtn.title = "Điểm danh nhận quà mỗi ngày";
-    const giftArt = document.createElement("span");
-    giftArt.className = "lotus-quick-art";
-    giftArt.innerHTML = GIFT_BOX_ICON;
-    const giftLabel = document.createElement("span");
-    giftLabel.className = "lotus-quick-label";
-    giftLabel.textContent = "Quà Tặng";
-    giftBtn.append(giftArt, giftLabel);
-    giftBtn.addEventListener("click", () => this.open("checkin"));
 
     const questBtn = document.createElement("button");
     questBtn.type = "button";
     questBtn.className = "lotus-quick-btn";
-    questBtn.title = "Nhiệm vụ Nhật Tu (Phím 6 / J)";
+    questBtn.title = "Điểm danh & Nhiệm vụ Nhật Tu (Phím 6 / J)";
     const questArt = document.createElement("span");
     questArt.className = "lotus-quick-art";
     questArt.innerHTML = QUEST_SCROLL_ICON;
@@ -363,9 +339,11 @@ export class ProgressionDialog {
     this.questBangEl.textContent = "!";
     this.questBangEl.hidden = true;
     questBtn.append(questArt, questLabel, this.questBangEl);
-    questBtn.addEventListener("click", () => this.open("quests"));
+    questBtn.addEventListener("click", () => {
+      this.open(this.prog.canCheckIn() ? "checkin" : "quests");
+    });
 
-    quickRow.append(giftBtn, questBtn);
+    quickRow.append(questBtn);
     this.topRightWrap.append(currencyBar, quickRow);
     parent.append(this.topRightWrap);
 
@@ -481,6 +459,21 @@ export class ProgressionDialog {
     this.avatarBtn.style.setProperty("--monk-robe", color);
   }
 
+  /** Updates the room / server selector pill right below the EXP bar. */
+  setRoomInfo(roomNum: number, roomName: string, status?: ConnectionStatus): void {
+    const label = `Phòng ${roomNum} · ${roomName}`;
+    this.roomTextEl.textContent = label;
+    this.roomBtn.title = `Đang ở ${label} (Bấm để đổi phòng)`;
+    if (status) {
+      this.roomDotEl.className =
+        status === "connected"
+          ? "status-dot"
+          : status === "connecting"
+            ? "status-dot status-dot--connecting"
+            : "status-dot status-dot--off";
+    }
+  }
+
   get isOpen(): boolean {
     return this.dialog.open;
   }
@@ -509,11 +502,10 @@ export class ProgressionDialog {
   }
 
   private render(): void {
-    // 1. Update Top-Left Player Status Frame
-    this.levelBadgeEl.textContent = `Level ${this.prog.level}`;
-    this.hpFillEl.style.width = `${this.prog.hpPercent}%`;
-    this.hpTextEl.textContent = `${this.prog.hp}/${this.prog.maxHp}`;
+    // 1. Update Top-Left Player Status Frame (Level + EXP bar)
+    this.levelBadgeEl.textContent = `Lv.${this.prog.level}`;
     this.expFillEl.style.width = `${this.prog.expPercent}%`;
+    this.expTextEl.textContent = `${this.prog.expInLevel}/${this.prog.expNext}`;
 
     // 2. Update Top-Right Currency Bar & Notification Badge
     this.meritValueEl.textContent = String(this.prog.merit);
