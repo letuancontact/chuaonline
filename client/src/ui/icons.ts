@@ -48,6 +48,9 @@ export const icons = {
   gestureDharma: svg(
     '<rect x="6.5" y="3.5" width="11" height="17" rx="2"/><path d="M9.5 7.5h5M12 10.5v5.5M9.5 13.2h5"/><circle cx="12" cy="17.5" r=".8" fill="currentColor"/>',
   ),
+  gestureWish: svg(
+    '<path d="M5 4.5c4-.5 9-.5 14 0M12 4.5v3"/><rect x="8" y="7.5" width="8" height="10" rx="1.5"/><path d="M12 10.2v4.6M10.5 17.5 10 21m2-3.5v3.8m1.5-3.8.5 3.5"/>',
+  ),
   chat: svg('<path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4Z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01" stroke-width="2.2"/>'),
   chatOff: svg('<path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4Z"/><path d="M3 3l18 18"/>'),
   stop: svg('<rect x="7" y="7" width="10" height="10" rx="2"/>'),
