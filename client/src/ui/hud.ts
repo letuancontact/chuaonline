@@ -1,4 +1,4 @@
-import { roomNameOf, type ConnectionStatus } from "@santinh/shared";
+import type { ConnectionStatus } from "@santinh/shared";
 import type { ActionState } from "../game/actions.ts";
 import { vi } from "../i18n/vi.ts";
 import { icons } from "./icons.ts";
@@ -122,17 +122,10 @@ function actionButton(icon: string, label: string, key: string): { button: HTMLB
   return { button: b, label: span };
 }
 
-/** Game HUD (design/game.html): action dock, radial gesture menu, ceremony banner holder, control hint. */
+/** Game HUD: action dock, radial gesture menu, ceremony banner holder, control hint. */
 export class Hud {
   private readonly root: HTMLDivElement;
-  private readonly pill: HTMLButtonElement;
-  private readonly pillRoom: HTMLElement;
-  private readonly dot: HTMLSpanElement;
-  private readonly invite: HTMLButtonElement;
-  private readonly people: HTMLButtonElement;
-  private readonly peopleCount: HTMLSpanElement;
-  private readonly sound: HTMLButtonElement;
-  private readonly chant: HTMLButtonElement;
+  private readonly topRight: HTMLDivElement;
   private readonly helloBtn: HTMLButtonElement;
   private readonly bowBtn: HTMLButtonElement;
   private readonly bowLabel: HTMLSpanElement;
@@ -146,10 +139,6 @@ export class Hud {
   private readonly timers: ReturnType<typeof setTimeout>[] = [];
   private pulseTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly onDocPointerDown: (e: PointerEvent) => void;
-  private room = 1;
-  private roomName = roomNameOf(null, 1);
-  private status: ConnectionStatus = "connecting";
-  private count = 0;
   private bowLocked = true;
   private action: ActionState = "idle";
   private bowing = false;
@@ -159,49 +148,9 @@ export class Hud {
     this.root = document.createElement("div");
     this.root.className = "game-hud";
 
-    // Legacy top-left container is kept hidden in DOM because Room selector is now integrated
-    // right below the EXP bar in ProgressionDialog and Exit is inside SettingsDialog.
-    const topLeft = el("div", "hud hud-top-left");
-    topLeft.hidden = true;
-    const exit = button("tool tool-circle glass", icons.exit, vi.hud.exit);
-    exit.addEventListener("click", () => h.exit?.());
-    this.pill = button("room-pill glass", "");
-    const mark = el("span", "mark");
-    mark.innerHTML = icons.temple;
-    this.pillRoom = el("small", "");
-    this.dot = el("span", "status-dot");
-    const chevron = document.createElement("span");
-    chevron.innerHTML = icons.chevron;
-    this.pill.append(mark, el("strong", "pill-brand", vi.hud.brand), this.pillRoom, this.dot, chevron);
-    this.pill.addEventListener("click", () => h.rooms());
-    topLeft.append(exit, this.pill);
-
-    // Top-right: secondary tools are integrated inside SettingsDialog;
-    // `topRight` remains visible only for active ceremony banners (`addBanner`).
-    const topRight = el("div", "hud hud-top-right");
-    const group = el("div", "tool-group glass");
-    group.hidden = true;
-    const offering = button("tool tool-circle", icons.offering, vi.hud.offering);
-    offering.title = vi.hud.offering;
-    offering.addEventListener("click", () => h.offering?.());
-    this.invite = button("tool", icons.invite, vi.hud.invite);
-    this.invite.append(el("span", "hide-mobile", vi.hud.inviteShort));
-    this.invite.addEventListener("click", () => h.invite?.());
-    this.people = button("tool", icons.people);
-    this.peopleCount = el("span", "");
-    this.people.append(this.peopleCount);
-    this.people.addEventListener("click", () => h.people?.());
-    this.sound = button("tool tool-circle", icons.muted, vi.hud.soundOn);
-    this.sound.addEventListener("click", () => h.sound?.());
-    const settings = button("tool tool-circle", icons.settings, vi.hud.settings);
-    settings.addEventListener("click", () => h.settings?.());
-    group.append(offering, this.invite, this.people, this.sound, settings);
-    this.chant = button("chip", "");
-    this.chant.hidden = true;
-    this.chant.textContent = vi.hud.chant;
-    this.chant.setAttribute("aria-pressed", "false");
-    this.chant.addEventListener("click", () => h.chant?.());
-    topRight.append(group, this.chant);
+    // Top-right container is kept empty solely to host CeremonyBanner (`addBanner`);
+    // legacy top-left room/exit pill and top-right tool-group are completely removed from DOM.
+    this.topRight = el("div", "hud hud-top-right");
 
     // Bottom dock: Chắp tay [3], Thiền [1], Tràng hạt [2], Gõ mõ [4], Động tác [5].
     const bottom = el("div", "hud hud-bottom");
@@ -286,28 +235,22 @@ export class Hud {
       }, HINT_MS),
     );
 
-    this.root.append(topLeft, topRight, bottom, this.hint);
+    this.root.append(this.topRight, bottom, this.hint);
     parent.append(this.root);
-    this.renderRoom();
-    this.renderStatus();
     this.renderActions();
   }
 
-  setRoom(n: number, name: string): void {
-    this.room = n;
-    this.roomName = name;
-    this.renderRoom();
+  setRoom(_n: number, _name: string): void {
+    // Room display is now rendered right below the EXP bar in ProgressionDialog.
   }
 
-  setStatus(s: ConnectionStatus): void {
-    this.status = s;
-    this.renderStatus();
+  setStatus(_s: ConnectionStatus): void {
+    // Connection dot is now rendered inside the Room pill in ProgressionDialog.
   }
 
   /** People in the room, ourselves included, NPCs not. */
-  setCount(n: number): void {
-    this.count = n;
-    this.renderStatus();
+  setCount(_n: number): void {
+    // Visitor count is now rendered inside SettingsDialog.
   }
 
   /** `bowing` = seeking or on a cushion, even under a hello / beads overlay (Lạy turns into Dừng). */
@@ -352,18 +295,17 @@ export class Hud {
     }
   }
 
-  setSound(on: boolean): void {
-    this.sound.innerHTML = on ? icons.sound : icons.muted;
-    this.sound.setAttribute("aria-label", on ? vi.hud.soundOff : vi.hud.soundOn);
+  setSound(_on: boolean): void {
+    // Master sound state is now managed inside SettingsDialog.
   }
 
-  /** Puts a status chip (ceremony banner) above the chant button, as in design/game.html. */
-  addBanner(el: HTMLElement): void {
-    this.chant.before(el);
+  /** Puts a status chip (ceremony banner) in the top-right banner area. */
+  addBanner(bannerEl: HTMLElement): void {
+    this.topRight.append(bannerEl);
   }
 
-  setChant(on: boolean): void {
-    this.chant.setAttribute("aria-pressed", String(on));
+  setChant(_on: boolean): void {
+    // Chant state is now managed inside SettingsDialog.
   }
 
   dispose(): void {
@@ -371,29 +313,6 @@ export class Hud {
     for (const t of this.timers) clearTimeout(t);
     if (this.pulseTimer) clearTimeout(this.pulseTimer);
     this.root.remove();
-  }
-
-  private renderRoom(): void {
-    const fill = (t: string): string => t.replace("{n}", String(this.room)).replace("{room}", this.roomName);
-    this.pillRoom.textContent = fill(vi.hud.room);
-    this.pill.setAttribute("aria-label", fill(vi.hud.roomPill));
-  }
-
-  private renderStatus(): void {
-    const s = this.status;
-    this.dot.className =
-      s === "connected" ? "status-dot" : s === "connecting" ? "status-dot status-dot--connecting" : "status-dot status-dot--off";
-    const connected = s === "connected";
-    this.invite.disabled = !connected;
-    this.peopleCount.textContent = connected ? String(this.count) : vi.hud.peopleUnknown;
-    this.people.setAttribute(
-      "aria-label",
-      connected
-        ? vi.hud.people.replace("{n}", String(this.count))
-        : s === "connecting"
-          ? vi.hud.peopleConnecting
-          : vi.hud.peopleOffline,
-    );
   }
 
   private renderActions(): void {
