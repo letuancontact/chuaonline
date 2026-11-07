@@ -38,57 +38,92 @@ function distToSegment(x: number, z: number, ax: number, az: number, bx: number,
   return Math.hypot(ax + t * dx - x, az + t * dz - z);
 }
 
+function distToBox(x: number, z: number, xMin: number, xMax: number, zMin: number, zMax: number): number {
+  const dx = Math.max(xMin - x, 0, x - xMax);
+  const dz = Math.max(zMin - z, 0, z - zMax);
+  if (dx === 0 && dz === 0) return -Math.min(x - xMin, xMax - x, z - zMin, zMax - z);
+  return Math.hypot(dx, dz);
+}
+
 /**
- * Computes the exact outer-left courtyard position just inside the left perimeter wall
- * near the front-left corner, guaranteed clear of the Hall, paths, and garden props.
+ * Computes an open position in the outer-left courtyard lawn with guaranteed perpendicular
+ * Euclidean clearance (>= 5.2m) from the curved perimeter wall, the front gate wall, and the Hall.
  */
 function resolveWishTreePos(): { x: number; z: number } {
-  let bestX = BOUNDARY.x - BOUNDARY.rx * 0.72;
-  let bestZ = Math.min(GATE_Z - 5.5, STEPS.zMax + 3.5);
+  // Sample the exact perimeter wall (ellipse clipped at z = GATE_Z) for true Euclidean wall distance.
+  const wallSamples: { x: number; z: number }[] = [];
+  const sampleCount = 240;
+  for (let i = 0; i < sampleCount; i++) {
+    const a = (i / sampleCount) * Math.PI * 2;
+    const wx = BOUNDARY.x + Math.cos(a) * BOUNDARY.rx;
+    const wz = Math.min(GATE_Z, BOUNDARY.z + Math.sin(a) * BOUNDARY.rz);
+    wallSamples.push({ x: wx, z: wz });
+  }
+
+  const trueWallDist = (x: number, z: number): number => {
+    let minD = GATE_Z - z;
+    for (let i = 0; i < wallSamples.length; i++) {
+      const s = wallSamples[i];
+      if (!s) continue;
+      const d = Math.hypot(x - s.x, z - s.z);
+      if (d < minD) minD = d;
+    }
+    return minD;
+  };
+
+  let bestX = BOUNDARY.x - BOUNDARY.rx * 0.58;
+  let bestZ = HALL.zMax + (GATE_Z - HALL.zMax) * 0.45;
   let bestScore = -Infinity;
 
-  const zStart = GATE_Z - 4.2;
-  const zEnd = HALL.zMin;
+  const zMinScan = HALL.zMax - 1.0;
+  const zMaxScan = GATE_Z - 7.5;
+  const xMinScan = BOUNDARY.x - BOUNDARY.rx + 4.5;
+  const xMaxScan = ROOF.xMin - 4.5;
 
-  for (let cz = zStart; cz >= zEnd; cz -= 0.8) {
-    const bv = (cz - BOUNDARY.z) / BOUNDARY.rz;
-    if (Math.abs(bv) >= 0.94) continue;
-    const xWallLeft = BOUNDARY.x - BOUNDARY.rx * Math.sqrt(1 - bv * bv);
+  for (let cz = zMinScan; cz <= zMaxScan; cz += 0.5) {
+    for (let cx = xMinScan; cx <= xMaxScan; cx += 0.5) {
+      const bu = (cx - BOUNDARY.x) / BOUNDARY.rx;
+      const bv = (cz - BOUNDARY.z) / BOUNDARY.rz;
+      if (bu * bu + bv * bv >= 0.88) continue;
 
-    for (const wallInset of [4.2, 4.8, 5.5, 6.2]) {
-      const cx = xWallLeft + wallInset;
+      // 1. True perpendicular clearance to any perimeter wall or front gate corner.
+      const dWall = trueWallDist(cx, cz);
+      const dGate = GATE_Z - cz;
+      if (dWall < 5.0 || dGate < 7.5) continue;
 
-      // 1. Must stay well outside the Hall roof and front steps.
-      if (cx > ROOF.xMin - 4.2 && cx < ROOF.xMax + 4.2 && cz > HALL.zMin - 4.0 && cz < STEPS.zMax + 3.2) {
-        continue;
-      }
+      // 2. Clearance to the Hall roof and front steps.
+      const dHallRoof = distToBox(cx, cz, ROOF.xMin - 0.5, ROOF.xMax + 0.5, HALL.zMin - 2.5, HALL.zMax + 1.5);
+      const dSteps = distToBox(cx, cz, STEPS.xMin - 0.5, STEPS.xMax + 0.5, HALL.zMax, STEPS.zMax + 0.5);
+      const dHall = Math.min(dHallRoof, dSteps);
+      if (dHall < 5.8) continue;
 
-      // 2. Must stay clear of the main central entrance path.
-      if (Math.abs(cx - PATH.from.x) < PATH.width * 0.5 + 3.4) {
-        continue;
-      }
-
-      // 3. Measure clearance to the lantern loop path and existing tree/rock colliders.
-      let minClearance = 99;
+      // 3. Clearance to the central entrance path and lantern loop path.
+      const dMainPath = Math.abs(cx - PATH.from.x) - PATH.width * 0.5;
+      let dLantern = 99;
       const pts = LANTERN_LOOP.points;
       for (let i = 1; i < pts.length; i++) {
         const a = pts[i - 1];
         const b = pts[i];
         if (!a || !b) continue;
         const d = distToSegment(cx, cz, a.x, a.z, b.x, b.z) - LANTERN_LOOP.width * 0.5;
-        if (d < minClearance) minClearance = d;
+        if (d < dLantern) dLantern = d;
       }
+      const dPath = Math.min(dMainPath, dLantern);
+      if (dPath < 2.0) continue;
+
+      // 4. Clearance to existing garden trees and rocks.
+      let dProp = 99;
       for (const c of PROP_COLLIDERS) {
         const d = Math.hypot(cx - c.x, cz - c.z) - c.r;
-        if (d < minClearance) minClearance = d;
+        if (d < dProp) dProp = d;
       }
+      if (dProp < 1.8) continue;
 
-      if (minClearance < 2.6) continue;
-
-      // Prefer outer-left spots closer to the front-left end of the wall with comfortable clearance.
-      const forwardBonus = (cz - HALL.zMax) * 0.35;
-      const wallProximityBonus = (6.5 - wallInset) * 0.4;
-      const score = Math.min(minClearance, 4.2) + forwardBonus + wallProximityBonus;
+      // Prefer a spot in the outer-left front lawn where dWall is around 5.8m (never wedged in a corner).
+      const idealWallGap = 1.8 - Math.abs(dWall - 5.8) * 0.6;
+      const idealZZone = 1.5 - Math.abs(dGate - 9.5) * 0.22;
+      const clearanceScore = Math.min(dProp, 3.8) * 0.8 + Math.min(dPath, 3.5) * 0.7 + Math.min(dHall, 8.0) * 0.3;
+      const score = clearanceScore + idealWallGap + idealZZone;
 
       if (score > bestScore) {
         bestScore = score;
@@ -150,12 +185,10 @@ function buildCurvedTube(
     const t = i / lengthSegs;
     const inv = 1 - t;
 
-    // Point on quadratic Bézier curve
     const cx = inv * inv * p0[0] + 2 * inv * t * p1[0] + t * t * p2[0];
     const cy = inv * inv * p0[1] + 2 * inv * t * p1[1] + t * t * p2[1];
     const cz = inv * inv * p0[2] + 2 * inv * t * p1[2] + t * t * p2[2];
 
-    // Curve tangent
     let tx = 2 * inv * (p1[0] - p0[0]) + 2 * t * (p2[0] - p1[0]);
     let ty = 2 * inv * (p1[1] - p0[1]) + 2 * t * (p2[1] - p1[1]);
     let tz = 2 * inv * (p1[2] - p0[2]) + 2 * t * (p2[2] - p1[2]);
@@ -164,10 +197,9 @@ function buildCurvedTube(
     ty /= tLen;
     tz /= tLen;
 
-    // Orthonormal frame (N, B) around tangent T
     let ux = 0;
     let uy = 1;
-    let uz = 0;
+    const uz = 0;
     if (Math.abs(ty) > 0.92) {
       ux = 1;
       uy = 0;
@@ -224,43 +256,43 @@ function buildCurvedTube(
   return nonIndexed;
 }
 
-/** Builds the two-tiered octagonal stone planter bed and mossy earth mound. */
+/** Builds a compact, well-proportioned octagonal stone planter bed (radius 1.42m) and mossy mound. */
 function buildPlanterGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  const baseStep = new CylinderGeometry(2.72, 2.82, 0.14, 8);
-  baseStep.translate(0, 0.07, 0);
+  const baseStep = new CylinderGeometry(1.42, 1.48, 0.12, 8);
+  baseStep.translate(0, 0.06, 0);
   parts.push(paintGeometry(baseStep.toNonIndexed(), 0x6e695f));
 
-  const curbWall = new CylinderGeometry(2.42, 2.52, 0.34, 8);
-  curbWall.translate(0, 0.28, 0);
+  const curbWall = new CylinderGeometry(1.26, 1.32, 0.28, 8);
+  curbWall.translate(0, 0.24, 0);
   parts.push(paintGeometry(curbWall.toNonIndexed(), 0x857f73));
 
-  const topLip = new CylinderGeometry(2.56, 2.56, 0.07, 8);
-  topLip.translate(0, 0.46, 0);
+  const topLip = new CylinderGeometry(1.35, 1.35, 0.06, 8);
+  topLip.translate(0, 0.39, 0);
   parts.push(paintGeometry(topLip.toNonIndexed(), 0x9c9587));
 
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-    const px = Math.cos(a) * 2.46;
-    const pz = Math.sin(a) * 2.46;
-    const post = new CylinderGeometry(0.11, 0.13, 0.56, 6);
-    post.translate(px, 0.29, pz);
+    const px = Math.cos(a) * 1.29;
+    const pz = Math.sin(a) * 1.29;
+    const post = new CylinderGeometry(0.075, 0.09, 0.46, 6);
+    post.translate(px, 0.24, pz);
     parts.push(paintGeometry(post.toNonIndexed(), 0x918a7c));
 
-    const cap = new SphereGeometry(0.11, 8, 6);
+    const cap = new SphereGeometry(0.08, 8, 6);
     cap.scale(1, 0.75, 1);
-    cap.translate(px, 0.59, pz);
+    cap.translate(px, 0.49, pz);
     parts.push(paintGeometry(cap.toNonIndexed(), 0xa69f90));
   }
 
-  const soil = new CylinderGeometry(2.3, 2.3, 0.38, 16);
-  soil.translate(0, 0.22, 0);
+  const soil = new CylinderGeometry(1.18, 1.18, 0.32, 16);
+  soil.translate(0, 0.18, 0);
   parts.push(paintGeometry(soil.toNonIndexed(), 0x382a1d));
 
-  const moss = new SphereGeometry(2.26, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.46);
+  const moss = new SphereGeometry(1.16, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.46);
   moss.scale(1, 0.22, 1);
-  moss.translate(0, 0.36, 0);
+  moss.translate(0, 0.3, 0);
   parts.push(paintGeometry(moss.toNonIndexed(), 0x3b522c));
 
   const merged = mergeGeometries(parts);
@@ -279,37 +311,37 @@ interface BranchTip {
 
 /**
  * Builds the ancient Bodhi trunk, 8 gnarled buttress roots, 6 primary boughs,
- * 18 secondary forked branches, and 12 hanging aerial roots.
+ * 18 secondary forked branches, and 12 hanging aerial roots within a 2.35m canopy radius.
  */
 function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[]; hangSpots: BranchTip[] } {
   const parts: BufferGeometry[] = [];
   const tips: BranchTip[] = [];
   const hangSpots: BranchTip[] = [];
 
-  // 1. Massive gnarled main trunk with subtle S-curve and mossy base
+  // 1. Gnarled main trunk with organic S-curve and mossy base
   parts.push(
     buildCurvedTube(
-      [0, 0.32, 0],
-      [0.14, 1.55, -0.08],
-      [-0.06, 2.85, 0.05],
-      0.74,
-      0.44,
+      [0, 0.26, 0],
+      [0.1, 1.45, -0.06],
+      [-0.05, 2.75, 0.04],
+      0.48,
+      0.3,
       10,
       12,
       0x3d3524,
       0x543e2c,
-      0.14,
+      0.13,
     ),
   );
 
   // Central crown leader rising into the upper canopy
   parts.push(
     buildCurvedTube(
-      [-0.06, 2.7, 0.05],
-      [0.08, 3.65, -0.06],
-      [0.0, 4.55, 0.0],
-      0.4,
-      0.16,
+      [-0.05, 2.6, 0.04],
+      [0.06, 3.45, -0.05],
+      [0.0, 4.25, 0.0],
+      0.28,
+      0.12,
       7,
       9,
       0x543e2c,
@@ -317,94 +349,94 @@ function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[];
       0.08,
     ),
   );
-  tips.push({ x: 0, y: 4.75, z: 0, r: 1.55, isOuter: false });
+  tips.push({ x: 0, y: 4.45, z: 0, r: 1.05, isOuter: false });
 
-  // 2. 8 sinuous surface buttress roots gripping the mossy mound
+  // 2. 8 sinuous surface buttress roots gripping the mossy mound inside the 1.2m soil bed
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + (i % 2) * 0.18;
     const ca = Math.cos(a);
     const sa = Math.sin(a);
-    const side = i % 2 === 0 ? 0.22 : -0.22;
+    const side = i % 2 === 0 ? 0.14 : -0.14;
     parts.push(
       buildCurvedTube(
-        [ca * 0.42, 1.15, sa * 0.42],
-        [ca * 1.18 - sa * side, 0.62, sa * 1.18 + ca * side],
-        [ca * 2.05, 0.34, sa * 2.05],
-        0.26,
-        0.07,
+        [ca * 0.28, 0.98, sa * 0.28],
+        [ca * 0.68 - sa * side, 0.52, sa * 0.68 + ca * side],
+        [ca * 1.08, 0.28, sa * 1.08],
+        0.18,
+        0.055,
         7,
         8,
         0x443826,
         0x364226,
-        0.12,
+        0.11,
       ),
     );
   }
 
-  // 3. 6 primary sweeping boughs + 3 forked secondary branches per bough
+  // 3. 6 primary sweeping boughs + forked secondary branches
   const mainBoughs = 6;
   for (let i = 0; i < mainBoughs; i++) {
     const a = (i / mainBoughs) * Math.PI * 2 + 0.25;
     const ca = Math.cos(a);
     const sa = Math.sin(a);
-    const yStart = 2.38 + (i % 3) * 0.16;
-    const midR = 1.45;
-    const endR = 2.65 + (i % 2) * 0.22;
-    const endY = 3.35 + (i % 3) * 0.18;
+    const yStart = 2.32 + (i % 3) * 0.14;
+    const midR = 0.92;
+    const endR = 1.62 + (i % 2) * 0.14;
+    const endY = 3.18 + (i % 3) * 0.14;
 
-    const p0: [number, number, number] = [ca * 0.25, yStart, sa * 0.25];
-    const p1: [number, number, number] = [ca * midR - sa * 0.25, yStart + 0.68, sa * midR + ca * 0.25];
+    const p0: [number, number, number] = [ca * 0.18, yStart, sa * 0.18];
+    const p1: [number, number, number] = [ca * midR - sa * 0.16, yStart + 0.58, sa * midR + ca * 0.16];
     const p2: [number, number, number] = [ca * endR, endY, sa * endR];
 
-    parts.push(buildCurvedTube(p0, p1, p2, 0.3, 0.13, 8, 9, 0x523c2b, 0x624934, 0.09));
-    tips.push({ x: p2[0], y: p2[1] + 0.25, z: p2[2], r: 1.32, isOuter: true });
-    tips.push({ x: p1[0] * 0.9, y: p1[1] + 0.85, z: p1[2] * 0.9, r: 1.42, isOuter: false });
+    parts.push(buildCurvedTube(p0, p1, p2, 0.21, 0.095, 8, 9, 0x523c2b, 0x624934, 0.08));
+    tips.push({ x: p2[0], y: p2[1] + 0.2, z: p2[2], r: 0.88, isOuter: true });
+    tips.push({ x: p1[0] * 0.9, y: p1[1] + 0.72, z: p1[2] * 0.9, r: 0.95, isOuter: false });
 
-    hangSpots.push({ x: p1[0], y: p1[1] - 0.12, z: p1[2], r: 1, isOuter: false });
-    hangSpots.push({ x: p2[0] * 0.88, y: p2[1] - 0.22, z: p2[2] * 0.88, r: 1, isOuter: true });
+    hangSpots.push({ x: p1[0], y: p1[1] - 0.1, z: p1[2], r: 1, isOuter: false });
+    hangSpots.push({ x: p2[0] * 0.9, y: p2[1] - 0.18, z: p2[2] * 0.9, r: 1, isOuter: true });
 
     for (const forkSide of [-1, 1] as const) {
       const fa = a + forkSide * 0.42;
       const fca = Math.cos(fa);
       const fsa = Math.sin(fa);
-      const forkLen = 3.25 + (forkSide > 0 ? 0.18 : 0);
-      const forkY = endY + 0.22 + (forkSide > 0 ? 0.14 : -0.06);
+      const forkLen = 1.92 + (forkSide > 0 ? 0.12 : 0);
+      const forkY = endY + 0.18 + (forkSide > 0 ? 0.1 : -0.04);
 
-      const fp0: [number, number, number] = [p1[0], p1[1] + 0.05, p1[2]];
-      const fp1: [number, number, number] = [fca * 2.35, endY + 0.15, fsa * 2.35];
+      const fp0: [number, number, number] = [p1[0], p1[1] + 0.04, p1[2]];
+      const fp1: [number, number, number] = [fca * 1.42, endY + 0.12, fsa * 1.42];
       const fp2: [number, number, number] = [fca * forkLen, forkY, fsa * forkLen];
 
-      parts.push(buildCurvedTube(fp0, fp1, fp2, 0.16, 0.065, 6, 7, 0x594230, 0x69503a, 0.06));
-      tips.push({ x: fp2[0], y: fp2[1] + 0.18, z: fp2[2], r: 1.12, isOuter: true });
-      hangSpots.push({ x: fp1[0] * 0.96, y: fp1[1] - 0.25, z: fp1[2] * 0.96, r: 1, isOuter: true });
+      parts.push(buildCurvedTube(fp0, fp1, fp2, 0.11, 0.048, 6, 7, 0x594230, 0x69503a, 0.05));
+      tips.push({ x: fp2[0], y: fp2[1] + 0.15, z: fp2[2], r: 0.76, isOuter: true });
+      hangSpots.push({ x: fp1[0] * 0.98, y: fp1[1] - 0.2, z: fp1[2] * 0.98, r: 1, isOuter: true });
     }
 
     const ua = a + 0.52;
     const uca = Math.cos(ua);
     const usa = Math.sin(ua);
-    const up0: [number, number, number] = [p1[0] * 0.75, p1[1] + 0.15, p1[2] * 0.75];
-    const up1: [number, number, number] = [uca * 1.55, endY + 0.75, usa * 1.55];
-    const up2: [number, number, number] = [uca * 2.05, endY + 1.15, usa * 2.05];
-    parts.push(buildCurvedTube(up0, up1, up2, 0.15, 0.06, 6, 7, 0x594230, 0x6b523b, 0.05));
-    tips.push({ x: up2[0], y: up2[1] + 0.2, z: up2[2], r: 1.25, isOuter: false });
+    const up0: [number, number, number] = [p1[0] * 0.75, p1[1] + 0.12, p1[2] * 0.75];
+    const up1: [number, number, number] = [uca * 0.98, endY + 0.62, usa * 0.98];
+    const up2: [number, number, number] = [uca * 1.28, endY + 0.95, usa * 1.28];
+    parts.push(buildCurvedTube(up0, up1, up2, 0.11, 0.045, 6, 7, 0x594230, 0x6b523b, 0.05));
+    tips.push({ x: up2[0], y: up2[1] + 0.16, z: up2[2], r: 0.85, isOuter: false });
   }
 
   // 4. 12 sacred Bodhi aerial roots draping down from the boughs
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2 + 0.14;
-    const r = i % 2 === 0 ? 1.38 : 1.92;
+    const r = i % 2 === 0 ? 0.85 : 1.18;
     const rx = Math.cos(a) * r;
     const rz = Math.sin(a) * r;
-    const topY = i % 2 === 0 ? 2.95 : 3.15;
-    const botY = i % 3 === 0 ? 0.42 : 1.45 + (i % 2) * 0.35;
-    const drift = (i % 2 === 0 ? 1 : -1) * 0.12;
+    const topY = i % 2 === 0 ? 2.82 : 3.0;
+    const botY = i % 3 === 0 ? 0.36 : 1.38 + (i % 2) * 0.32;
+    const drift = (i % 2 === 0 ? 1 : -1) * 0.08;
     parts.push(
       buildCurvedTube(
         [rx, topY, rz],
         [rx + drift, (topY + botY) * 0.5, rz - drift],
-        [rx * 0.96, botY, rz * 0.96],
-        0.028,
-        0.012,
+        [rx * 0.95, botY, rz * 0.95],
+        0.022,
+        0.01,
         6,
         5,
         0x4e3928,
@@ -451,17 +483,17 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
 
       const lobe =
         1 +
-        0.22 * Math.sin(vx * 4.2 + phaseA) * Math.cos(vz * 4.2 + phaseB) +
-        0.12 * Math.sin(vy * 6.0 + vx * 3.0);
+        0.2 * Math.sin(vx * 4.2 + phaseA) * Math.cos(vz * 4.2 + phaseB) +
+        0.1 * Math.sin(vy * 6.0 + vx * 3.0);
 
-      const flatVy = vy < 0 ? vy * 0.58 : vy;
+      const flatVy = vy < 0 ? vy * 0.56 : vy;
 
       const wx = cx + vx * rx * lobe;
       const wy = cy + flatVy * ry * lobe;
       const wz = cz + vz * rz * lobe;
       pos.setXYZ(i, wx, wy, wz);
 
-      const heightNorm = Math.max(0, Math.min(1, (wy - 2.6) / 3.1));
+      const heightNorm = Math.max(0, Math.min(1, (wy - 2.5) / 2.6));
       const localTop = Math.max(0, Math.min(1, (vy + 0.7) / 1.65));
       const lightFactor = Math.max(0, Math.min(1, localTop * 0.68 + heightNorm * 0.32));
 
@@ -479,8 +511,8 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
       colors[i * 3 + 2] = cTmp.b;
 
       const radialDist = Math.hypot(wx, wz);
-      const swayWeight = Math.min(1, 0.35 + (radialDist / 4.2) * 0.45 + localTop * 0.2);
-      uvs[i * 2] = (wx + wz) * 0.4;
+      const swayWeight = Math.min(1, 0.35 + (radialDist / 2.6) * 0.45 + localTop * 0.2);
+      uvs[i * 2] = (wx + wz) * 0.5;
       uvs[i * 2 + 1] = swayWeight;
     }
 
@@ -494,13 +526,13 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
     const t = tips[i];
     if (!t) continue;
     const golden = i % 4 === 0 ? 0.45 : 0.12;
-    addFoliageCluster(t.x, t.y, t.z, t.r, t.r * 0.54, t.r, golden);
+    addFoliageCluster(t.x, t.y, t.z, t.r, t.r * 0.55, t.r, golden);
 
     for (let s = 0; s < 2; s++) {
       const sa = rand() * Math.PI * 2;
-      const dist = t.r * (0.48 + rand() * 0.28);
-      const subR = t.r * (0.62 + rand() * 0.18);
-      const dy = (rand() - 0.35) * 0.42;
+      const dist = t.r * (0.42 + rand() * 0.22);
+      const subR = t.r * (0.58 + rand() * 0.16);
+      const dy = (rand() - 0.35) * 0.32;
       addFoliageCluster(
         t.x + Math.cos(sa) * dist,
         t.y + dy,
@@ -513,9 +545,9 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
     }
   }
 
-  addFoliageCluster(0, 5.15, 0, 1.85, 0.95, 1.85, 0.4);
-  addFoliageCluster(0.75, 4.85, 0.65, 1.45, 0.78, 1.45, 0.3);
-  addFoliageCluster(-0.78, 4.8, -0.6, 1.45, 0.78, 1.45, 0.3);
+  addFoliageCluster(0, 4.75, 0, 1.28, 0.72, 1.28, 0.4);
+  addFoliageCluster(0.52, 4.48, 0.45, 0.98, 0.58, 0.98, 0.3);
+  addFoliageCluster(-0.54, 4.45, -0.42, 0.98, 0.58, 0.98, 0.3);
 
   const merged = mergeGeometries(parts);
   for (const p of parts) p.dispose();
@@ -527,25 +559,25 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
 function buildTreeLanternsGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
   const count = 6;
-  const radius = 2.35;
-  const yTop = 3.12;
+  const radius = 1.48;
+  const yTop = 2.98;
 
   for (let i = 0; i < count; i++) {
     const a = (i / count) * Math.PI * 2 + 0.25;
     const lx = Math.cos(a) * radius;
     const lz = Math.sin(a) * radius;
 
-    const cord = new CylinderGeometry(0.008, 0.008, 0.32, 5);
-    cord.translate(lx, yTop - 0.16, lz);
+    const cord = new CylinderGeometry(0.008, 0.008, 0.28, 5);
+    cord.translate(lx, yTop - 0.14, lz);
     parts.push(paintGeometry(cord.toNonIndexed(), 0x3b2818));
 
-    const cap = new CylinderGeometry(0.09, 0.115, 0.04, 8);
-    cap.translate(lx, yTop - 0.32, lz);
+    const cap = new CylinderGeometry(0.085, 0.105, 0.038, 8);
+    cap.translate(lx, yTop - 0.28, lz);
     parts.push(paintGeometry(cap.toNonIndexed(), 0x4a2e1b));
 
-    const glowCore = new SphereGeometry(0.098, 10, 8);
-    glowCore.scale(1, 1.3, 1);
-    glowCore.translate(lx, yTop - 0.43, lz);
+    const glowCore = new SphereGeometry(0.09, 10, 8);
+    glowCore.scale(1, 1.28, 1);
+    glowCore.translate(lx, yTop - 0.38, lz);
     parts.push(paintGeometry(glowCore.toNonIndexed(), 0xffdfa0));
   }
 
@@ -688,14 +720,14 @@ export function createWishingTree(parent: Object3D): WishingTree {
     let py: number;
     let pz: number;
     if (anchor && i < hangSpots.length) {
-      px = anchor.x + (rand() - 0.5) * 0.28;
-      py = anchor.y + (rand() - 0.5) * 0.14;
-      pz = anchor.z + (rand() - 0.5) * 0.28;
+      px = anchor.x + (rand() - 0.5) * 0.18;
+      py = anchor.y + (rand() - 0.5) * 0.12;
+      pz = anchor.z + (rand() - 0.5) * 0.18;
     } else {
-      const r = 1.85 + (i % 3) * 0.48 + (rand() - 0.5) * 0.24;
+      const r = 1.18 + (i % 3) * 0.28 + (rand() - 0.5) * 0.16;
       px = Math.cos(jitterAngle) * r;
       pz = Math.sin(jitterAngle) * r;
-      py = 2.45 + (i % 3) * 0.24 + (rand() - 0.5) * 0.16;
+      py = 2.38 + (i % 3) * 0.2 + (rand() - 0.5) * 0.12;
     }
     const radialAngle = Math.atan2(pz, px);
     return {
@@ -748,8 +780,8 @@ export function createWishingTree(parent: Object3D): WishingTree {
   parent.add(root);
 
   registerCameraPreset("wishtree", {
-    position: [WISH_TREE_POS.x + 6.5, 3.0, WISH_TREE_POS.z + 6.8],
-    target: [WISH_TREE_POS.x, 2.5, WISH_TREE_POS.z],
+    position: [WISH_TREE_POS.x + 5.2, 2.7, WISH_TREE_POS.z + 5.6],
+    target: [WISH_TREE_POS.x, 2.3, WISH_TREE_POS.z],
   });
 
   return {
