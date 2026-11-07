@@ -8,7 +8,7 @@ import "./base.css";
 export const HINT_MS = 8000;
 
 export type AvatarGestureKind = "bowGreet" | "kinhHanh" | "gardenSit" | "blessing";
-export type GestureKind = AvatarGestureKind | "lantern" | "bell" | "dharma";
+export type GestureKind = AvatarGestureKind | "lantern" | "bell" | "dharma" | "wish";
 
 export interface GestureItemSpec {
   readonly kind: GestureKind;
@@ -18,7 +18,7 @@ export interface GestureItemSpec {
 
 /**
  * Extensible registry for the radial arc menu above the action dock.
- * Includes the 4 mindfulness postures plus Hoa đăng (Release Lantern), Thỉnh chuông (Ring Bell), and Pháp ngữ (Dharma Slip).
+ * Includes the 4 mindfulness postures plus Hoa đăng, Thỉnh chuông, Pháp ngữ, and Ước nguyện.
  */
 export const GESTURE_ITEMS: readonly GestureItemSpec[] = [
   { kind: "bowGreet", label: vi.hud.gestureBowGreet, icon: icons.gestureBowGreet },
@@ -28,6 +28,7 @@ export const GESTURE_ITEMS: readonly GestureItemSpec[] = [
   { kind: "lantern", label: vi.hud.gestureLantern, icon: icons.gestureLantern },
   { kind: "bell", label: vi.hud.gestureBell, icon: icons.gestureBell },
   { kind: "dharma", label: vi.hud.gestureDharma, icon: icons.gestureDharma },
+  { kind: "wish", label: vi.hud.gestureWish, icon: icons.gestureWish },
 ];
 
 export const GESTURE_ORDER: readonly AvatarGestureKind[] = ["bowGreet", "kinhHanh", "gardenSit", "blessing"];
