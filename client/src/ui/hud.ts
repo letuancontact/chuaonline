@@ -159,7 +159,7 @@ export class Hud {
     this.root = document.createElement("div");
     this.root.className = "game-hud";
 
-    // Top-left: exit + room pill.
+    // Top-left: exit + room pill (sits neatly below the Lotus Player Status Card).
     const topLeft = el("div", "hud hud-top-left");
     const exit = button("tool tool-circle glass", icons.exit, vi.hud.exit);
     exit.addEventListener("click", () => h.exit?.());
@@ -174,13 +174,15 @@ export class Hud {
     this.pill.addEventListener("click", () => h.rooms());
     topLeft.append(exit, this.pill);
 
-    // Top-right: tool group + chant chip.
+    // Top-right: secondary tools are now integrated inside SettingsDialog per Option B;
+    // keep the elements hidden in DOM so any programmatic calls / state updates remain 100% safe,
+    // while `topRight` still displays active ceremony banners (`addBanner`).
     const topRight = el("div", "hud hud-top-right");
     const group = el("div", "tool-group glass");
+    group.hidden = true;
     const offering = button("tool tool-circle", icons.offering, vi.hud.offering);
     offering.title = vi.hud.offering;
     offering.addEventListener("click", () => h.offering?.());
-    // 390 px: icon only (the label carries the name); wider: icon + text.
     this.invite = button("tool", icons.invite, vi.hud.invite);
     this.invite.append(el("span", "hide-mobile", vi.hud.inviteShort));
     this.invite.addEventListener("click", () => h.invite?.());
@@ -194,6 +196,7 @@ export class Hud {
     settings.addEventListener("click", () => h.settings?.());
     group.append(offering, this.invite, this.people, this.sound, settings);
     this.chant = button("chip", "");
+    this.chant.hidden = true;
     this.chant.textContent = vi.hud.chant;
     this.chant.setAttribute("aria-pressed", "false");
     this.chant.addEventListener("click", () => h.chant?.());
