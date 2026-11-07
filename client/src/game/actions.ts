@@ -219,7 +219,9 @@ export class Actions {
     if (!this.seated && this.base !== "seeking-seat") this.d.mover.stop();
     this.overlay = "hello";
     this.helloElapsed = 0;
-    this.d.avatar.setPose("hello");
+    if (this.base !== "seeking-seat") {
+      this.d.avatar.setPose("hello");
+    }
     this.d.net.hello();
     this.emit("hello", undefined);
     this.toast(vi.toast.helloSent, "info");
@@ -292,7 +294,11 @@ export class Actions {
   update(dt: number): void {
     if (this.overlay === "hello") {
       this.helloElapsed += dt;
-      if (this.helloElapsed >= HELLO_SECONDS) this.overlay = null;
+      if (this.helloElapsed >= HELLO_SECONDS) {
+        this.overlay = null;
+        if (this.seated) this.d.avatar.setPose("kneel", { bowAt: this.bowAt });
+        else this.d.avatar.setPose("walk");
+      }
     }
 
     if (this.base === "seeking-seat" && this.walkingToSeat && this.cushionId !== null) {
@@ -454,6 +460,7 @@ export function installActionKeys(actions: Actions, target: Window = window): ()
         actions.bow();
         break;
       case "Space":
+        if (actions.beadsOpen) return;
         // Space on a focused button already clicks it.
         if (e.target instanceof HTMLElement && e.target.closest("button, a, [role=button]")) return;
         actions.bow();
