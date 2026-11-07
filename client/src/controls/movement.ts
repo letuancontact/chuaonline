@@ -172,15 +172,17 @@ export class Movement {
 
   private stepTarget(dt: number): boolean {
     const p = this.position;
+    while (this.target) {
+      const dx0 = this.target.x - p.x;
+      const dz0 = this.target.z - p.z;
+      if (Math.hypot(dx0, dz0) >= EPS) break;
+      this.target = this.route.shift() ?? null;
+    }
     const t = this.target;
     if (!t) return false;
     const dx = t.x - p.x;
     const dz = t.z - p.z;
     const dist = Math.hypot(dx, dz);
-    if (dist < EPS) {
-      this.target = null;
-      return false;
-    }
     p.yaw = dampAngle(p.yaw, Math.atan2(dx, dz), TURN_DAMP, dt);
     const step = Math.min(dist, MOVE_SPEED * dt);
     const next = this.scratch;
