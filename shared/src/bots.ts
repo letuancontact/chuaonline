@@ -147,8 +147,13 @@ export class BotBrain {
         bot.target = null;
         bot.waitUntil = now + 1500 + this.rng() * 4000;
         if (bot.seatOnArrive !== null) {
-          this.sit(bot, bot.seatOnArrive, now);
-          return { changed: true, event: "bow" };
+          const seat = bot.seatOnArrive;
+          const holder = this.seats.get(seat);
+          if (holder === undefined || holder === v.id) {
+            this.sit(bot, seat, now);
+            return { changed: true, event: "bow" };
+          }
+          bot.seatOnArrive = null;
         }
       }
       return { changed: true };
