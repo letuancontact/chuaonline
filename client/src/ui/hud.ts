@@ -122,7 +122,7 @@ function actionButton(icon: string, label: string, key: string): { button: HTMLB
   return { button: b, label: span };
 }
 
-/** Game HUD (design/game.html): exit + room pill top-left, tools top-right, action dock, control hint. */
+/** Game HUD (design/game.html): action dock, radial gesture menu, ceremony banner holder, control hint. */
 export class Hud {
   private readonly root: HTMLDivElement;
   private readonly pill: HTMLButtonElement;
@@ -159,8 +159,10 @@ export class Hud {
     this.root = document.createElement("div");
     this.root.className = "game-hud";
 
-    // Top-left: exit + room pill (sits neatly below the Lotus Player Status Card).
+    // Legacy top-left container is kept hidden in DOM because Room selector is now integrated
+    // right below the EXP bar in ProgressionDialog and Exit is inside SettingsDialog.
     const topLeft = el("div", "hud hud-top-left");
+    topLeft.hidden = true;
     const exit = button("tool tool-circle glass", icons.exit, vi.hud.exit);
     exit.addEventListener("click", () => h.exit?.());
     this.pill = button("room-pill glass", "");
@@ -174,9 +176,8 @@ export class Hud {
     this.pill.addEventListener("click", () => h.rooms());
     topLeft.append(exit, this.pill);
 
-    // Top-right: secondary tools are now integrated inside SettingsDialog per Option B;
-    // keep the elements hidden in DOM so any programmatic calls / state updates remain 100% safe,
-    // while `topRight` still displays active ceremony banners (`addBanner`).
+    // Top-right: secondary tools are integrated inside SettingsDialog;
+    // `topRight` remains visible only for active ceremony banners (`addBanner`).
     const topRight = el("div", "hud hud-top-right");
     const group = el("div", "tool-group glass");
     group.hidden = true;
