@@ -6,6 +6,7 @@ export const CHANT_URL = `${import.meta.env.BASE_URL}audio/chant.mp3`;
 const CHECK_MS = 5_000;
 /** Shared listening re-seeks only past this drift (seeking glitches the sound). */
 const MAX_DRIFT_S = 2;
+const RETRY_EVENTS = ["pointerdown", "keydown", "touchend"] as const;
 
 /** Where in a looping chant of `durationS` everyone should be, `offsetSeconds` into a session. */
 export function chantPosition(offsetSeconds: number, durationS: number): number {
@@ -33,6 +34,7 @@ export class Chant {
   /** startsAt of the session the user switched off; it stays off until the next one. */
   private dismissed: number | null = null;
   private error = false;
+  private waitingGesture = false;
   private last: ChantState = { on: false, ceremony: false, error: false };
   private readonly timer: ReturnType<typeof setInterval>;
   private readonly offEngine: () => void;
@@ -62,6 +64,7 @@ export class Chant {
 
   /** HUD chip / settings button. Must run in a user gesture (it may unmute). */
   toggle(): void {
+    this.disarmGestureRetry();
     // Muted with listening on: the chip reads on, so a press means "let me hear it", not "stop".
     if (this.solo && !this.error && this.engine.muted) {
       this.engine.setMuted(false);
@@ -88,6 +91,7 @@ export class Chant {
 
   dispose(): void {
     clearInterval(this.timer);
+    this.disarmGestureRetry();
     this.offEngine();
     this.listeners.clear();
     if (this.el) {
@@ -108,7 +112,10 @@ export class Chant {
     if (wanted && this.engine.audible && el) {
       if (inCeremony && session) this.seek(el, session.offsetSeconds);
       if (el.paused) el.play().catch((err: unknown) => this.onPlayError(err));
-    } else el?.pause();
+    } else {
+      this.disarmGestureRetry();
+      el?.pause();
+    }
     this.report({ on: wanted && (this.solo || this.engine.audible), ceremony: inCeremony && wanted, error: this.error });
   }
 
@@ -143,14 +150,38 @@ export class Chant {
 
   private readonly onLoadError = (): void => this.fail();
 
+  private readonly onGestureRetry = (): void => {
+    this.disarmGestureRetry();
+    this.engine.unlock();
+    this.sync();
+  };
+
+  private armGestureRetry(): void {
+    if (this.waitingGesture || typeof window === "undefined") return;
+    this.waitingGesture = true;
+    for (const type of RETRY_EVENTS) window.addEventListener(type, this.onGestureRetry, { capture: true, passive: true });
+  }
+
+  private disarmGestureRetry(): void {
+    if (!this.waitingGesture || typeof window === "undefined") return;
+    this.waitingGesture = false;
+    for (const type of RETRY_EVENTS) window.removeEventListener(type, this.onGestureRetry, { capture: true });
+  }
+
   private onPlayError(err: unknown): void {
     // A pause() racing play() rejects with AbortError: not a failure.
     if (err instanceof DOMException && err.name === "AbortError") return;
+    // Autoplay blocked when a scheduled ceremony starts on a timer tick: retry on the next user gesture instead of failing.
+    if (err instanceof DOMException && err.name === "NotAllowedError") {
+      this.armGestureRetry();
+      return;
+    }
     this.fail();
   }
 
   private fail(): void {
     if (this.error) return;
+    this.disarmGestureRetry();
     this.error = true;
     this.solo = false;
     this.el?.pause();
