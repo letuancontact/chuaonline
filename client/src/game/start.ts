@@ -25,6 +25,7 @@ import { Movement } from "../controls/movement.ts";
 import { vi } from "../i18n/vi.ts";
 import { createWalkChip } from "../ui/walk-chip.ts";
 import { GESTURE_ORDER, Hud, type AvatarGestureKind, type GestureKind } from "../ui/hud.ts";
+import { Joystick } from "../ui/joystick.ts";
 import { RoomsDialog, emptiestRoom, roomFromSearch, writeRoomToUrl } from "../ui/rooms-dialog.ts";
 import { Toasts } from "../ui/toasts.ts";
 import { PeopleDialog } from "../ui/people-dialog.ts";
@@ -621,6 +622,16 @@ export async function start(): Promise<void> {
       onResume: () => resume(),
       backgroundPlay: () => audio.settings.backgroundPlay,
     });
+
+    const floorTap = (x: number, y: number): void => {
+      actions.interrupt();
+      clearStationaryGesture();
+      movement.walkTo(pickFloor(cameraWorld, camera, x, y, window.innerWidth, window.innerHeight));
+    };
+    const joystick = new Joystick({
+      onTap: floorTap,
+    });
+
     const suspend = (why: "exit" | "rest"): void => {
       if (suspended) return;
       suspended = why;
@@ -633,6 +644,7 @@ export async function start(): Promise<void> {
       wishTree.close();
       nameDialog.dismiss();
       accountDialog.close();
+      joystick.reset();
       audio.setSuspended(true);
       actions.wake();
       actions.interrupt();
@@ -819,15 +831,12 @@ export async function start(): Promise<void> {
     };
 
     const input = new Input(renderer.domElement, {
-      tap: (x, y) => {
-        actions.interrupt();
-        clearStationaryGesture();
-        movement.walkTo(pickFloor(cameraWorld, camera, x, y, window.innerWidth, window.innerHeight));
-      },
+      tap: floorTap,
       rotate: rig.rotate,
       zoom: rig.zoom,
     });
     const axes: MoveAxes = { forward: 0, right: 0 };
+    const joyAxes: MoveAxes = { forward: 0, right: 0 };
     const selfState: NonNullable<E2EState["self"]> = { position: { ...movement.position }, pose: self.pose, cushion: null, asleep: false };
     e2eState.self = selfState;
 
@@ -850,6 +859,11 @@ export async function start(): Promise<void> {
       };
     loop.add((dt) => {
       input.axes(axes);
+      joystick.axes(joyAxes);
+      if (joyAxes.forward !== 0 || joyAxes.right !== 0) {
+        axes.forward = joyAxes.forward;
+        axes.right = joyAxes.right;
+      }
       if (axes.forward !== 0 || axes.right !== 0) {
         actions.interrupt();
         clearStationaryGesture();
