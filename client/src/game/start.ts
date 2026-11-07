@@ -36,6 +36,7 @@ import { CeremonyBanner } from "../ui/ceremony-banner.ts";
 import { SettingsDialog } from "../ui/settings-dialog.ts";
 import { OfferingDialog } from "../ui/offering-dialog.ts";
 import { DharmaDialog } from "../ui/dharma-dialog.ts";
+import { WishTreeDialog } from "../ui/wish-tree-dialog.ts";
 import { AudioEngine } from "../audio/engine.ts";
 import { Chant } from "../audio/chant.ts";
 import { BeadsScene } from "../beads/beads-scene.ts";
@@ -399,6 +400,19 @@ export async function start(): Promise<void> {
       },
     });
 
+    const wishTree = new WishTreeDialog({
+      onHangWish: (wishText) => {
+        scenery.hangWish();
+        audio.bell();
+        actions.hello();
+        toasts.show(vi.toast.wishHung);
+        sendWishIfAllowed(wishText);
+      },
+      onEmptyWish: () => {
+        toasts.show(vi.toast.wishEmpty, "warn");
+      },
+    });
+
     let shownHudGesture: AvatarGestureKind | null = null;
     const syncHudGesture = (): void => {
       if (self.gesture !== shownHudGesture) {
@@ -426,6 +440,10 @@ export async function start(): Promise<void> {
         dharma.open();
         return;
       }
+      if (kind === "wish") {
+        wishTree.open();
+        return;
+      }
       if (actions.bowing) actions.interrupt();
       if (self.gesture === kind) {
         self.setGesture(null);
@@ -443,6 +461,10 @@ export async function start(): Promise<void> {
     const offering = new OfferingDialog({
       onIncense: (wish) => {
         scenery.lightIncense();
+        if (wish.trim()) {
+          wishTree.recordWish(wish);
+          scenery.hangWish();
+        }
         audio.bell();
         actions.hello();
         toasts.show(vi.toast.incenseOffered);
@@ -450,6 +472,10 @@ export async function start(): Promise<void> {
       },
       onLantern: (wish) => {
         scenery.releaseLantern();
+        if (wish.trim()) {
+          wishTree.recordWish(wish);
+          scenery.hangWish();
+        }
         audio.bell();
         actions.hello();
         toasts.show(vi.toast.lanternOffered);
@@ -590,6 +616,7 @@ export async function start(): Promise<void> {
       settings.close();
       offering.close();
       dharma.close();
+      wishTree.close();
       nameDialog.dismiss();
       accountDialog.close();
       audio.setSuspended(true);
