@@ -47,6 +47,7 @@ const AXIS_SIGN = { up: 1, down: -1, left: -1, right: 1 } as const;
 export function ownedByUi(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable || target.closest("input, textarea, select, dialog[open]")) return true;
+  if (target.ownerDocument?.querySelector("dialog[open]") !== null) return true;
   return false;
 }
 
@@ -75,6 +76,9 @@ export class Input {
 
   /** Writes the held movement keys into `out` (no allocation per frame). */
   axes(out: MoveAxes): MoveAxes {
+    if (this.held.size > 0 && this.el.ownerDocument?.querySelector("dialog[open]") !== null) {
+      this.held.clear();
+    }
     const h = this.held;
     out.forward = (h.has("up") ? AXIS_SIGN.up : 0) + (h.has("down") ? AXIS_SIGN.down : 0);
     out.right = (h.has("right") ? AXIS_SIGN.right : 0) + (h.has("left") ? AXIS_SIGN.left : 0);
@@ -180,7 +184,11 @@ export class Input {
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     const axis = KEYS[e.code];
-    if (!axis || e.ctrlKey || e.metaKey || e.altKey || ownedByUi(e.target)) return;
+    if (!axis || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (ownedByUi(e.target)) {
+      this.held.clear();
+      return;
+    }
     // Arrows would scroll anything scrollable behind the canvas.
     e.preventDefault();
     this.held.add(axis);
