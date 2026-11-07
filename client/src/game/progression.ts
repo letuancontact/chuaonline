@@ -3,6 +3,10 @@ import { safeLocalStorage } from "../beads/counter.ts";
 
 export const PROGRESSION_STORAGE_KEY = "santinh.progression.v1";
 const DAY_MS = 86_400_000;
+const EXP_PER_LEVEL = 100;
+/** Default EXP starts at Level 3 (225 EXP = Level 3 with 25% EXP bar) so the status bar looks lively right away. */
+const DEFAULT_EXP = 225;
+const DEFAULT_HP = 18;
 
 export type QuestKind = "bow" | "beads" | "woodblock" | "hello" | "offering";
 export type ShopCategory = "aura" | "artifact" | "title";
@@ -145,6 +149,10 @@ export const SHOP_ITEMS: readonly ShopItem[] = [
 
 interface StoredData {
   merit: number;
+  gems: number;
+  lotus: number;
+  exp: number;
+  hp: number;
   lastCheckInDay: number;
   streak: number;
   questDay: number;
@@ -167,7 +175,8 @@ export type BuyOrEquipResult =
 type KeyValueStore = Pick<Storage, "getItem" | "setItem">;
 
 /**
- * Manages daily check-in, daily quests, Merit currency ("Công Đức"), and spiritual shop items.
+ * Manages daily check-in, daily quests, Merit currency ("Công Đức"), Gems ("Bảo Ngọc"),
+ * Lotus ("Liên Hoa"), player Level / EXP / HP, and spiritual shop items.
  */
 export class Progression {
   private data: StoredData;
@@ -199,6 +208,43 @@ export class Progression {
 
   get merit(): number {
     return this.data.merit;
+  }
+
+  get gems(): number {
+    return this.data.gems;
+  }
+
+  get lotus(): number {
+    return this.data.lotus;
+  }
+
+  get level(): number {
+    return Math.max(1, Math.floor(this.data.exp / EXP_PER_LEVEL) + 1);
+  }
+
+  get expInLevel(): number {
+    return this.data.exp % EXP_PER_LEVEL;
+  }
+
+  get expNext(): number {
+    return EXP_PER_LEVEL;
+  }
+
+  get expPercent(): number {
+    return Math.min(100, Math.max(0, Math.round((this.expInLevel / this.expNext) * 100)));
+  }
+
+  /** At Level 3, maxHp = 122 + 3 * 20 = 182 (matches 18/182 on the design reference). */
+  get maxHp(): number {
+    return 122 + this.level * 20;
+  }
+
+  get hp(): number {
+    return Math.min(this.maxHp, Math.max(1, this.data.hp));
+  }
+
+  get hpPercent(): number {
+    return Math.min(100, Math.max(0, Math.round((this.hp / this.maxHp) * 100)));
   }
 
   get equippedAura(): string | null {
@@ -279,6 +325,13 @@ export class Progression {
     this.data.lastCheckInDay = today;
     this.data.streak = nextStreak;
     this.data.merit += reward;
+    this.data.lotus += 1;
+    if (nextStreak === 3 || nextStreak === 7) {
+      this.data.gems += 5;
+    } else {
+      this.data.gems += 1;
+    }
+    this.gainExpAndHp(25, 16);
     this.save();
     this.emitChange();
     return { ok: true, day: nextStreak, reward };
@@ -325,7 +378,25 @@ export class Progression {
   addMerit(amount: number): void {
     if (!(amount > 0) || !Number.isFinite(amount)) return;
     this.ensureToday();
-    this.data.merit += Math.floor(amount);
+    const n = Math.floor(amount);
+    this.data.merit += n;
+    this.gainExpAndHp(Math.max(1, n * 2), 1);
+    this.save();
+    this.emitChange();
+  }
+
+  addGems(amount: number): void {
+    if (!(amount > 0) || !Number.isFinite(amount)) return;
+    this.ensureToday();
+    this.data.gems += Math.floor(amount);
+    this.save();
+    this.emitChange();
+  }
+
+  addLotus(amount: number): void {
+    if (!(amount > 0) || !Number.isFinite(amount)) return;
+    this.ensureToday();
+    this.data.lotus += Math.floor(amount);
     this.save();
     this.emitChange();
   }
@@ -334,11 +405,25 @@ export class Progression {
   recordAction(kind: QuestKind, amount = 1): void {
     if (!(amount > 0) || !Number.isFinite(amount)) return;
     this.ensureToday();
+    const step = Math.floor(amount);
+    if (kind === "offering") {
+      this.data.lotus += step;
+    }
+    this.gainExpAndHp(4, 2);
+
     const def = QUEST_DEFS.find((q) => q.id === kind);
-    if (!def) return;
+    if (!def) {
+      this.save();
+      this.emitChange();
+      return;
+    }
     const prev = this.data.questCounts[kind] ?? 0;
-    if (prev >= def.target) return;
-    const next = Math.min(def.target, prev + Math.floor(amount));
+    if (prev >= def.target) {
+      this.save();
+      this.emitChange();
+      return;
+    }
+    const next = Math.min(def.target, prev + step);
     this.data.questCounts[kind] = next;
     this.save();
     this.emitChange();
@@ -358,6 +443,8 @@ export class Progression {
     }
     this.data.questClaimed[kind] = true;
     this.data.merit += def.reward;
+    this.data.lotus += 1;
+    this.gainExpAndHp(20, 12);
     this.save();
     this.emitChange();
     return { ok: true, reward: def.reward };
@@ -369,6 +456,9 @@ export class Progression {
     if (!this.canClaimAllBonus) return { ok: false, reward: 0 };
     this.data.allBonusClaimed = true;
     this.data.merit += ALL_QUESTS_BONUS;
+    this.data.gems += 5;
+    this.data.lotus += 3;
+    this.gainExpAndHp(50, this.maxHp);
     this.save();
     this.emitChange();
     return { ok: true, reward: ALL_QUESTS_BONUS };
@@ -404,6 +494,12 @@ export class Progression {
     return { action: "equipped", item };
   }
 
+  private gainExpAndHp(expDelta: number, hpDelta: number): void {
+    this.data.exp = Math.max(0, this.data.exp + Math.floor(expDelta));
+    const cap = 122 + Math.max(1, Math.floor(this.data.exp / EXP_PER_LEVEL) + 1) * 20;
+    this.data.hp = Math.min(cap, Math.max(1, this.data.hp + Math.floor(hpDelta)));
+  }
+
   private equipSlot(category: ShopCategory, id: string | null): void {
     if (category === "aura") this.data.equippedAura = id;
     else if (category === "artifact") this.data.equippedArtifact = id;
@@ -424,6 +520,10 @@ export class Progression {
     const today = vnMidnight(this.now());
     const defaults: StoredData = {
       merit: Math.max(0, Math.floor(initialMeritFallback)),
+      gems: 0,
+      lotus: 0,
+      exp: DEFAULT_EXP,
+      hp: DEFAULT_HP,
       lastCheckInDay: 0,
       streak: 0,
       questDay: today,
@@ -450,11 +550,15 @@ export class Progression {
         const item = SHOP_ITEMS.find((i) => i.id === val);
         return item?.category === cat ? val : null;
       };
+      const nonNegInt = (v: unknown, fallback: number): number =>
+        typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : fallback;
+
       return {
-        merit:
-          typeof p["merit"] === "number" && Number.isFinite(p["merit"]) && p["merit"] >= 0
-            ? Math.floor(p["merit"])
-            : defaults.merit,
+        merit: nonNegInt(p["merit"], defaults.merit),
+        gems: nonNegInt(p["gems"], defaults.gems),
+        lotus: nonNegInt(p["lotus"], defaults.lotus),
+        exp: nonNegInt(p["exp"], defaults.exp),
+        hp: Math.max(1, nonNegInt(p["hp"], defaults.hp)),
         lastCheckInDay:
           typeof p["lastCheckInDay"] === "number" && Number.isFinite(p["lastCheckInDay"])
             ? p["lastCheckInDay"]
