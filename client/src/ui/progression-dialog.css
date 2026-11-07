@@ -1,30 +1,30 @@
 /* ============================================================================
-   1. TOP-LEFT LOTUS PLAYER STATUS CARD (Avatar + Name + Level + HP + EXP)
+   1. COMPACT TOP-LEFT LOTUS PLAYER STATUS CARD (Avatar + Name + Level + EXP + Room)
    ============================================================================ */
 .lotus-player-card {
   position: fixed;
-  top: max(12px, env(safe-area-inset-top, 0px));
-  left: max(12px, env(safe-area-inset-left, 0px));
+  top: max(10px, env(safe-area-inset-top, 0px));
+  left: max(10px, env(safe-area-inset-left, 0px));
   z-index: var(--z-hud, 10);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   user-select: none;
-  filter: drop-shadow(0 6px 14px rgb(0 0 0 / 0.42));
+  filter: drop-shadow(0 4px 10px rgb(0 0 0 / 0.38));
 }
 
 .lotus-avatar-frame {
   position: relative;
   z-index: 2;
-  width: 84px;
-  height: 84px;
+  width: 56px;
+  height: 56px;
   padding: 0;
   border-radius: 50%;
-  border: 3.5px solid #ffd859;
+  border: 2.5px solid #ffd859;
   background: radial-gradient(circle at 30% 25%, #fff5b8, #e09919 68%, #7d4704 100%);
   box-shadow:
-    inset 0 2px 4px rgb(255 255 255 / 0.75),
-    0 0 0 2px #7a4204,
-    0 4px 12px rgb(0 0 0 / 0.45);
+    inset 0 1.5px 3px rgb(255 255 255 / 0.75),
+    0 0 0 1.5px #7a4204,
+    0 3px 8px rgb(0 0 0 / 0.42);
   cursor: pointer;
   flex-shrink: 0;
   transition: transform 0.15s ease;
@@ -48,41 +48,42 @@
 .lotus-player-panel {
   position: relative;
   z-index: 1;
-  margin-left: -18px;
+  margin-left: -12px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  min-width: 224px;
+  gap: 2px;
+  min-width: 158px;
+  max-width: 192px;
 }
 
 .lotus-player-top {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding-left: 16px;
+  gap: 3px;
+  padding-left: 12px;
 }
 
 .lotus-name-pill {
   flex: 1;
   min-width: 0;
-  height: 30px;
-  padding: 0 12px 0 8px;
+  height: 23px;
+  padding: 0 8px 0 6px;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  border-radius: 10px 14px 14px 4px;
-  border: 2px solid #f7c346;
+  gap: 4px;
+  border-radius: 8px 11px 11px 3px;
+  border: 1.5px solid #f7c346;
   background: linear-gradient(180deg, #8c4a19 0%, #632f09 55%, #4a2004 100%);
   box-shadow:
-    inset 0 1px 1px rgb(255 232 163 / 0.55),
-    0 2px 4px rgb(0 0 0 / 0.4);
+    inset 0 1px 1px rgb(255 232 163 / 0.5),
+    0 1.5px 3px rgb(0 0 0 / 0.38);
   color: #ffffff;
   cursor: pointer;
 }
 
 .lotus-name-icon {
-  width: 20px;
-  height: 16px;
+  width: 15px;
+  height: 12px;
   flex-shrink: 0;
   display: inline-flex;
 }
@@ -93,57 +94,56 @@
 }
 
 .lotus-name-text {
-  font-size: 0.92rem;
+  font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.01em;
   color: #fffdf5;
-  text-shadow: 0 2px 3px rgb(0 0 0 / 0.85);
+  text-shadow: 0 1.5px 2px rgb(0 0 0 / 0.85);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 112px;
+  max-width: 86px;
 }
 
 .lotus-level-badge {
-  height: 30px;
-  padding: 0 11px;
-  border-radius: 15px;
-  border: 2px solid #ffe680;
+  height: 23px;
+  padding: 0 8px;
+  border-radius: 12px;
+  border: 1.5px solid #ffe680;
   background: linear-gradient(180deg, #ffd754 0%, #ea9315 55%, #b85d04 100%);
   box-shadow:
-    inset 0 1.5px 1px rgb(255 255 255 / 0.75),
-    0 2px 4px rgb(0 0 0 / 0.45);
+    inset 0 1px 1px rgb(255 255 255 / 0.75),
+    0 1.5px 3px rgb(0 0 0 / 0.42);
   color: #ffffff;
-  font-size: 0.82rem;
+  font-size: 0.72rem;
   font-weight: 800;
   white-space: nowrap;
-  text-shadow: 0 1.5px 2px rgb(92 38 0 / 0.95);
+  text-shadow: 0 1px 2px rgb(92 38 0 / 0.95);
   cursor: pointer;
 }
 
 .lotus-bars-box {
   position: relative;
-  padding: 5px 16px 6px 22px;
-  border-radius: 0 16px 16px 12px;
-  border: 2.5px solid #f5be3b;
+  padding: 4px 12px 4px 15px;
+  border-radius: 0 12px 12px 9px;
+  border: 2px solid #f5be3b;
   background: linear-gradient(180deg, #733910 0%, #4d2206 100%);
   box-shadow:
-    inset 0 2px 5px rgb(0 0 0 / 0.55),
-    0 2px 6px rgb(0 0 0 / 0.4);
+    inset 0 1.5px 4px rgb(0 0 0 / 0.55),
+    0 2px 5px rgb(0 0 0 / 0.35);
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
 .lotus-stat-row {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
 }
 
 .lotus-stat-icon {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
   flex-shrink: 0;
   display: inline-flex;
 }
@@ -154,30 +154,26 @@
 }
 
 .lotus-stat-label {
-  width: 28px;
-  font-size: 0.72rem;
+  width: 24px;
+  font-size: 0.64rem;
   font-weight: 900;
   letter-spacing: 0.02em;
-  text-shadow: 0 1.5px 2px rgb(0 0 0 / 0.9);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
   flex-shrink: 0;
 }
 
-.lotus-stat-label--hp {
-  color: #4cd964;
-}
-
 .lotus-stat-label--exp {
-  color: #d96bff;
+  color: #e28aff;
 }
 
 .lotus-bar-track {
   position: relative;
   flex: 1;
-  height: 14px;
+  height: 12px;
   border-radius: 999px;
   background: #2b1203;
   border: 1px solid rgb(255 214 128 / 0.35);
-  box-shadow: inset 0 2px 4px rgb(0 0 0 / 0.8);
+  box-shadow: inset 0 1.5px 3px rgb(0 0 0 / 0.8);
   overflow: hidden;
 }
 
@@ -185,11 +181,6 @@
   height: 100%;
   border-radius: 999px;
   transition: width 0.3s ease;
-}
-
-.lotus-bar-fill--hp {
-  background: linear-gradient(180deg, #9cff57 0%, #38cc28 55%, #198c11 100%);
-  box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.65);
 }
 
 .lotus-bar-fill--exp {
@@ -203,7 +194,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.68rem;
+  font-size: 0.6rem;
   font-weight: 800;
   color: #ffffff;
   text-shadow: 0 1px 2px rgb(0 0 0 / 0.95);
@@ -213,10 +204,10 @@
 
 .lotus-panel-flower {
   position: absolute;
-  right: -12px;
-  bottom: -8px;
-  width: 30px;
-  height: 25px;
+  right: -9px;
+  bottom: -6px;
+  width: 22px;
+  height: 18px;
   pointer-events: none;
 }
 
@@ -225,40 +216,66 @@
   height: 100%;
 }
 
-/* Position the existing room-pill & exit button neatly right below the Player Status Card */
-.game-hud .hud-top-left {
-  top: calc(max(12px, env(safe-area-inset-top, 0px)) + 92px);
-  left: max(12px, env(safe-area-inset-left, 0px));
-  gap: 6px;
-}
-
-.game-hud .hud-top-left .room-pill,
-.game-hud .hud-top-left .tool-circle {
-  min-height: 36px;
-  height: 36px;
-  border: 1.5px solid rgb(245 190 59 / 0.65);
-  background: linear-gradient(180deg, rgb(94 46 12 / 0.88), rgb(56 26 6 / 0.92));
+/* Room / Server selector pill neatly below the EXP bar */
+.lotus-room-btn {
+  margin-left: 12px;
+  margin-top: 1px;
+  height: 22px;
+  padding: 0 9px 0 7px;
+  border-radius: 999px;
+  border: 1.5px solid rgb(245 190 59 / 0.72);
+  background: linear-gradient(180deg, rgb(94 46 12 / 0.9), rgb(52 23 5 / 0.94));
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.35);
   color: #fff6e0;
-  box-shadow: 0 3px 10px rgb(0 0 0 / 0.35);
+  font-size: 0.68rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  max-width: 175px;
+  cursor: pointer;
+  transition: filter 0.14s ease, transform 0.14s ease;
 }
 
-.game-hud .hud-top-left .tool-circle {
-  width: 36px;
-  min-width: 36px;
+.lotus-room-btn:hover {
+  filter: brightness(1.1);
+}
+
+.lotus-room-btn:active {
+  transform: scale(0.97);
+}
+
+.lotus-room-btn .status-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+}
+
+.lotus-room-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lotus-room-chevron {
+  font-size: 0.65rem;
+  color: #ffd86b;
+  line-height: 1;
 }
 
 /* ============================================================================
-   2. TOP-RIGHT CURRENCY BAR + SETTINGS GEAR + QUICK BUTTONS (Quà Tặng, Nhiệm Vụ)
+   2. COMPACT TOP-RIGHT CURRENCY BAR + SETTINGS GEAR + SINGLE `Nhiệm Vụ` BUTTON
    ============================================================================ */
 .lotus-top-right {
   position: fixed;
-  top: max(12px, env(safe-area-inset-top, 0px));
-  right: max(12px, env(safe-area-inset-right, 0px));
+  top: max(10px, env(safe-area-inset-top, 0px));
+  right: max(10px, env(safe-area-inset-right, 0px));
   z-index: var(--z-hud, 10);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: 5px;
   user-select: none;
 }
 
@@ -266,34 +283,34 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 44px;
-  padding: 0 6px 0 14px;
+  gap: 5px;
+  height: 34px;
+  padding: 0 4px 0 9px;
   border-radius: 999px;
-  border: 3px solid #f7c548;
+  border: 2px solid #f7c548;
   background: linear-gradient(180deg, #753b10 0%, #4d2305 55%, #381702 100%);
   box-shadow:
-    inset 0 2px 3px rgb(255 232 166 / 0.45),
-    0 0 0 1.5px #6b3600,
-    0 6px 14px rgb(0 0 0 / 0.42);
+    inset 0 1.5px 2px rgb(255 232 166 / 0.42),
+    0 0 0 1px #6b3600,
+    0 4px 10px rgb(0 0 0 / 0.38);
 }
 
 .lotus-bar-wing {
   position: absolute;
   top: 50%;
-  width: 30px;
-  height: 25px;
+  width: 22px;
+  height: 18px;
   pointer-events: none;
   z-index: -1;
 }
 
 .lotus-bar-wing--left {
-  left: -15px;
+  left: -10px;
   transform: translateY(-42%) rotate(-18deg);
 }
 
 .lotus-bar-wing--right {
-  right: -13px;
+  right: -9px;
   transform: translateY(-42%) scaleX(-1) rotate(-18deg);
 }
 
@@ -305,9 +322,9 @@
 .lotus-curr-slot {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 30px;
-  padding: 0 3px 0 4px;
+  gap: 3px;
+  height: 23px;
+  padding: 0 2px 0 3px;
   border-radius: 999px;
   background: rgb(28 11 2 / 0.52);
   border: 1px solid rgb(255 210 115 / 0.24);
@@ -320,11 +337,11 @@
 }
 
 .lotus-curr-icon {
-  width: 24px;
-  height: 24px;
+  width: 17px;
+  height: 17px;
   flex-shrink: 0;
   display: inline-flex;
-  filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.45));
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.45));
 }
 
 .lotus-curr-icon svg {
@@ -333,26 +350,26 @@
 }
 
 .lotus-curr-val {
-  min-width: 22px;
-  padding: 0 3px;
+  min-width: 16px;
+  padding: 0 2px;
   text-align: center;
-  font-size: 0.9rem;
+  font-size: 0.76rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: #ffffff;
-  text-shadow: 0 1.5px 2px rgb(0 0 0 / 0.9);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
 }
 
 .lotus-curr-plus {
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   padding: 0;
   border-radius: 50%;
-  border: 1.5px solid #ffe88a;
+  border: 1px solid #ffe88a;
   background: linear-gradient(180deg, #ffd646 0%, #eb8c10 60%, #b55702 100%);
-  box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.8), 0 1px 3px rgb(0 0 0 / 0.5);
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.8), 0 1px 2px rgb(0 0 0 / 0.5);
   color: #5c2600;
-  font-size: 0.92rem;
+  font-size: 0.76rem;
   font-weight: 900;
   line-height: 1;
   display: inline-flex;
@@ -366,15 +383,15 @@
 }
 
 .lotus-settings-btn {
-  width: 36px;
-  height: 36px;
-  padding: 4px;
+  width: 26px;
+  height: 26px;
+  padding: 3px;
   border-radius: 50%;
-  border: 2.5px solid #ffe47a;
+  border: 2px solid #ffe47a;
   background: linear-gradient(180deg, #914d16 0%, #592805 100%);
   box-shadow:
     inset 0 1px 2px rgb(255 232 165 / 0.65),
-    0 2px 5px rgb(0 0 0 / 0.5);
+    0 1.5px 4px rgb(0 0 0 / 0.5);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -391,12 +408,11 @@
   height: 100%;
 }
 
-/* Quick Action Row (Quà Tặng & Nhiệm Vụ) */
+/* Quick Action Row (Single `Nhiệm Vụ` button) */
 .lotus-quick-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding-right: 4px;
+  padding-right: 2px;
 }
 
 .lotus-quick-btn {
@@ -408,12 +424,12 @@
   border: 0;
   background: transparent;
   cursor: pointer;
-  filter: drop-shadow(0 4px 8px rgb(0 0 0 / 0.45));
+  filter: drop-shadow(0 3px 6px rgb(0 0 0 / 0.45));
   transition: transform 0.14s ease;
 }
 
 .lotus-quick-btn:hover {
-  transform: translateY(-2px) scale(1.04);
+  transform: translateY(-1.5px) scale(1.04);
 }
 
 .lotus-quick-btn:active {
@@ -421,8 +437,8 @@
 }
 
 .lotus-quick-art {
-  width: 54px;
-  height: 48px;
+  width: 42px;
+  height: 38px;
   display: block;
 }
 
@@ -432,14 +448,14 @@
 }
 
 .lotus-quick-label {
-  margin-top: -8px;
-  padding: 2px 10px;
+  margin-top: -6px;
+  padding: 1.5px 8px;
   border-radius: 999px;
-  border: 1.8px solid #ffd459;
+  border: 1.5px solid #ffd459;
   background: linear-gradient(180deg, #d9381e 0%, #961b09 100%);
-  box-shadow: inset 0 1px 1px rgb(255 225 160 / 0.65), 0 2px 4px rgb(0 0 0 / 0.5);
+  box-shadow: inset 0 1px 1px rgb(255 225 160 / 0.65), 0 1.5px 3px rgb(0 0 0 / 0.5);
   color: #ffffff;
-  font-size: 0.72rem;
+  font-size: 0.64rem;
   font-weight: 800;
   white-space: nowrap;
   text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
@@ -447,21 +463,21 @@
 
 .lotus-red-bang {
   position: absolute;
-  top: 0;
-  right: 0;
-  width: 20px;
-  height: 20px;
+  top: -1px;
+  right: -1px;
+  width: 17px;
+  height: 17px;
   border-radius: 50%;
-  border: 2px solid #fff3c4;
+  border: 1.5px solid #fff3c4;
   background: linear-gradient(180deg, #ff4b3a 0%, #c91407 100%);
   color: #ffffff;
-  font-size: 0.76rem;
+  font-size: 0.68rem;
   font-weight: 900;
   line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 6px rgb(0 0 0 / 0.55);
+  box-shadow: 0 2px 5px rgb(0 0 0 / 0.55);
   animation: merit-dot-pulse 1.5s infinite ease-in-out;
 }
 
@@ -474,10 +490,10 @@
   50% { transform: scale(1.14); }
 }
 
-/* Position any ceremony banner below the quick buttons */
+/* Position any ceremony banner below the quick button */
 .game-hud .hud-top-right {
-  top: calc(max(12px, env(safe-area-inset-top, 0px)) + 118px);
-  right: max(12px, env(safe-area-inset-right, 0px));
+  top: calc(max(10px, env(safe-area-inset-top, 0px)) + 92px);
+  right: max(10px, env(safe-area-inset-right, 0px));
 }
 
 body:has(dialog.beads[open]) .lotus-player-card,
@@ -485,111 +501,113 @@ body:has(dialog.beads[open]) .lotus-top-right {
   display: none !important;
 }
 
-/* Keep control hint and toasts clear of the taller top HUD on narrow viewports */
+/* Keep control hint and toasts clear on narrow viewports */
 @media (max-width: 900px) {
   .game-hud .hud-hint {
-    top: 146px;
+    top: 108px;
   }
   .toasts {
-    top: 196px;
+    top: 152px;
   }
 }
 
-/* Responsive layout for mobile screens */
+/* Ultra-compact responsive layout for mobile screens so left & right HUD never touch */
 @media (max-width: 720px) {
   .lotus-avatar-frame {
-    width: 60px;
-    height: 60px;
-    border-width: 2.5px;
+    width: 44px;
+    height: 44px;
+    border-width: 2px;
   }
   .lotus-player-panel {
-    margin-left: -12px;
-    min-width: 148px;
+    margin-left: -10px;
+    min-width: 124px;
+    max-width: 146px;
   }
   .lotus-player-top {
-    padding-left: 12px;
+    padding-left: 10px;
   }
   .lotus-name-pill {
-    height: 24px;
-    padding: 0 7px 0 5px;
+    height: 19px;
+    padding: 0 6px 0 4px;
   }
   .lotus-name-icon {
-    width: 15px;
-    height: 12px;
+    width: 12px;
+    height: 10px;
   }
   .lotus-name-text {
-    font-size: 0.75rem;
-    max-width: 68px;
+    font-size: 0.68rem;
+    max-width: 58px;
   }
   .lotus-level-badge {
-    height: 24px;
-    padding: 0 7px;
-    font-size: 0.68rem;
-  }
-  .lotus-bars-box {
-    padding: 4px 10px 4px 15px;
-    gap: 3px;
-  }
-  .lotus-stat-label {
-    width: 22px;
+    height: 19px;
+    padding: 0 6px;
     font-size: 0.62rem;
   }
+  .lotus-bars-box {
+    padding: 3px 8px 3px 12px;
+  }
+  .lotus-stat-label {
+    width: 20px;
+    font-size: 0.56rem;
+  }
   .lotus-bar-track {
-    height: 11px;
+    height: 10px;
   }
   .lotus-bar-text {
-    font-size: 0.58rem;
+    font-size: 0.52rem;
   }
   .lotus-panel-flower {
-    width: 22px;
-    height: 18px;
-    right: -8px;
-    bottom: -6px;
+    width: 16px;
+    height: 13px;
+    right: -6px;
+    bottom: -4px;
   }
-  .game-hud .hud-top-left {
-    top: calc(max(10px, env(safe-area-inset-top, 0px)) + 68px);
+  .lotus-room-btn {
+    margin-left: 9px;
+    height: 19px;
+    padding: 0 7px 0 5px;
+    font-size: 0.6rem;
+    max-width: 135px;
   }
   .lotus-currency-bar {
-    height: 36px;
-    gap: 4px;
-    padding: 0 4px 0 8px;
-    border-width: 2px;
+    height: 28px;
+    gap: 3px;
+    padding: 0 3px 0 6px;
+    border-width: 1.5px;
   }
   .lotus-bar-wing {
     display: none;
   }
   .lotus-curr-slot {
-    height: 24px;
-    gap: 3px;
+    height: 20px;
+    gap: 2px;
     padding: 0 2px;
   }
   .lotus-curr-icon {
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
   }
   .lotus-curr-val {
-    min-width: 14px;
-    font-size: 0.74rem;
+    min-width: 12px;
+    font-size: 0.68rem;
   }
   .lotus-curr-plus {
-    width: 17px;
-    height: 17px;
-    font-size: 0.75rem;
+    width: 14px;
+    height: 14px;
+    font-size: 0.68rem;
   }
   .lotus-settings-btn {
-    width: 28px;
-    height: 28px;
-  }
-  .lotus-quick-row {
-    gap: 8px;
+    width: 22px;
+    height: 22px;
+    padding: 2px;
   }
   .lotus-quick-art {
-    width: 42px;
-    height: 38px;
+    width: 34px;
+    height: 31px;
   }
   .lotus-quick-label {
-    font-size: 0.64rem;
-    padding: 1px 7px;
+    font-size: 0.58rem;
+    padding: 1px 6px;
   }
 }
 
