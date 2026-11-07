@@ -1,4 +1,11 @@
-import { CEREMONY_DURATION_S, CEREMONY_HOURS, VISITOR_COLORS, ceremonyAt, vnTimeOfDay } from "@santinh/shared";
+import {
+  CEREMONY_DURATION_S,
+  CEREMONY_HOURS,
+  VISITOR_COLORS,
+  ceremonyAt,
+  vnTimeOfDay,
+  type ConnectionStatus,
+} from "@santinh/shared";
 import type { Chant } from "../audio/chant.ts";
 import type { AudioEngine, AudioSettings } from "../audio/engine.ts";
 import { vi } from "../i18n/vi.ts";
@@ -47,10 +54,20 @@ export interface AccountActions {
   signOut: () => void;
 }
 
-/** "Cài đặt" (design/settings.html): our name, robe colour, ambient / chant / effects, background play, controls, credits. */
+/** Secondary HUD actions moved into SettingsDialog per user's Option B. */
+export interface SettingsQuickActions {
+  openPeople?: () => void;
+  openInvite?: () => void;
+  openOffering?: () => void;
+  openRooms?: () => void;
+}
+
+/** "Cài đặt" (design/settings.html): our name, robe colour, room/social tools, master sound, ambient / chant / effects, background play, controls, credits. */
 export class SettingsDialog {
   private readonly dialog: HTMLDialogElement;
   private readonly desc: HTMLParagraphElement;
+  private readonly masterSoundToggle: HTMLButtonElement;
+  private readonly masterSoundDesc: HTMLElement;
   private readonly ambientToggle: HTMLButtonElement;
   private readonly sfxToggle: HTMLButtonElement;
   private readonly bgToggle: HTMLButtonElement;
@@ -61,8 +78,17 @@ export class SettingsDialog {
   private readonly nameText: HTMLElement;
   private readonly accountText: HTMLElement;
   private readonly accountBtn: HTMLButtonElement;
+  private readonly socialDescEl: HTMLElement;
+  private readonly peopleBtn: HTMLButtonElement;
+  private readonly inviteBtn: HTMLButtonElement;
+  private readonly roomsBtn: HTMLButtonElement;
+  private readonly offeringBtn: HTMLButtonElement;
   private readonly colorButtons: HTMLButtonElement[] = [];
   private username: string | null = null;
+  private roomNumber = 1;
+  private roomName = "Tĩnh Tâm";
+  private peopleCount = 0;
+  private connStatus: ConnectionStatus = "connecting";
   private readonly sliders: { key: VolumeKey; input: HTMLInputElement; output: HTMLOutputElement }[] = [];
   private readonly offs: (() => void)[] = [];
 
@@ -74,6 +100,7 @@ export class SettingsDialog {
     private readonly account: AccountActions,
     parent: HTMLElement = document.body,
     private readonly onColorChange?: (color: string) => void,
+    private readonly quickActions: SettingsQuickActions = {},
   ) {
     const t = vi.settings;
     this.dialog = el("dialog", "dialog");
@@ -141,6 +168,53 @@ export class SettingsDialog {
     body.append(accountSection);
     this.renderAccount();
 
+    // Room, People, Invite & Offering section (integrated secondary HUD buttons)
+    const socialSection = el("section", "section");
+    const socialHead = el("div", "section-text");
+    socialHead.append(el("h3", "", "Không gian & Đạo hữu"));
+    this.socialDescEl = el("small", "", "");
+    socialHead.append(this.socialDescEl);
+
+    const quickGrid = el("div", "settings-quick-grid");
+
+    this.peopleBtn = el("button", "btn btn--ghost", "Ai đang ở đây");
+    this.peopleBtn.type = "button";
+    this.peopleBtn.addEventListener("click", () => {
+      this.close();
+      this.quickActions.openPeople?.();
+    });
+
+    this.inviteBtn = el("button", "btn btn--ghost", vi.hud.invite);
+    this.inviteBtn.type = "button";
+    this.inviteBtn.addEventListener("click", () => {
+      this.close();
+      this.quickActions.openInvite?.();
+    });
+
+    this.offeringBtn = el("button", "btn btn--ghost", vi.hud.offering);
+    this.offeringBtn.type = "button";
+    this.offeringBtn.addEventListener("click", () => {
+      this.close();
+      this.quickActions.openOffering?.();
+    });
+
+    this.roomsBtn = el("button", "btn btn--ghost", "Chọn phòng");
+    this.roomsBtn.type = "button";
+    this.roomsBtn.addEventListener("click", () => {
+      this.close();
+      this.quickActions.openRooms?.();
+    });
+
+    quickGrid.append(this.peopleBtn, this.inviteBtn, this.offeringBtn, this.roomsBtn);
+    socialSection.append(socialHead, quickGrid);
+    body.append(socialSection);
+
+    // Master Sound Toggle (Bật / Tắt tiếng tổng)
+    this.masterSoundToggle = this.toggle("Âm thanh tổng", () => this.audio.toggleMuted());
+    const masterSection = this.section("Âm thanh tổng", "Bật hoặc tắt toàn bộ tiếng trong chùa", this.masterSoundToggle);
+    this.masterSoundDesc = masterSection.querySelector("small") ?? el("small");
+    body.append(masterSection);
+
     this.ambientToggle = this.toggle(t.ambient, () => this.flip("ambientOn"));
     body.append(this.section(t.ambient, t.ambientDesc, this.ambientToggle, "ambientVolume"));
 
@@ -179,6 +253,7 @@ export class SettingsDialog {
     this.offs.push(chant.onChange(() => this.render()));
     parent.append(this.dialog);
     this.setColor(VISITOR_COLORS[0] ?? "#b9c3c7");
+    this.renderSocial();
     this.render();
   }
 
@@ -187,6 +262,7 @@ export class SettingsDialog {
   }
 
   open(): void {
+    this.renderSocial();
     this.render();
     if (!this.dialog.open) this.dialog.showModal();
   }
@@ -220,10 +296,36 @@ export class SettingsDialog {
     this.renderAccount();
   }
 
+  /** Updates the current room info displayed inside Settings. */
+  setRoomInfo(n: number, name: string): void {
+    this.roomNumber = n;
+    this.roomName = name;
+    this.renderSocial();
+  }
+
+  /** Updates the current visitor count & connection status displayed inside Settings. */
+  setPeopleStatus(count: number, status: ConnectionStatus): void {
+    this.peopleCount = count;
+    this.connStatus = status;
+    this.renderSocial();
+  }
+
   dispose(): void {
     for (const off of this.offs) off();
     this.close();
     this.dialog.remove();
+  }
+
+  private renderSocial(): void {
+    const connected = this.connStatus === "connected";
+    const statusText = connected
+      ? `${this.peopleCount} người đang ở đây`
+      : this.connStatus === "connecting"
+        ? "Đang kết nối…"
+        : "Mất kết nối";
+    this.socialDescEl.textContent = `Phòng ${this.roomNumber} · ${this.roomName} (${statusText})`;
+    this.peopleBtn.textContent = connected ? `Đạo hữu (${this.peopleCount})` : "Ai đang ở đây";
+    this.inviteBtn.disabled = !connected;
   }
 
   private renderAccount(): void {
@@ -290,6 +392,8 @@ export class SettingsDialog {
       this.desc.append(el("span", "text-warning", t.muted));
     } else this.desc.textContent = t.desc;
 
+    this.masterSoundToggle.setAttribute("aria-checked", String(!muted));
+    this.masterSoundDesc.textContent = muted ? "Đang tắt toàn bộ âm thanh" : "Đang bật âm thanh";
     this.ambientToggle.setAttribute("aria-checked", String(s.ambientOn && !muted));
     this.sfxToggle.setAttribute("aria-checked", String(s.sfxOn && !muted));
     this.bgToggle.setAttribute("aria-checked", String(s.backgroundPlay));
