@@ -62,10 +62,17 @@ function paintGeometry(g: BufferGeometry, hex: number): BufferGeometry {
 }
 
 /**
- * Deforms a cylinder with natural bark ridges and gnarls (using the exact SphereGeometry/CylinderGeometry
- * vertex displacement pattern from `rockGeometry` in `garden.ts`).
+ * Deforms a cylinder with natural bark ridges and gnarls (using the exact vertex
+ * displacement pattern from `rockGeometry` in `garden.ts`).
  */
-functionbarkCylinder(rTop: number, rBottom: number, height: number, radialSegs: number, seed: number, gnarl = 0.12): CylinderGeometry {
+function barkCylinder(
+  rTop: number,
+  rBottom: number,
+  height: number,
+  radialSegs: number,
+  seed: number,
+  gnarl = 0.12,
+): CylinderGeometry {
   const g = new CylinderGeometry(rTop, rBottom, height, radialSegs, 3);
   const pos = g.getAttribute("position");
   for (let i = 0; i < pos.count; i++) {
@@ -73,7 +80,10 @@ functionbarkCylinder(rTop: number, rBottom: number, height: number, radialSegs: 
     const y = pos.getY(i);
     const z = pos.getZ(i);
     const angle = Math.atan2(z, x);
-    const flute = 1 + gnarl * Math.sin(angle * 5 + y * 2.2 + seed) + gnarl * 0.45 * Math.cos(angle * 3 - y * 3.1 + seed);
+    const flute =
+      1 +
+      gnarl * Math.sin(angle * 5 + y * 2.2 + seed) +
+      gnarl * 0.45 * Math.cos(angle * 3 - y * 3.1 + seed);
     pos.setXYZ(i, x * flute, y, z * flute);
   }
   g.computeVertexNormals();
@@ -334,13 +344,11 @@ function foliagePadGeometry(
     const y = pos.getY(i);
     const z = pos.getZ(i);
 
-    // Organic leaf-clump lobes so it never looks like a rigid geometric ball
     const lobe =
       1 +
       0.22 * Math.sin(3.6 * x + seed) * Math.cos(3.2 * z + seed * 1.4) +
       0.14 * Math.sin(5.2 * y + 2.4 * x + seed * 2.1);
 
-    // Flatten the underside of each leaf pad like real bough foliage
     const flatY = y < 0 ? y * 0.55 : y;
 
     const wx = cx + x * rx * lobe;
@@ -348,7 +356,6 @@ function foliagePadGeometry(
     const wz = cz + z * rz * lobe;
     pos.setXYZ(i, wx, wy, wz);
 
-    // Smooth vertical & local-normal shading from underside shadow to sunlit top
     const heightNorm = Math.max(0, Math.min(1, (wy - 3.0) / 3.4));
     const localTop = Math.max(0, Math.min(1, (y + 0.65) / 1.6));
     const light = Math.max(0, Math.min(1, localTop * 0.68 + heightNorm * 0.32));
@@ -385,10 +392,8 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
     const seedBase = i * 3.17 + 1.2;
     const golden = i % 3 === 0 ? 0.48 : 0.15;
 
-    // Primary ruffled leaf pad at branch tip
     parts.push(foliagePadGeometry(t.x, t.y, t.z, t.r, t.r * 0.54, t.r, seedBase, golden));
 
-    // 2 satellite leaf puffs around each branch tip for natural layered depth
     for (let s = 0; s < 2; s++) {
       const sa = rand() * Math.PI * 2;
       const dist = t.r * (0.46 + rand() * 0.26);
@@ -409,7 +414,6 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
     }
   }
 
-  // Crown dome clusters at the top of the sacred Bodhi tree
   parts.push(foliagePadGeometry(0, 5.95, 0, 1.75, 0.92, 1.75, 91.3, 0.45));
   parts.push(foliagePadGeometry(0.72, 5.58, 0.62, 1.38, 0.74, 1.38, 102.7, 0.35));
   parts.push(foliagePadGeometry(-0.74, 5.52, -0.58, 1.38, 0.74, 1.38, 114.1, 0.35));
