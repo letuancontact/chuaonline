@@ -256,6 +256,7 @@ export async function start(): Promise<void> {
         const rName = rooms.nameOf(id);
         hud.setRoom(rn, rName);
         settings.setRoomInfo(rn, rName);
+        progressionDialog.setRoomInfo(rn, rName, status);
       },
     });
     const nameDialog = new NameDialog();
@@ -494,6 +495,7 @@ export async function start(): Promise<void> {
         openInvite: inviteFriend,
         openOffering: () => offering.open(),
         openRooms: () => rooms.open(),
+        exitGame: () => suspend("exit"),
       },
     );
 
@@ -518,6 +520,7 @@ export async function start(): Promise<void> {
       },
       onOpenSettings: () => settings.open(),
       onOpenOffering: () => offering.open(),
+      onOpenRooms: () => rooms.open(),
       onRename: renameSelf,
     });
 
@@ -658,6 +661,7 @@ export async function start(): Promise<void> {
     const initialRoomName = roomNameOf(null, initialRoomNum);
     hud.setRoom(initialRoomNum, initialRoomName);
     settings.setRoomInfo(initialRoomNum, initialRoomName);
+    progressionDialog.setRoomInfo(initialRoomNum, initialRoomName, status);
     hud.addBanner(new CeremonyBanner(now).element);
     // Shows itself on a chat room's snapshot; guests get the create-account button (P4-D9).
     const chat = new ChatPanel({
@@ -770,6 +774,8 @@ export async function start(): Promise<void> {
       status = s;
       hud.setStatus(s);
       settings.setPeopleStatus(remotes.realCount, s);
+      const rn = roomNumber(room) ?? 1;
+      progressionDialog.setRoomInfo(rn, rooms.nameOf(room), s);
       hud.setBowLocked(s !== "connected");
       if (s !== "reconnecting") {
         releaseLost?.();
@@ -839,6 +845,7 @@ export async function start(): Promise<void> {
       const rn = roomNumber(s.room) ?? 1;
       hud.setRoom(rn, s.roomName);
       settings.setRoomInfo(rn, s.roomName);
+      progressionDialog.setRoomInfo(rn, s.roomName, status);
       // The room we are really in goes to the URL (L6: shareable, no reload).
       if (roomFromSearch(location.search) !== s.room) writeRoomToUrl(s.room);
       driver.sendMove(movement.position, self.pose);
@@ -894,6 +901,7 @@ export async function start(): Promise<void> {
             const rName = list.find((r) => r.id === room)?.name ?? roomNameOf(null, rn);
             hud.setRoom(rn, rName);
             settings.setRoomInfo(rn, rName);
+            progressionDialog.setRoomInfo(rn, rName, status);
             driver.connect(room);
           },
           () => driver.connect(room),
