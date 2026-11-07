@@ -245,27 +245,6 @@ export async function start(): Promise<void> {
     });
     installActionKeys(actions);
 
-    const progressionDialog = new ProgressionDialog(progression, {
-      onClaimReward: (_merit, label) => {
-        audio.bell();
-        toasts.show(label);
-      },
-      onShopAction: (res) => {
-        if (res.action === "bought") {
-          audio.templeBell();
-          toasts.show(`Đã thỉnh và trang bị: ${res.item.name}`);
-        } else if (res.action === "equipped") {
-          audio.bead();
-          toasts.show(`Đã trang bị: ${res.item.name}`);
-        } else if (res.action === "unequipped") {
-          audio.bead();
-          toasts.show(`Đã gỡ: ${res.item.name}`);
-        } else if (res.action === "insufficient") {
-          toasts.show(`Cần thêm ${res.missing} Công đức để thỉnh ${res.item.name}`, "warn");
-        }
-      },
-    });
-
     const rooms = new RoomsDialog({
       net: driver,
       currentRoom: () => room,
@@ -273,7 +252,10 @@ export async function start(): Promise<void> {
       reloadIfOtherSpace,
       onSwitched: (id) => {
         room = id;
-        hud.setRoom(roomNumber(id) ?? 1, rooms.nameOf(id));
+        const rn = roomNumber(id) ?? 1;
+        const rName = rooms.nameOf(id);
+        hud.setRoom(rn, rName);
+        settings.setRoomInfo(rn, rName);
       },
     });
     const nameDialog = new NameDialog();
@@ -284,9 +266,10 @@ export async function start(): Promise<void> {
       saveName(name);
       driver.setName(name);
       settings.setName(name);
+      progressionDialog.setPlayerName(name);
     };
     const renameSelf = (): void => {
-      if (myName !== null) nameDialog.open("rename", myName, useName);
+      nameDialog.open("rename", myName ?? selfName ?? "Đạo Hữu", useName);
     };
 
     // P4-D2 / D4: the session token lives in `santinh.session`; the driver re-sends it on every socket.
@@ -349,34 +332,6 @@ export async function start(): Promise<void> {
       rename: renameSelf,
     });
 
-    const applyRobeColor = (color: string): void => {
-      self.setColor(color);
-      settings.setColor(color);
-    };
-
-    const settings = new SettingsDialog(
-      audio,
-      chant,
-      now,
-      renameSelf,
-      {
-        // One dialog at a time: both are see-through, stacked they read as one mess.
-        signIn: () => {
-          settings.close();
-          openAccount("register");
-        },
-        signOut,
-      },
-      document.body,
-      (color) => {
-        saveSavedColor(color);
-        applyRobeColor(color);
-      },
-    );
-
-    if (myName !== null) settings.setName(myName);
-    settings.setColor(initialRobeColor);
-
     // Floating "Công đức +1" anchor positioned right above the local player's nameplate only.
     const meritAnchor = document.createElement("div");
     meritAnchor.style.position = "fixed";
@@ -430,13 +385,12 @@ export async function start(): Promise<void> {
       audio.woodblock();
       self.tap();
       spawnMeritFloat();
-      driver.sendBead();
+      driver.bead();
     };
 
     const sendWishIfAllowed = (wish: string): void => {
       if (!wish || status !== "connected" || session === null) return;
-      const n = roomNumber(room);
-      if (n === null || !roomAllowsChat(n)) return;
+      if (!roomAllowsChat(room)) return;
       driver.sendChat(wish);
     };
 
@@ -451,8 +405,7 @@ export async function start(): Promise<void> {
         toasts.show(vi.toast.dharmaDrawn.replace("{title}", title));
       },
       onShare: (verse) => {
-        const n = roomNumber(room);
-        if (status === "connected" && session !== null && n !== null && roomAllowsChat(n)) {
+        if (status === "connected" && session !== null && roomAllowsChat(room)) {
           driver.sendChat(verse);
           dharma.close();
           toasts.show(vi.toast.dharmaShared);
@@ -474,6 +427,98 @@ export async function start(): Promise<void> {
       onEmptyWish: () => {
         toasts.show(vi.toast.wishEmpty, "warn");
       },
+    });
+
+    const offering = new OfferingDialog({
+      onIncense: (wish) => {
+        scenery.lightIncense();
+        if (wish.trim()) {
+          wishTree.recordWish(wish);
+          scenery.hangWish();
+        }
+        audio.bell();
+        actions.hello();
+        progression.recordAction("offering", 1);
+        toasts.show(vi.toast.incenseOffered);
+        sendWishIfAllowed(wish);
+      },
+      onLantern: (wish) => {
+        scenery.releaseLantern();
+        if (wish.trim()) {
+          wishTree.recordWish(wish);
+          scenery.hangWish();
+        }
+        audio.bell();
+        actions.hello();
+        progression.recordAction("offering", 1);
+        toasts.show(vi.toast.lanternOffered);
+        sendWishIfAllowed(wish);
+      },
+      onBell: () => {
+        audio.templeBell();
+        actions.hello();
+        progression.recordAction("offering", 1);
+        toasts.show(vi.toast.bellRung);
+      },
+      onWoodblock: () => {
+        tapWoodblock();
+      },
+    });
+
+    const applyRobeColor = (color: string): void => {
+      self.setColor(color);
+      settings.setColor(color);
+      progressionDialog.setPlayerColor(color);
+    };
+
+    const settings = new SettingsDialog(
+      audio,
+      chant,
+      now,
+      renameSelf,
+      {
+        // One dialog at a time: both are see-through, stacked they read as one mess.
+        signIn: () => {
+          settings.close();
+          openAccount("register");
+        },
+        signOut,
+      },
+      document.body,
+      (color) => {
+        saveSavedColor(color);
+        applyRobeColor(color);
+      },
+      {
+        openPeople: () => people.open(),
+        openInvite: inviteFriend,
+        openOffering: () => offering.open(),
+        openRooms: () => rooms.open(),
+      },
+    );
+
+    const progressionDialog = new ProgressionDialog(progression, {
+      onClaimReward: (_merit, label) => {
+        audio.bell();
+        toasts.show(label);
+      },
+      onShopAction: (res) => {
+        if (res.action === "bought") {
+          audio.templeBell();
+          toasts.show(`Đã thỉnh và trang bị: ${res.item.name}`);
+        } else if (res.action === "equipped") {
+          audio.bead();
+          toasts.show(`Đã trang bị: ${res.item.name}`);
+        } else if (res.action === "unequipped") {
+          audio.bead();
+          toasts.show(`Đã gỡ: ${res.item.name}`);
+        } else if (res.action === "insufficient") {
+          toasts.show(`Cần thêm ${res.missing} Công đức để thỉnh ${res.item.name}`, "warn");
+        }
+      },
+      onOpenSettings: () => settings.open(),
+      onOpenOffering: () => offering.open(),
+      onRename: renameSelf,
     });
 
     let shownHudGesture: AvatarGestureKind | null = null;
@@ -528,42 +573,6 @@ export async function start(): Promise<void> {
       audio.hello();
       syncHudGesture();
     };
-
-    const offering = new OfferingDialog({
-      onIncense: (wish) => {
-        scenery.lightIncense();
-        if (wish.trim()) {
-          wishTree.recordWish(wish);
-          scenery.hangWish();
-        }
-        audio.bell();
-        actions.hello();
-        progression.recordAction("offering", 1);
-        toasts.show(vi.toast.incenseOffered);
-        sendWishIfAllowed(wish);
-      },
-      onLantern: (wish) => {
-        scenery.releaseLantern();
-        if (wish.trim()) {
-          wishTree.recordWish(wish);
-          scenery.hangWish();
-        }
-        audio.bell();
-        actions.hello();
-        progression.recordAction("offering", 1);
-        toasts.show(vi.toast.lanternOffered);
-        sendWishIfAllowed(wish);
-      },
-      onBell: () => {
-        audio.templeBell();
-        actions.hello();
-        progression.recordAction("offering", 1);
-        toasts.show(vi.toast.bellRung);
-      },
-      onWoodblock: () => {
-        tapWoodblock();
-      },
-    });
 
     window.addEventListener("keydown", (e: KeyboardEvent) => {
       if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || suspended || ownedByUi(e.target)) return;
@@ -645,7 +654,10 @@ export async function start(): Promise<void> {
     hud.setSound(!audio.muted);
     beadsScreen.setSound(!audio.muted);
     hud.setChant(chant.state.on);
-    hud.setRoom(roomNumber(room) ?? 1, roomNameOf(null, roomNumber(room) ?? 1));
+    const initialRoomNum = roomNumber(room) ?? 1;
+    const initialRoomName = roomNameOf(null, initialRoomNum);
+    hud.setRoom(initialRoomNum, initialRoomName);
+    settings.setRoomInfo(initialRoomNum, initialRoomName);
     hud.addBanner(new CeremonyBanner(now).element);
     // Shows itself on a chat room's snapshot; guests get the create-account button (P4-D9).
     const chat = new ChatPanel({
@@ -660,6 +672,14 @@ export async function start(): Promise<void> {
     let entered = savedName !== null;
     // Same suggestion if rest / exit interrupts the first ask and `resume` asks again.
     const suggestion = makeName(Math.random, new Set());
+    if (myName !== null) {
+      settings.setName(myName);
+      progressionDialog.setPlayerName(myName);
+    } else {
+      progressionDialog.setPlayerName(suggestion);
+    }
+    applyRobeColor(initialRobeColor);
+
     const askName = (): void => {
       nameDialog.open("enter", suggestion, (name) => {
         useName(name);
@@ -749,6 +769,7 @@ export async function start(): Promise<void> {
     driver.on("status", (s) => {
       status = s;
       hud.setStatus(s);
+      settings.setPeopleStatus(remotes.realCount, s);
       hud.setBowLocked(s !== "connected");
       if (s !== "reconnecting") {
         releaseLost?.();
@@ -786,6 +807,7 @@ export async function start(): Promise<void> {
       labels.retain(keep);
       e2eState.count = remotes.realCount;
       hud.setCount(remotes.realCount);
+      settings.setPeopleStatus(remotes.realCount, status);
     });
     driver.on("snapshot", (s) => {
       selfId = s.selfId;
@@ -804,6 +826,7 @@ export async function start(): Promise<void> {
         labels.set(me.id, me.name, true);
         labels.setTitle(me.id, progression.equippedTitleBadge);
         labels.setAsleep(me.id, actions.asleep);
+        progressionDialog.setPlayerName(myName ?? me.name);
       }
       selfName = me?.name ?? null;
       e2eState.selfName = selfName;
@@ -813,7 +836,9 @@ export async function start(): Promise<void> {
       labels.clearBubbles();
       e2eState.room = s.room;
       room = s.room;
-      hud.setRoom(roomNumber(s.room) ?? 1, s.roomName);
+      const rn = roomNumber(s.room) ?? 1;
+      hud.setRoom(rn, s.roomName);
+      settings.setRoomInfo(rn, s.roomName);
       // The room we are really in goes to the URL (L6: shareable, no reload).
       if (roomFromSearch(location.search) !== s.room) writeRoomToUrl(s.room);
       driver.sendMove(movement.position, self.pose);
@@ -825,6 +850,7 @@ export async function start(): Promise<void> {
         selfName = me.name;
         labels.set(me.id, selfName, true);
         labels.setTitle(me.id, progression.equippedTitleBadge);
+        progressionDialog.setPlayerName(myName ?? selfName);
         e2eState.selfName = selfName;
       }
       remotes.applyUpdate(u);
@@ -837,8 +863,7 @@ export async function start(): Promise<void> {
       // Only fills the row when `me` could not answer (offline at start); the mock driver names every account alike.
       if (a !== null) {
         if (username === null) showAccount(a.username);
-      }
-      else {
+      } else {
         // Token refused (expired, signed out elsewhere); the driver keeps it until told (T4b).
         forgetSession();
         driver.setSession(null);
@@ -865,7 +890,10 @@ export async function start(): Promise<void> {
           (list) => {
             room = emptiestRoom(list) ?? room;
             if (reloadIfOtherSpace(room)) return;
-            hud.setRoom(roomNumber(room) ?? 1, list.find((r) => r.id === room)?.name ?? roomNameOf(null, roomNumber(room) ?? 1));
+            const rn = roomNumber(room) ?? 1;
+            const rName = list.find((r) => r.id === room)?.name ?? roomNameOf(null, rn);
+            hud.setRoom(rn, rName);
+            settings.setRoomInfo(rn, rName);
             driver.connect(room);
           },
           () => driver.connect(room),
