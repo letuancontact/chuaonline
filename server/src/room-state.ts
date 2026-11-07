@@ -184,12 +184,20 @@ export class RoomState {
     if (this.entries.has(id)) this.dirty.add(id);
   }
 
-  /** D25: stored and relayed as is; a cushion is kept while asleep. */
+  /** D25: stored and relayed as is; a cushion is kept while asleep (an unreached reservation is freed). */
   setAsleep(id: string, asleep: boolean): void {
-    const v = this.entries.get(id)?.visitor;
-    if (!v || Boolean(v.asleep) === asleep) return;
-    if (asleep) v.asleep = true;
-    else delete v.asleep;
+    const entry = this.entries.get(id);
+    const v = entry?.visitor;
+    if (!entry || !v || Boolean(v.asleep) === asleep) return;
+    if (asleep) {
+      v.asleep = true;
+      if (entry.reserved !== null) {
+        if (this.seats.get(entry.reserved) === id) this.seats.delete(entry.reserved);
+        entry.reserved = null;
+      }
+    } else {
+      delete v.asleep;
+    }
     this.dirty.add(id);
   }
 
