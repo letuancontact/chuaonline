@@ -17,7 +17,7 @@ import {
   type Object3D,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { BOUNDARY, GATE_Z, HALL, LANTERN_LOOP, PATH, PROP_COLLIDERS, ROOF, STEPS } from "@santinh/shared";
+import { BOUNDARY, GATE_Z } from "@santinh/shared";
 import { registerCameraPreset } from "../debug/params.ts";
 import { seeded } from "./random.ts";
 
@@ -30,110 +30,18 @@ const v3 = new Vector3();
 const s3 = new Vector3();
 const tmpEuler = new Euler();
 
-function distToSegment(x: number, z: number, ax: number, az: number, bx: number, bz: number): number {
-  const dx = bx - ax;
-  const dz = bz - az;
-  const len2 = dx * dx + dz * dz;
-  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / len2));
-  return Math.hypot(ax + t * dx - x, az + t * dz - z);
-}
-
-function distToBox(x: number, z: number, xMin: number, xMax: number, zMin: number, zMax: number): number {
-  const dx = Math.max(xMin - x, 0, x - xMax);
-  const dz = Math.max(zMin - z, 0, z - zMax);
-  if (dx === 0 && dz === 0) return -Math.min(x - xMin, xMax - x, z - zMin, zMax - z);
-  return Math.hypot(dx, dz);
-}
-
 /**
- * Computes an open position in the outer-left courtyard lawn with guaranteed perpendicular
- * Euclidean clearance (>= 5.2m) from the curved perimeter wall, the front gate wall, and the Hall.
+ * Places the Wishing Bodhi Tree OUTSIDE the temple gate (z > GATE_Z)
+ * right at the far-left end of the left perimeter wall, completely outside the courtyard walls.
  */
 function resolveWishTreePos(): { x: number; z: number } {
-  // Sample the exact perimeter wall (ellipse clipped at z = GATE_Z) for true Euclidean wall distance.
-  const wallSamples: { x: number; z: number }[] = [];
-  const sampleCount = 240;
-  for (let i = 0; i < sampleCount; i++) {
-    const a = (i / sampleCount) * Math.PI * 2;
-    const wx = BOUNDARY.x + Math.cos(a) * BOUNDARY.rx;
-    const wz = Math.min(GATE_Z, BOUNDARY.z + Math.sin(a) * BOUNDARY.rz);
-    wallSamples.push({ x: wx, z: wz });
-  }
+  const bv = Math.min(0.96, Math.max(-0.96, (GATE_Z - BOUNDARY.z) / BOUNDARY.rz));
+  const xLeftWallEnd = BOUNDARY.x - BOUNDARY.rx * Math.sqrt(Math.max(0.04, 1 - bv * bv));
 
-  const trueWallDist = (x: number, z: number): number => {
-    let minD = GATE_Z - z;
-    for (let i = 0; i < wallSamples.length; i++) {
-      const s = wallSamples[i];
-      if (!s) continue;
-      const d = Math.hypot(x - s.x, z - s.z);
-      if (d < minD) minD = d;
-    }
-    return minD;
+  return {
+    x: xLeftWallEnd - 1.0,
+    z: GATE_Z + 3.8,
   };
-
-  let bestX = BOUNDARY.x - BOUNDARY.rx * 0.58;
-  let bestZ = HALL.zMax + (GATE_Z - HALL.zMax) * 0.45;
-  let bestScore = -Infinity;
-
-  const zMinScan = HALL.zMax - 1.0;
-  const zMaxScan = GATE_Z - 7.5;
-  const xMinScan = BOUNDARY.x - BOUNDARY.rx + 4.5;
-  const xMaxScan = ROOF.xMin - 4.5;
-
-  for (let cz = zMinScan; cz <= zMaxScan; cz += 0.5) {
-    for (let cx = xMinScan; cx <= xMaxScan; cx += 0.5) {
-      const bu = (cx - BOUNDARY.x) / BOUNDARY.rx;
-      const bv = (cz - BOUNDARY.z) / BOUNDARY.rz;
-      if (bu * bu + bv * bv >= 0.88) continue;
-
-      // 1. True perpendicular clearance to any perimeter wall or front gate corner.
-      const dWall = trueWallDist(cx, cz);
-      const dGate = GATE_Z - cz;
-      if (dWall < 5.0 || dGate < 7.5) continue;
-
-      // 2. Clearance to the Hall roof and front steps.
-      const dHallRoof = distToBox(cx, cz, ROOF.xMin - 0.5, ROOF.xMax + 0.5, HALL.zMin - 2.5, HALL.zMax + 1.5);
-      const dSteps = distToBox(cx, cz, STEPS.xMin - 0.5, STEPS.xMax + 0.5, HALL.zMax, STEPS.zMax + 0.5);
-      const dHall = Math.min(dHallRoof, dSteps);
-      if (dHall < 5.8) continue;
-
-      // 3. Clearance to the central entrance path and lantern loop path.
-      const dMainPath = Math.abs(cx - PATH.from.x) - PATH.width * 0.5;
-      let dLantern = 99;
-      const pts = LANTERN_LOOP.points;
-      for (let i = 1; i < pts.length; i++) {
-        const a = pts[i - 1];
-        const b = pts[i];
-        if (!a || !b) continue;
-        const d = distToSegment(cx, cz, a.x, a.z, b.x, b.z) - LANTERN_LOOP.width * 0.5;
-        if (d < dLantern) dLantern = d;
-      }
-      const dPath = Math.min(dMainPath, dLantern);
-      if (dPath < 2.0) continue;
-
-      // 4. Clearance to existing garden trees and rocks.
-      let dProp = 99;
-      for (const c of PROP_COLLIDERS) {
-        const d = Math.hypot(cx - c.x, cz - c.z) - c.r;
-        if (d < dProp) dProp = d;
-      }
-      if (dProp < 1.8) continue;
-
-      // Prefer a spot in the outer-left front lawn where dWall is around 5.8m (never wedged in a corner).
-      const idealWallGap = 1.8 - Math.abs(dWall - 5.8) * 0.6;
-      const idealZZone = 1.5 - Math.abs(dGate - 9.5) * 0.22;
-      const clearanceScore = Math.min(dProp, 3.8) * 0.8 + Math.min(dPath, 3.5) * 0.7 + Math.min(dHall, 8.0) * 0.3;
-      const score = clearanceScore + idealWallGap + idealZZone;
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestX = cx;
-        bestZ = cz;
-      }
-    }
-  }
-
-  return { x: bestX, z: bestZ };
 }
 
 export const WISH_TREE_POS = resolveWishTreePos();
