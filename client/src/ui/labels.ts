@@ -22,6 +22,8 @@ interface Label {
   bubbleHalf: number;
   bubbleDx: number;
   name: string;
+  title: string | null;
+  self: boolean;
   placed: boolean;
   shown: boolean;
   /** Last written screen position (px) — skip style writes when it did not move. */
@@ -53,16 +55,10 @@ export class NameLabels {
   /** Adds or renames a label; `self` adds the "Bạn" badge. */
   set(id: string, name: string, self = false): void {
     const existing = this.labels.get(id);
-    if (existing && existing.name === name) return;
+    if (existing && existing.name === name && existing.self === self) return;
     const tag = existing?.tag ?? document.createElement("span");
-    tag.className = self ? "nametag" : "nametag nametag--other";
-    tag.replaceChildren();
-    if (self) {
-      const badge = document.createElement("i");
-      badge.textContent = vi.labels.you;
-      tag.append(badge);
-    }
-    tag.append(name);
+    const title = existing?.title ?? null;
+    this.renderTagContent(tag, name, self, title);
     if (!existing) {
       const el = document.createElement("span");
       el.className = "nametag-wrap";
@@ -76,10 +72,51 @@ export class NameLabels {
       bubble.hidden = true;
       el.append(bubble, tag, zzz);
       this.root.append(el);
-      this.labels.set(id, { el, tag, zzz, bubble, bubbleUntil: 0, bubbleHalf: 0, bubbleDx: 0, name, placed: false, shown: false, sx: NaN, sy: NaN });
+      this.labels.set(id, {
+        el,
+        tag,
+        zzz,
+        bubble,
+        bubbleUntil: 0,
+        bubbleHalf: 0,
+        bubbleDx: 0,
+        name,
+        title,
+        self,
+        placed: false,
+        shown: false,
+        sx: NaN,
+        sy: NaN,
+      });
     } else {
       existing.name = name;
+      existing.self = self;
     }
+  }
+
+  /** Sets or clears an equipped spiritual title badge (e.g. "Tịnh Tâm") on a visitor's nametag. */
+  setTitle(id: string, title: string | null): void {
+    const l = this.labels.get(id);
+    if (!l || l.title === title) return;
+    l.title = title;
+    this.renderTagContent(l.tag, l.name, l.self, l.title);
+  }
+
+  private renderTagContent(tag: HTMLSpanElement, name: string, self: boolean, title: string | null): void {
+    tag.className = self ? "nametag" : "nametag nametag--other";
+    tag.replaceChildren();
+    if (self) {
+      const badge = document.createElement("i");
+      badge.textContent = vi.labels.you;
+      tag.append(badge);
+    }
+    if (title) {
+      const titleEl = document.createElement("b");
+      titleEl.className = "nametag-title";
+      titleEl.textContent = title;
+      tag.append(titleEl);
+    }
+    tag.append(name);
   }
 
   /** D25: floating "z z Z" beside the tag while that person dozes. */
