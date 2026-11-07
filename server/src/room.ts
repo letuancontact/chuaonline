@@ -262,6 +262,7 @@ export class Room {
       visitors: this.wireVisitors(),
       reserved: null,
       resume: member.token,
+      roomName: this.name,
     });
     // Right after the snapshot, empty or not, so the chat panel starts from the room's real state.
     if (roomAllowsChat(this.id)) this.send(ws, { type: "chat-history", lines: [...this.chatLines], serverTime: now });
