@@ -1,4 +1,5 @@
 import { type ConnectionStatus } from "@santinh/shared";
+import { safeLocalStorage } from "../beads/counter.ts";
 import {
   ALL_QUESTS_BONUS,
   SHOP_ITEMS,
@@ -10,6 +11,8 @@ import { vi } from "../i18n/vi.ts";
 import "./progression-dialog.css";
 
 type TabId = "checkin" | "quests" | "shop";
+
+const AVATAR_STORAGE_KEY = "santinh.avatar.v1";
 
 export interface ProgressionDialogCallbacks {
   onClaimReward?: (meritAdded: number, label: string) => void;
@@ -26,8 +29,8 @@ const CATEGORY_LABEL: Record<ShopCategory, string> = {
   title: "Danh Hiệu Tịnh Tu",
 };
 
-/** Cute chibi novice monk portrait SVG with golden lotus base and dynamic robe color (`--monk-robe`). */
-const MONK_AVATAR_SVG = `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+/** Default chibi novice monk portrait SVG (inside the circular frame). */
+const MONK_PORTRAIT_SVG = `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <defs>
     <radialGradient id="avBg" cx="50%" cy="42%" r="52%">
       <stop offset="0%" stop-color="#a8c0ff"/>
@@ -39,16 +42,11 @@ const MONK_AVATAR_SVG = `<svg viewBox="0 0 120 120" fill="none" xmlns="http://ww
       <stop offset="70%" stop-color="#f7c8a4"/>
       <stop offset="100%" stop-color="#e3a67c"/>
     </radialGradient>
-    <linearGradient id="goldPetal" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#fff099"/>
-      <stop offset="55%" stop-color="#f5b82e"/>
-      <stop offset="100%" stop-color="#b87308"/>
-    </linearGradient>
   </defs>
-  <circle cx="60" cy="58" r="46" fill="url(#avBg)"/>
-  <circle cx="60" cy="52" r="34" fill="#ffe89e" fill-opacity="0.25"/>
+  <circle cx="60" cy="60" r="58" fill="url(#avBg)"/>
+  <circle cx="60" cy="52" r="36" fill="#ffe89e" fill-opacity="0.25"/>
   <!-- Robe body -->
-  <path d="M28 102C30 82 43 73 60 73C77 73 90 82 92 102H28Z" fill="var(--monk-robe, #b8621b)" stroke="#5c2c06" stroke-width="2"/>
+  <path d="M24 112C26 84 41 73 60 73C79 73 94 84 96 112H24Z" fill="var(--monk-robe, #b8621b)" stroke="#5c2c06" stroke-width="2"/>
   <path d="M46 74L60 90L74 74" stroke="#f6b93b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
   <!-- Prayer beads around neck -->
   <g fill="#6e3512" stroke="#3d1b05" stroke-width="1">
@@ -78,20 +76,36 @@ const MONK_AVATAR_SVG = `<svg viewBox="0 0 120 120" fill="none" xmlns="http://ww
   <!-- Sweet smile -->
   <path d="M55 59Q60 63.5 65 59" stroke="#7a3e22" stroke-width="2.2" stroke-linecap="round" fill="none"/>
   <!-- Clasped hands (Chắp tay) -->
-  <path d="M53 94C53 84 57 78 60 76C63 78 67 84 67 94C67 97 64 99 60 99C56 99 53 97 53 94Z" fill="url(#skinGrad)" stroke="#8c5332" stroke-width="1.8"/>
-  <path d="M60 77V97" stroke="#b57c56" stroke-width="1.4" stroke-linecap="round"/>
-  <!-- Golden Lotus Base cradling the frame -->
-  <path d="M22 96C30 88 42 92 48 103C36 105 26 102 22 96Z" fill="url(#goldPetal)" stroke="#7a4602" stroke-width="1.5"/>
-  <path d="M98 96C90 88 78 92 72 103C84 105 94 102 98 96Z" fill="url(#goldPetal)" stroke="#7a4602" stroke-width="1.5"/>
-  <path d="M36 102C42 91 52 91 58 105C48 108 40 106 36 102Z" fill="url(#goldPetal)" stroke="#7a4602" stroke-width="1.5"/>
-  <path d="M84 102C78 91 68 91 62 105C72 108 80 106 84 102Z" fill="url(#goldPetal)" stroke="#7a4602" stroke-width="1.5"/>
-  <path d="M60 88C66 95 66 104 60 110C54 104 54 95 60 88Z" fill="url(#goldPetal)" stroke="#7a4602" stroke-width="1.5"/>
+  <path d="M53 96C53 85 57 78 60 76C63 78 67 85 67 96C67 99 64 101 60 101C56 101 53 99 53 96Z" fill="url(#skinGrad)" stroke="#8c5332" stroke-width="1.8"/>
+  <path d="M60 77V99" stroke="#b57c56" stroke-width="1.4" stroke-linecap="round"/>
+</svg>`;
+
+/** Golden lotus petals overlay cradling the bottom of the avatar frame (stays above custom photos). */
+const AVATAR_LOTUS_OVERLAY_SVG = `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <defs>
+    <linearGradient id="goldPetal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff099"/>
+      <stop offset="55%" stop-color="#f5b82e"/>
+      <stop offset="100%" stop-color="#b87308"/>
+    </linearGradient>
+  </defs>
+  <path d="M18 98C26 90 40 94 46 106C34 108 22 104 18 98Z" fill="url(#goldPetal)" stroke="#7a4602" stroke-width="1.6"/>
+  <path d="M102 98C94 90 80 94 74 106C86 108 98 104 102 98Z" fill="url(#goldPetal)" stroke="#7a4602" stroke-width="1.6"/>
+  <path d="M33 105C40 93 51 93 58 108C47 111 38 109 33 105Z" fill="url(#goldPetal)" stroke="#7a4602" stroke-width="1.6"/>
+  <path d="M87 105C80 93 69 93 62 108C73 111 82 109 87 105Z" fill="url(#goldPetal)" stroke="#7a4602" stroke-width="1.6"/>
+  <path d="M60 90C66 98 66 107 60 114C54 107 54 98 60 90Z" fill="url(#goldPetal)" stroke="#7a4602" stroke-width="1.6"/>
 </svg>`;
 
 const GOLD_LOTUS_ICON = `<svg viewBox="0 0 32 26" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <path d="M16 2C19.5 7.5 21 13 16 21C11 13 12.5 7.5 16 2Z" fill="#ffd859" stroke="#8a4f05" stroke-width="1.4"/>
   <path d="M16 21C21 13 26.5 11 29 15.5C26.5 20.5 21 22 16 21Z" fill="#f7b731" stroke="#8a4f05" stroke-width="1.4"/>
   <path d="M16 21C11 13 5.5 11 3 15.5C5.5 20.5 11 22 16 21Z" fill="#f7b731" stroke="#8a4f05" stroke-width="1.4"/>
+</svg>`;
+
+const TEMPLE_MINI_ICON = `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <path d="M2 9L10 3L18 9H2Z" fill="#ffd859" stroke="#7a4204" stroke-width="1.3" stroke-linejoin="round"/>
+  <rect x="4.5" y="9" width="11" height="7.5" rx="1" fill="#e09919" stroke="#7a4204" stroke-width="1.2"/>
+  <rect x="8.2" y="11.5" width="3.6" height="5" rx="0.8" fill="#5c2808"/>
 </svg>`;
 
 const STAR_ICON = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -139,14 +153,65 @@ const QUEST_SCROLL_ICON = `<svg viewBox="0 0 56 52" fill="none" xmlns="http://ww
   <circle cx="33" cy="31" r="2.8" fill="#f59e0b"/>
 </svg>`;
 
+function loadSavedAvatar(): string | null {
+  try {
+    const val = safeLocalStorage()?.getItem(AVATAR_STORAGE_KEY);
+    return val && val.startsWith("data:image/") ? val : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveAvatarDataUrl(dataUrl: string): void {
+  try {
+    safeLocalStorage()?.setItem(AVATAR_STORAGE_KEY, dataUrl);
+  } catch {
+    // Storage quota or private mode: still shown for current session.
+  }
+}
+
+/** Center-crops an uploaded image file into a 160×160 square JPEG data URL. */
+function cropImageToSquareDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const size = 160;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Canvas 2D unavailable"));
+        return;
+      }
+      const side = Math.min(img.width, img.height);
+      const sx = Math.max(0, Math.floor((img.width - side) / 2));
+      const sy = Math.max(0, Math.floor((img.height - side) / 2));
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+      resolve(canvas.toDataURL("image/jpeg", 0.86));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Invalid image"));
+    };
+    img.src = url;
+  });
+}
+
 /**
- * Renders the compact top-left Player Status Frame (Avatar, Name, Level, EXP bar, Room selector below EXP),
+ * Renders the compact top-left Player Status Frame (Avatar with custom photo upload,
+ * Name, Level, EXP bar, and Room selector placed below the Avatar),
  * the compact top-right 3-Currency Bar + Settings Gear + single `Nhiệm Vụ` button,
  * and the 3-tab modal dialog (Daily Check-in, Daily Quests, Spiritual Shop).
  */
 export class ProgressionDialog {
-  private readonly playerCard: HTMLDivElement;
+  private readonly playerWrap: HTMLDivElement;
   private readonly avatarBtn: HTMLButtonElement;
+  private readonly avatarDefaultEl: HTMLSpanElement;
+  private readonly avatarImgEl: HTMLImageElement;
+  private readonly avatarInput: HTMLInputElement;
   private readonly playerNameEl: HTMLSpanElement;
   private readonly levelBadgeEl: HTMLButtonElement;
   private readonly expFillEl: HTMLDivElement;
@@ -173,17 +238,63 @@ export class ProgressionDialog {
     private readonly cb: ProgressionDialogCallbacks = {},
     parent: HTMLElement = document.body,
   ) {
-    // 1. COMPACT TOP-LEFT PLAYER STATUS FRAME (Avatar + Tên + Level + EXP + Chọn Phòng dưới EXP)
-    this.playerCard = document.createElement("div");
-    this.playerCard.className = "lotus-player-card";
+    // 1. TOP-LEFT WRAP: Player Status Card on top + Room Selector Button below the Avatar
+    this.playerWrap = document.createElement("div");
+    this.playerWrap.className = "lotus-player-wrap";
+
+    const playerCard = document.createElement("div");
+    playerCard.className = "lotus-player-card";
+
+    // Hidden file input for custom avatar photo upload
+    this.avatarInput = document.createElement("input");
+    this.avatarInput.type = "file";
+    this.avatarInput.accept = "image/*";
+    this.avatarInput.hidden = true;
+    this.avatarInput.addEventListener("change", () => {
+      const file = this.avatarInput.files?.[0];
+      this.avatarInput.value = "";
+      if (!file) return;
+      void cropImageToSquareDataUrl(file).then(
+        (dataUrl) => {
+          saveAvatarDataUrl(dataUrl);
+          this.applyCustomAvatar(dataUrl);
+        },
+        () => {
+          // Ignore invalid image files silently.
+        },
+      );
+    });
 
     this.avatarBtn = document.createElement("button");
     this.avatarBtn.type = "button";
     this.avatarBtn.className = "lotus-avatar-frame";
-    this.avatarBtn.title = "Mở Pháp Bảo Các (Phím 6 / J)";
-    this.avatarBtn.setAttribute("aria-label", "Hồ sơ tu tập và Pháp Bảo Các");
-    this.avatarBtn.innerHTML = MONK_AVATAR_SVG;
-    this.avatarBtn.addEventListener("click", () => this.open("shop"));
+    this.avatarBtn.title = "Bấm để tải ảnh đại diện lên";
+    this.avatarBtn.setAttribute("aria-label", "Tải ảnh đại diện lên");
+
+    this.avatarDefaultEl = document.createElement("span");
+    this.avatarDefaultEl.className = "lotus-avatar-art";
+    this.avatarDefaultEl.innerHTML = MONK_PORTRAIT_SVG;
+
+    this.avatarImgEl = document.createElement("img");
+    this.avatarImgEl.className = "lotus-avatar-img";
+    this.avatarImgEl.alt = "Ảnh đại diện";
+    this.avatarImgEl.hidden = true;
+
+    const lotusOverlay = document.createElement("span");
+    lotusOverlay.className = "lotus-avatar-lotus";
+    lotusOverlay.innerHTML = AVATAR_LOTUS_OVERLAY_SVG;
+
+    const camHint = document.createElement("span");
+    camHint.className = "lotus-avatar-cam";
+    camHint.textContent = "📷";
+
+    this.avatarBtn.append(this.avatarDefaultEl, this.avatarImgEl, lotusOverlay, camHint);
+    this.avatarBtn.addEventListener("click", () => this.avatarInput.click());
+
+    const savedAvatar = loadSavedAvatar();
+    if (savedAvatar) {
+      this.applyCustomAvatar(savedAvatar);
+    }
 
     const infoPanel = document.createElement("div");
     infoPanel.className = "lotus-player-panel";
@@ -210,14 +321,15 @@ export class ProgressionDialog {
     this.levelBadgeEl = document.createElement("button");
     this.levelBadgeEl.type = "button";
     this.levelBadgeEl.className = "lotus-level-badge";
-    this.levelBadgeEl.addEventListener("click", () => this.open("quests"));
+    this.levelBadgeEl.title = "Mở Sổ Tu Tập & Pháp Bảo Các";
+    this.levelBadgeEl.addEventListener("click", () => this.open("shop"));
 
     topRow.append(namePill, this.levelBadgeEl);
 
     const barsBox = document.createElement("div");
     barsBox.className = "lotus-bars-box";
 
-    // Single EXP Row (moved up to replace HP bar per user request)
+    // Single EXP Row
     const expRow = document.createElement("div");
     expRow.className = "lotus-stat-row";
     const expIcon = document.createElement("span");
@@ -240,26 +352,30 @@ export class ProgressionDialog {
     cornerLotus.innerHTML = PINK_LOTUS_ICON;
 
     barsBox.append(expRow, cornerLotus);
+    infoPanel.append(topRow, barsBox);
+    playerCard.append(this.avatarBtn, infoPanel);
 
-    // Room / Server selector button placed neatly right below the EXP bar
+    // Room / Server selector pill placed on its own row directly below the Avatar
     this.roomBtn = document.createElement("button");
     this.roomBtn.type = "button";
     this.roomBtn.className = "lotus-room-btn";
     this.roomBtn.title = "Đổi phòng / Chọn sân chùa";
     this.roomDotEl = document.createElement("span");
     this.roomDotEl.className = "status-dot status-dot--connecting";
+    const roomTempleIcon = document.createElement("span");
+    roomTempleIcon.className = "lotus-room-icon";
+    roomTempleIcon.innerHTML = TEMPLE_MINI_ICON;
     this.roomTextEl = document.createElement("span");
     this.roomTextEl.className = "lotus-room-text";
     this.roomTextEl.textContent = "Phòng 1 · Tĩnh Tâm";
     const roomChevron = document.createElement("span");
     roomChevron.className = "lotus-room-chevron";
     roomChevron.textContent = "▾";
-    this.roomBtn.append(this.roomDotEl, this.roomTextEl, roomChevron);
+    this.roomBtn.append(this.roomDotEl, roomTempleIcon, this.roomTextEl, roomChevron);
     this.roomBtn.addEventListener("click", () => this.cb.onOpenRooms?.());
 
-    infoPanel.append(topRow, barsBox, this.roomBtn);
-    this.playerCard.append(this.avatarBtn, infoPanel);
-    parent.append(this.playerCard);
+    this.playerWrap.append(playerCard, this.roomBtn, this.avatarInput);
+    parent.append(this.playerWrap);
 
     // 2. COMPACT TOP-RIGHT CURRENCY BAR + SETTINGS GEAR + SINGLE `Nhiệm Vụ` BUTTON
     this.topRightWrap = document.createElement("div");
@@ -320,7 +436,7 @@ export class ProgressionDialog {
 
     currencyBar.append(leftFlower, meritSlot, gemsSlot, lotusSlot, settingsBtn, rightFlower);
 
-    // Single Quick Button below Currency Bar: `Nhiệm Vụ` (Quà Tặng removed to avoid duplication)
+    // Single Quick Button below Currency Bar: `Nhiệm Vụ`
     const quickRow = document.createElement("div");
     quickRow.className = "lotus-quick-row";
 
@@ -416,6 +532,12 @@ export class ProgressionDialog {
     this.render();
   }
 
+  private applyCustomAvatar(dataUrl: string): void {
+    this.avatarImgEl.src = dataUrl;
+    this.avatarImgEl.hidden = false;
+    this.avatarDefaultEl.hidden = true;
+  }
+
   private makeCurrencySlot(
     iconSvg: string,
     valueEl: HTMLSpanElement,
@@ -454,12 +576,12 @@ export class ProgressionDialog {
     }
   }
 
-  /** Tints the chibi monk avatar's robe to match the player's chosen robe color. */
+  /** Tints the default chibi monk avatar's robe to match the player's chosen robe color. */
   setPlayerColor(color: string): void {
     this.avatarBtn.style.setProperty("--monk-robe", color);
   }
 
-  /** Updates the room / server selector pill right below the EXP bar. */
+  /** Updates the room / server selector pill right below the Avatar. */
   setRoomInfo(roomNum: number, roomName: string, status?: ConnectionStatus): void {
     const label = `Phòng ${roomNum} · ${roomName}`;
     this.roomTextEl.textContent = label;
@@ -496,7 +618,7 @@ export class ProgressionDialog {
 
   dispose(): void {
     this.offChange();
-    this.playerCard.remove();
+    this.playerWrap.remove();
     this.topRightWrap.remove();
     this.dialog.remove();
   }
