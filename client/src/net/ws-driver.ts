@@ -116,6 +116,7 @@ export class WebSocketNetDriver implements NetDriver {
   private readonly seats = new Map<number, PendingSeat>();
   private offsets: number[] = [];
   private listening = false;
+  private pageShowHandler: ((e: Event) => void) | null = null;
   private lastCheckAt = 0;
 
   constructor(opts: WsDriverOptions = {}) {
@@ -156,6 +157,7 @@ export class WebSocketNetDriver implements NetDriver {
   async switchRoom(roomId: string): Promise<boolean> {
     this.cancelSwitch(false);
     if (roomNumber(roomId) === null) return false;
+    if (roomId === this.room && this.isOpen()) return true;
     return new Promise<boolean>((resolve) => {
       const link = this.open(roomId);
       if (!link) {
@@ -421,12 +423,18 @@ export class WebSocketNetDriver implements NetDriver {
     this.disconnect();
     if (room === null || typeof window === "undefined") return;
     const onShow = (e: Event): void => {
+      this.pageShowHandler = null;
       if ((e as PageTransitionEvent).persisted && this.room === null) this.connect(room);
     };
+    this.pageShowHandler = onShow;
     window.addEventListener("pageshow", onShow, { once: true });
   };
 
   private listen(): void {
+    if (typeof window !== "undefined" && this.pageShowHandler) {
+      window.removeEventListener("pageshow", this.pageShowHandler);
+      this.pageShowHandler = null;
+    }
     if (this.listening || typeof window === "undefined") return;
     this.listening = true;
     window.addEventListener("online", this.onOnline);
@@ -434,6 +442,10 @@ export class WebSocketNetDriver implements NetDriver {
   }
 
   private unlisten(): void {
+    if (typeof window !== "undefined" && this.pageShowHandler) {
+      window.removeEventListener("pageshow", this.pageShowHandler);
+      this.pageShowHandler = null;
+    }
     if (!this.listening) return;
     this.listening = false;
     window.removeEventListener("online", this.onOnline);
