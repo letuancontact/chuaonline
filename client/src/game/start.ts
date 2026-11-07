@@ -420,6 +420,12 @@ export async function start(): Promise<void> {
         hud.setGesture(shownHudGesture);
       }
     };
+    const clearStationaryGesture = (): void => {
+      if (self.gesture !== null && self.gesture !== "kinhHanh") {
+        self.setGesture(null);
+        syncHudGesture();
+      }
+    };
 
     const triggerGesture = (kind: GestureKind): void => {
       if (suspended || beadsScreen.isOpen) return;
@@ -622,6 +628,8 @@ export async function start(): Promise<void> {
       audio.setSuspended(true);
       actions.wake();
       actions.interrupt();
+      self.setGesture(null);
+      syncHudGesture();
       movement.stop();
       driver.disconnect();
       loop?.setPaused(true);
@@ -638,7 +646,15 @@ export async function start(): Promise<void> {
       if (entered) driver.connect(room);
       else if (accountChecked) askName();
     };
-    actions.on("state", (s) => hud.setAction(s, actions.bowing));
+    actions.on("state", (s) => {
+      if (s === "seeking-seat" || s === "kneeling" || s === "rising" || s === "beads" || s === "hello") {
+        if (self.gesture !== null) {
+          self.setGesture(null);
+          syncHudGesture();
+        }
+      }
+      hud.setAction(s, actions.bowing);
+    });
     let joined = false;
     let releaseLost: (() => void) | null = null;
     driver.on("status", (s) => {
@@ -797,6 +813,7 @@ export async function start(): Promise<void> {
     const input = new Input(renderer.domElement, {
       tap: (x, y) => {
         actions.interrupt();
+        clearStationaryGesture();
         movement.walkTo(pickFloor(cameraWorld, camera, x, y, window.innerWidth, window.innerHeight));
       },
       rotate: rig.rotate,
@@ -825,7 +842,10 @@ export async function start(): Promise<void> {
       };
     loop.add((dt) => {
       input.axes(axes);
-      if (axes.forward !== 0 || axes.right !== 0) actions.interrupt();
+      if (axes.forward !== 0 || axes.right !== 0) {
+        actions.interrupt();
+        clearStationaryGesture();
+      }
       // Keys are camera-relative: forward = where the camera looks, right = screen right.
       const sy = Math.sin(rig.yaw);
       const cy = Math.cos(rig.yaw);
