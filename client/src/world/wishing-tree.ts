@@ -1,6 +1,5 @@
 import {
   BoxGeometry,
-  BufferGeometry,
   Color,
   CylinderGeometry,
   Euler,
@@ -13,6 +12,7 @@ import {
   Quaternion,
   SphereGeometry,
   Vector3,
+  type BufferGeometry,
   type Object3D,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -61,10 +61,6 @@ function paintGeometry(g: BufferGeometry, hex: number): BufferGeometry {
   return g;
 }
 
-/**
- * Deforms a cylinder with natural bark ridges and gnarls (using the exact vertex
- * displacement pattern from `rockGeometry` in `garden.ts`).
- */
 function barkCylinder(
   rTop: number,
   rBottom: number,
@@ -90,10 +86,6 @@ function barkCylinder(
   return g;
 }
 
-/**
- * Appends a smooth curved organic limb (trunk, buttress root, sweeping bough, or aerial root)
- * along a 3D quadratic Bézier curve with natural bark fluting.
- */
 function appendCurvedLimb(
   parts: BufferGeometry[],
   p0: readonly [number, number, number],
@@ -148,7 +140,6 @@ function appendCurvedLimb(
   }
 }
 
-/** Builds the octagonal stone planter bed and mossy root mound. */
 function buildPlanterGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
@@ -200,21 +191,15 @@ interface BranchTip {
   r: number;
 }
 
-/**
- * Builds the gnarled Bodhi trunk, 8 buttress roots, 6 primary curved boughs,
- * 18 secondary forked branches, and 14 draping aerial roots.
- */
 function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[]; hangSpots: BranchTip[] } {
   const parts: BufferGeometry[] = [];
   const tips: BranchTip[] = [];
   const hangSpots: BranchTip[] = [];
 
-  // 1. Massive gnarled main Bodhi trunk with natural S-curve rising well above the 1.75m gate wall
   appendCurvedLimb(parts, [0, 0.26, 0], [0.16, 1.75, -0.1], [-0.08, 3.35, 0.06], 0.68, 0.42, 7, 11, 0x3d3524, 0x543e2c, 0.14);
   appendCurvedLimb(parts, [-0.08, 3.15, 0.06], [0.1, 4.35, -0.06], [0.0, 5.45, 0.0], 0.38, 0.15, 5, 9, 0x543e2c, 0x634a35, 0.1);
   tips.push({ x: 0, y: 5.65, z: 0, r: 1.55 });
 
-  // 2. 8 sinuous surface buttress roots gripping the mossy earth mound
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + (i % 2) * 0.18;
     const ca = Math.cos(a);
@@ -235,7 +220,6 @@ function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[];
     );
   }
 
-  // 3. 6 primary sweeping boughs + 18 secondary forked branches
   const mainBoughs = 6;
   for (let i = 0; i < mainBoughs; i++) {
     const a = (i / mainBoughs) * Math.PI * 2 + 0.28;
@@ -283,7 +267,6 @@ function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[];
     tips.push({ x: up2[0], y: up2[1] + 0.2, z: up2[2], r: 1.2 });
   }
 
-  // 4. 14 sacred Bodhi aerial roots (rễ khí sinh) draping down from the main boughs
   for (let i = 0; i < 14; i++) {
     const a = (i / 14) * Math.PI * 2 + 0.14;
     const r = i % 2 === 0 ? 1.28 : 1.82;
@@ -313,11 +296,6 @@ function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[];
   return { geometry: merged, tips, hangSpots };
 }
 
-/**
- * Ruffled, cloud-like foliage cluster built by displacing a `SphereGeometry` with 3D sine lobes
- * (same proven technique as `rockGeometry` in `garden.ts`), shaded per vertex from deep moss shadow
- * on the underside to sunlit golden-green on the top crown.
- */
 function foliagePadGeometry(
   cx: number,
   cy: number,
@@ -379,9 +357,6 @@ function foliagePadGeometry(
   return g;
 }
 
-/**
- * Builds the multi-tiered organic Bodhi foliage canopy out of ruffled leaf pads.
- */
 function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
   const rand = seeded(0xb0d1);
   const parts: BufferGeometry[] = [];
@@ -424,7 +399,6 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
   return merged;
 }
 
-/** Builds 6 warm golden temple lanterns hanging beneath the main boughs. */
 function buildTreeLanternsGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
   const count = 6;
@@ -456,9 +430,6 @@ function buildTreeLanternsGeometry(): BufferGeometry {
   return merged;
 }
 
-/**
- * Builds a 3D Wishing Plaque & Curved Silk Ribbon with origin at (0, 0, 0) (the branch knot).
- */
 function buildPlaqueGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
