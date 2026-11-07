@@ -1,78 +1,596 @@
-/* Floating Merit Currency pill at the top-right (beside HUD controls). */
-.hud-merit-chip {
+/* ============================================================================
+   1. TOP-LEFT LOTUS PLAYER STATUS CARD (Avatar + Name + Level + HP + EXP)
+   ============================================================================ */
+.lotus-player-card {
   position: fixed;
-  top: max(14px, env(safe-area-inset-top, 0px));
-  right: calc(max(14px, env(safe-area-inset-right, 0px)) + 152px);
+  top: max(12px, env(safe-area-inset-top, 0px));
+  left: max(12px, env(safe-area-inset-left, 0px));
   z-index: var(--z-hud, 10);
+  display: flex;
+  align-items: center;
+  user-select: none;
+  filter: drop-shadow(0 6px 14px rgb(0 0 0 / 0.42));
+}
+
+.lotus-avatar-frame {
+  position: relative;
+  z-index: 2;
+  width: 84px;
+  height: 84px;
+  padding: 0;
+  border-radius: 50%;
+  border: 3.5px solid #ffd859;
+  background: radial-gradient(circle at 30% 25%, #fff5b8, #e09919 68%, #7d4704 100%);
+  box-shadow:
+    inset 0 2px 4px rgb(255 255 255 / 0.75),
+    0 0 0 2px #7a4204,
+    0 4px 12px rgb(0 0 0 / 0.45);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.lotus-avatar-frame:hover {
+  transform: scale(1.04);
+}
+
+.lotus-avatar-frame:active {
+  transform: scale(0.97);
+}
+
+.lotus-avatar-frame svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 50%;
+}
+
+.lotus-player-panel {
+  position: relative;
+  z-index: 1;
+  margin-left: -18px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 224px;
+}
+
+.lotus-player-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 16px;
+}
+
+.lotus-name-pill {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 12px 0 8px;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 36px;
-  padding: 0 13px;
-  border-radius: 999px;
-  border: 1px solid rgb(242 209 155 / 0.34);
-  background: rgb(22 19 16 / 0.72);
-  color: var(--color-gold, #f2d19b);
-  font-family: var(--font-sans, system-ui, sans-serif);
-  font-size: 0.84rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+  gap: 5px;
+  border-radius: 10px 14px 14px 4px;
+  border: 2px solid #f7c346;
+  background: linear-gradient(180deg, #8c4a19 0%, #632f09 55%, #4a2004 100%);
+  box-shadow:
+    inset 0 1px 1px rgb(255 232 163 / 0.55),
+    0 2px 4px rgb(0 0 0 / 0.4);
+  color: #ffffff;
   cursor: pointer;
-  user-select: none;
-  transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease;
 }
 
-.hud-merit-chip:hover {
-  background: rgb(34 29 23 / 0.85);
-  border-color: rgb(242 209 155 / 0.6);
-  transform: translateY(-1px);
-}
-
-.hud-merit-chip:active {
-  transform: translateY(0) scale(0.97);
-}
-
-.hud-merit-icon {
-  width: 16px;
+.lotus-name-icon {
+  width: 20px;
   height: 16px;
   flex-shrink: 0;
-  color: #f6c96b;
+  display: inline-flex;
 }
 
-.hud-merit-value {
+.lotus-name-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.lotus-name-text {
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #fffdf5;
+  text-shadow: 0 2px 3px rgb(0 0 0 / 0.85);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 112px;
+}
+
+.lotus-level-badge {
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 15px;
+  border: 2px solid #ffe680;
+  background: linear-gradient(180deg, #ffd754 0%, #ea9315 55%, #b85d04 100%);
+  box-shadow:
+    inset 0 1.5px 1px rgb(255 255 255 / 0.75),
+    0 2px 4px rgb(0 0 0 / 0.45);
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+  text-shadow: 0 1.5px 2px rgb(92 38 0 / 0.95);
+  cursor: pointer;
+}
+
+.lotus-bars-box {
+  position: relative;
+  padding: 5px 16px 6px 22px;
+  border-radius: 0 16px 16px 12px;
+  border: 2.5px solid #f5be3b;
+  background: linear-gradient(180deg, #733910 0%, #4d2206 100%);
+  box-shadow:
+    inset 0 2px 5px rgb(0 0 0 / 0.55),
+    0 2px 6px rgb(0 0 0 / 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lotus-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.lotus-stat-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  display: inline-flex;
+}
+
+.lotus-stat-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.lotus-stat-label {
+  width: 28px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1.5px 2px rgb(0 0 0 / 0.9);
+  flex-shrink: 0;
+}
+
+.lotus-stat-label--hp {
+  color: #4cd964;
+}
+
+.lotus-stat-label--exp {
+  color: #d96bff;
+}
+
+.lotus-bar-track {
+  position: relative;
+  flex: 1;
+  height: 14px;
+  border-radius: 999px;
+  background: #2b1203;
+  border: 1px solid rgb(255 214 128 / 0.35);
+  box-shadow: inset 0 2px 4px rgb(0 0 0 / 0.8);
+  overflow: hidden;
+}
+
+.lotus-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.lotus-bar-fill--hp {
+  background: linear-gradient(180deg, #9cff57 0%, #38cc28 55%, #198c11 100%);
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.65);
+}
+
+.lotus-bar-fill--exp {
+  background: linear-gradient(180deg, #f39cff 0%, #b83dff 55%, #7512bd 100%);
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.65);
+}
+
+.lotus-bar-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.95);
   font-variant-numeric: tabular-nums;
-  color: #fff5df;
+  pointer-events: none;
 }
 
-.hud-merit-dot {
-  width: 8px;
-  height: 8px;
+.lotus-panel-flower {
+  position: absolute;
+  right: -12px;
+  bottom: -8px;
+  width: 30px;
+  height: 25px;
+  pointer-events: none;
+}
+
+.lotus-panel-flower svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Position the existing room-pill & exit button neatly right below the Player Status Card */
+.game-hud .hud-top-left {
+  top: calc(max(12px, env(safe-area-inset-top, 0px)) + 92px);
+  left: max(12px, env(safe-area-inset-left, 0px));
+  gap: 6px;
+}
+
+.game-hud .hud-top-left .room-pill,
+.game-hud .hud-top-left .tool-circle {
+  min-height: 36px;
+  height: 36px;
+  border: 1.5px solid rgb(245 190 59 / 0.65);
+  background: linear-gradient(180deg, rgb(94 46 12 / 0.88), rgb(56 26 6 / 0.92));
+  color: #fff6e0;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.35);
+}
+
+.game-hud .hud-top-left .tool-circle {
+  width: 36px;
+  min-width: 36px;
+}
+
+/* ============================================================================
+   2. TOP-RIGHT CURRENCY BAR + SETTINGS GEAR + QUICK BUTTONS (Quà Tặng, Nhiệm Vụ)
+   ============================================================================ */
+.lotus-top-right {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top, 0px));
+  right: max(12px, env(safe-area-inset-right, 0px));
+  z-index: var(--z-hud, 10);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  user-select: none;
+}
+
+.lotus-currency-bar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 6px 0 14px;
+  border-radius: 999px;
+  border: 3px solid #f7c548;
+  background: linear-gradient(180deg, #753b10 0%, #4d2305 55%, #381702 100%);
+  box-shadow:
+    inset 0 2px 3px rgb(255 232 166 / 0.45),
+    0 0 0 1.5px #6b3600,
+    0 6px 14px rgb(0 0 0 / 0.42);
+}
+
+.lotus-bar-wing {
+  position: absolute;
+  top: 50%;
+  width: 30px;
+  height: 25px;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.lotus-bar-wing--left {
+  left: -15px;
+  transform: translateY(-42%) rotate(-18deg);
+}
+
+.lotus-bar-wing--right {
+  right: -13px;
+  transform: translateY(-42%) scaleX(-1) rotate(-18deg);
+}
+
+.lotus-bar-wing svg {
+  width: 100%;
+  height: 100%;
+}
+
+.lotus-curr-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 3px 0 4px;
+  border-radius: 999px;
+  background: rgb(28 11 2 / 0.52);
+  border: 1px solid rgb(255 210 115 / 0.24);
+  cursor: pointer;
+  transition: background-color 0.14s ease;
+}
+
+.lotus-curr-slot:hover {
+  background: rgb(52 22 5 / 0.72);
+}
+
+.lotus-curr-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  display: inline-flex;
+  filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.45));
+}
+
+.lotus-curr-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.lotus-curr-val {
+  min-width: 22px;
+  padding: 0 3px;
+  text-align: center;
+  font-size: 0.9rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #ffffff;
+  text-shadow: 0 1.5px 2px rgb(0 0 0 / 0.9);
+}
+
+.lotus-curr-plus {
+  width: 22px;
+  height: 22px;
+  padding: 0;
   border-radius: 50%;
-  background: #f59e0b;
-  box-shadow: 0 0 8px #f59e0b;
-  animation: merit-dot-pulse 1.6s infinite ease-in-out;
+  border: 1.5px solid #ffe88a;
+  background: linear-gradient(180deg, #ffd646 0%, #eb8c10 60%, #b55702 100%);
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.8), 0 1px 3px rgb(0 0 0 / 0.5);
+  color: #5c2600;
+  font-size: 0.92rem;
+  font-weight: 900;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.lotus-curr-plus:hover {
+  filter: brightness(1.08);
+}
+
+.lotus-settings-btn {
+  width: 36px;
+  height: 36px;
+  padding: 4px;
+  border-radius: 50%;
+  border: 2.5px solid #ffe47a;
+  background: linear-gradient(180deg, #914d16 0%, #592805 100%);
+  box-shadow:
+    inset 0 1px 2px rgb(255 232 165 / 0.65),
+    0 2px 5px rgb(0 0 0 / 0.5);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.16s ease;
+}
+
+.lotus-settings-btn:hover {
+  transform: rotate(22deg) scale(1.05);
+}
+
+.lotus-settings-btn svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Quick Action Row (Quà Tặng & Nhiệm Vụ) */
+.lotus-quick-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 4px;
+}
+
+.lotus-quick-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  filter: drop-shadow(0 4px 8px rgb(0 0 0 / 0.45));
+  transition: transform 0.14s ease;
+}
+
+.lotus-quick-btn:hover {
+  transform: translateY(-2px) scale(1.04);
+}
+
+.lotus-quick-btn:active {
+  transform: translateY(0) scale(0.96);
+}
+
+.lotus-quick-art {
+  width: 54px;
+  height: 48px;
+  display: block;
+}
+
+.lotus-quick-art svg {
+  width: 100%;
+  height: 100%;
+}
+
+.lotus-quick-label {
+  margin-top: -8px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1.8px solid #ffd459;
+  background: linear-gradient(180deg, #d9381e 0%, #961b09 100%);
+  box-shadow: inset 0 1px 1px rgb(255 225 160 / 0.65), 0 2px 4px rgb(0 0 0 / 0.5);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
+}
+
+.lotus-red-bang {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #fff3c4;
+  background: linear-gradient(180deg, #ff4b3a 0%, #c91407 100%);
+  color: #ffffff;
+  font-size: 0.76rem;
+  font-weight: 900;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.55);
+  animation: merit-dot-pulse 1.5s infinite ease-in-out;
+}
+
+.lotus-red-bang[hidden] {
+  display: none !important;
 }
 
 @keyframes merit-dot-pulse {
-  0%, 100% { transform: scale(0.9); opacity: 0.8; }
-  50% { transform: scale(1.2); opacity: 1; }
+  0%, 100% { transform: scale(0.94); }
+  50% { transform: scale(1.14); }
 }
 
-@media (max-width: 640px) {
-  .hud-merit-chip {
-    top: calc(max(14px, env(safe-area-inset-top, 0px)) + 44px);
-    right: max(14px, env(safe-area-inset-right, 0px));
-    height: 32px;
-    padding: 0 11px;
-    font-size: 0.78rem;
+/* Position any ceremony banner below the quick buttons */
+.game-hud .hud-top-right {
+  top: calc(max(12px, env(safe-area-inset-top, 0px)) + 118px);
+  right: max(12px, env(safe-area-inset-right, 0px));
+}
+
+body:has(dialog.beads[open]) .lotus-player-card,
+body:has(dialog.beads[open]) .lotus-top-right {
+  display: none !important;
+}
+
+/* Keep control hint and toasts clear of the taller top HUD on narrow viewports */
+@media (max-width: 900px) {
+  .game-hud .hud-hint {
+    top: 146px;
+  }
+  .toasts {
+    top: 196px;
   }
 }
 
-body:has(dialog.beads[open]) .hud-merit-chip {
-  display: none !important;
+/* Responsive layout for mobile screens */
+@media (max-width: 720px) {
+  .lotus-avatar-frame {
+    width: 60px;
+    height: 60px;
+    border-width: 2.5px;
+  }
+  .lotus-player-panel {
+    margin-left: -12px;
+    min-width: 148px;
+  }
+  .lotus-player-top {
+    padding-left: 12px;
+  }
+  .lotus-name-pill {
+    height: 24px;
+    padding: 0 7px 0 5px;
+  }
+  .lotus-name-icon {
+    width: 15px;
+    height: 12px;
+  }
+  .lotus-name-text {
+    font-size: 0.75rem;
+    max-width: 68px;
+  }
+  .lotus-level-badge {
+    height: 24px;
+    padding: 0 7px;
+    font-size: 0.68rem;
+  }
+  .lotus-bars-box {
+    padding: 4px 10px 4px 15px;
+    gap: 3px;
+  }
+  .lotus-stat-label {
+    width: 22px;
+    font-size: 0.62rem;
+  }
+  .lotus-bar-track {
+    height: 11px;
+  }
+  .lotus-bar-text {
+    font-size: 0.58rem;
+  }
+  .lotus-panel-flower {
+    width: 22px;
+    height: 18px;
+    right: -8px;
+    bottom: -6px;
+  }
+  .game-hud .hud-top-left {
+    top: calc(max(10px, env(safe-area-inset-top, 0px)) + 68px);
+  }
+  .lotus-currency-bar {
+    height: 36px;
+    gap: 4px;
+    padding: 0 4px 0 8px;
+    border-width: 2px;
+  }
+  .lotus-bar-wing {
+    display: none;
+  }
+  .lotus-curr-slot {
+    height: 24px;
+    gap: 3px;
+    padding: 0 2px;
+  }
+  .lotus-curr-icon {
+    width: 18px;
+    height: 18px;
+  }
+  .lotus-curr-val {
+    min-width: 14px;
+    font-size: 0.74rem;
+  }
+  .lotus-curr-plus {
+    width: 17px;
+    height: 17px;
+    font-size: 0.75rem;
+  }
+  .lotus-settings-btn {
+    width: 28px;
+    height: 28px;
+  }
+  .lotus-quick-row {
+    gap: 8px;
+  }
+  .lotus-quick-art {
+    width: 42px;
+    height: 38px;
+  }
+  .lotus-quick-label {
+    font-size: 0.64rem;
+    padding: 1px 7px;
+  }
 }
 
 /* Title badge inside the player's nametag */
@@ -90,20 +608,22 @@ body:has(dialog.beads[open]) .hud-merit-chip {
   vertical-align: middle;
 }
 
-/* Main Progression & Shop Modal */
+/* ============================================================================
+   3. MAIN PROGRESSION & SHOP MODAL
+   ============================================================================ */
 dialog.progression-dialog {
   width: min(92vw, 540px);
   max-height: min(86vh, 660px);
   margin: auto;
   padding: 0;
-  border: 1px solid rgb(242 209 155 / 0.28);
+  border: 2px solid rgb(245 198 92 / 0.55);
   border-radius: 20px;
-  background: rgb(22 19 16 / 0.92);
+  background: rgb(22 19 16 / 0.94);
   color: var(--color-text, #f5efe6);
   font-family: var(--font-sans, system-ui, sans-serif);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 20px 50px rgb(0 0 0 / 0.55);
+  box-shadow: 0 20px 50px rgb(0 0 0 / 0.6);
   overflow: hidden;
 }
 
@@ -155,9 +675,10 @@ dialog.progression-dialog::backdrop {
   background: rgb(242 209 155 / 0.12);
   border: 1px solid rgb(242 209 155 / 0.3);
   color: #ffe5ad;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .prog-close {
@@ -207,16 +728,6 @@ dialog.progression-dialog::backdrop {
   color: #1c1610;
   background: linear-gradient(135deg, #f5d79d, #dfb063);
   border-color: rgb(255 242 210 / 0.6);
-}
-
-.prog-tab-badge {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-left: 5px;
-  border-radius: 50%;
-  background: #f59e0b;
-  vertical-align: middle;
 }
 
 /* Body Panels */
@@ -464,4 +975,12 @@ dialog.progression-dialog::backdrop {
   background: rgb(72 180 125 / 0.24);
   border-color: rgb(110 225 165 / 0.55);
   color: #b8ffda;
+}
+
+/* Quick tools grid inside SettingsDialog */
+.settings-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
 }
