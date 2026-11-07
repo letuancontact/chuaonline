@@ -335,9 +335,12 @@ export async function start(): Promise<void> {
     meritAnchor.style.height = "0";
     meritAnchor.style.pointerEvents = "none";
     meritAnchor.style.zIndex = "var(--z-hud, 10)";
+    meritAnchor.hidden = true;
     document.body.append(meritAnchor);
     const activeMerits: HTMLSpanElement[] = [];
     const meritWorldPos = new Vector3();
+    let meritSx = NaN;
+    let meritSy = NaN;
 
     const spawnMeritFloat = (): void => {
       if (activeMerits.length >= MAX_MERIT_FLOATS) {
@@ -355,6 +358,11 @@ export async function start(): Promise<void> {
         const idx = activeMerits.indexOf(span);
         if (idx !== -1) activeMerits.splice(idx, 1);
         span.remove();
+        if (activeMerits.length === 0) {
+          meritAnchor.hidden = true;
+          meritSx = NaN;
+          meritSy = NaN;
+        }
       };
       span.addEventListener("animationend", cleanup, { once: true });
       setTimeout(cleanup, 1250);
@@ -883,14 +891,20 @@ export async function start(): Promise<void> {
         if (selfId) {
           labels.place(selfId, o.x, headY, o.z);
         }
-        meritWorldPos.set(o.x, headY, o.z).project(camera);
-        if (meritWorldPos.z > 1) {
-          meritAnchor.hidden = true;
-        } else {
-          const sx = (meritWorldPos.x * 0.5 + 0.5) * window.innerWidth;
-          const sy = (-meritWorldPos.y * 0.5 + 0.5) * window.innerHeight;
-          meritAnchor.hidden = false;
-          meritAnchor.style.transform = `translate3d(${sx}px, ${sy - 30}px, 0)`;
+        if (activeMerits.length > 0) {
+          meritWorldPos.set(o.x, headY, o.z).project(camera);
+          if (meritWorldPos.z > 1) {
+            if (!meritAnchor.hidden) meritAnchor.hidden = true;
+          } else {
+            const sx = Math.round((meritWorldPos.x * 0.5 + 0.5) * window.innerWidth * 2) / 2;
+            const sy = Math.round((-meritWorldPos.y * 0.5 + 0.5) * window.innerHeight * 2) / 2;
+            meritAnchor.hidden = false;
+            if (sx !== meritSx || sy !== meritSy) {
+              meritSx = sx;
+              meritSy = sy;
+              meritAnchor.style.transform = `translate3d(${sx}px, ${sy - 30}px, 0)`;
+            }
+          }
         }
         remotes.forEach(placeLabel);
         labels.end();
