@@ -1,5 +1,6 @@
 import {
   BoxGeometry,
+  BufferGeometry,
   Color,
   CylinderGeometry,
   Euler,
@@ -12,24 +13,27 @@ import {
   Quaternion,
   SphereGeometry,
   Vector3,
-  type BufferGeometry,
   type Object3D,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { BOUNDARY, GATE_Z, ROOF } from "@santinh/shared";
+import { GATE } from "@santinh/shared";
 import { registerCameraPreset } from "../debug/params.ts";
 import { seeded } from "./random.ts";
 
+const GATE_Z = (GATE.zMin + GATE.zMax) / 2;
+const GATE_WALL_X = 18;
+
 /**
- * Placed OUTSIDE the temple gate (z = GATE_Z + 3.2) at the far-left end of the left perimeter wall.
+ * Placed OUTSIDE the temple gate (z = GATE_Z + 2.6) right at the far-left end
+ * of the left perimeter wall (x = -GATE_WALL_X - 0.5 = -18.5).
  */
 export const WISH_TREE_POS = {
-  x: Math.min(ROOF.xMin - 6.5, BOUNDARY.x - BOUNDARY.rx * 0.68),
-  z: GATE_Z + 3.2,
+  x: -GATE_WALL_X - 0.5,
+  z: GATE_Z + 2.6,
 } as const;
 
 const MAX_PLAQUES = 36;
-const INITIAL_PLAQUES = 14;
+const INITIAL_PLAQUES = 16;
 
 const m4 = new Matrix4();
 const q = new Quaternion();
@@ -45,7 +49,8 @@ const segMat = new Matrix4();
 
 function paintGeometry(g: BufferGeometry, hex: number): BufferGeometry {
   const c = new Color(hex);
-  const count = g.getAttribute("position").count;
+  const pos = g.getAttribute("position");
+  const count = pos.count;
   const colors = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     colors[i * 3] = c.r;
@@ -57,8 +62,27 @@ function paintGeometry(g: BufferGeometry, hex: number): BufferGeometry {
 }
 
 /**
- * Appends a smooth curved organic limb (trunk, root, bough, or aerial root) along a 3D quadratic
- * Bézier curve by chaining tapered cylinder segments with overlapped joints.
+ * Deforms a cylinder with natural bark ridges and gnarls (using the exact SphereGeometry/CylinderGeometry
+ * vertex displacement pattern from `rockGeometry` in `garden.ts`).
+ */
+functionbarkCylinder(rTop: number, rBottom: number, height: number, radialSegs: number, seed: number, gnarl = 0.12): CylinderGeometry {
+  const g = new CylinderGeometry(rTop, rBottom, height, radialSegs, 3);
+  const pos = g.getAttribute("position");
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const angle = Math.atan2(z, x);
+    const flute = 1 + gnarl * Math.sin(angle * 5 + y * 2.2 + seed) + gnarl * 0.45 * Math.cos(angle * 3 - y * 3.1 + seed);
+    pos.setXYZ(i, x * flute, y, z * flute);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
+ * Appends a smooth curved organic limb (trunk, buttress root, sweeping bough, or aerial root)
+ * along a 3D quadratic Bézier curve with natural bark fluting.
  */
 function appendCurvedLimb(
   parts: BufferGeometry[],
@@ -71,6 +95,7 @@ function appendCurvedLimb(
   radialSegs: number,
   colorStart: number,
   colorEnd: number,
+  gnarl = 0.1,
 ): void {
   const c0 = new Color(colorStart);
   const c1 = new Color(colorEnd);
@@ -101,7 +126,7 @@ function appendCurvedLimb(
     const r0 = rStart + (rEnd - rStart) * Math.pow(t0, 0.85);
     const r1 = rStart + (rEnd - rStart) * Math.pow(t1, 0.85);
 
-    const cyl = new CylinderGeometry(r1, r0, len * 1.08, radialSegs, 1);
+    const cyl = barkCylinder(r1, r0, len * 1.12, radialSegs, i * 1.7 + rStart * 10, gnarl);
     segDir.set(dx / len, dy / len, dz / len);
     segQuat.setFromUnitVectors(upVec, segDir);
     segPos.set((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5, (a[2] + b[2]) * 0.5);
@@ -117,39 +142,39 @@ function appendCurvedLimb(
 function buildPlanterGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  const baseStep = new CylinderGeometry(1.52, 1.58, 0.12, 8);
-  baseStep.translate(0, 0.06, 0);
+  const baseStep = new CylinderGeometry(2.15, 2.25, 0.14, 8);
+  baseStep.translate(0, 0.07, 0);
   parts.push(paintGeometry(baseStep, 0x6e695f));
 
-  const curbWall = new CylinderGeometry(1.34, 1.4, 0.28, 8);
-  curbWall.translate(0, 0.24, 0);
+  const curbWall = new CylinderGeometry(1.92, 2.0, 0.32, 8);
+  curbWall.translate(0, 0.26, 0);
   parts.push(paintGeometry(curbWall, 0x857f73));
 
-  const topLip = new CylinderGeometry(1.44, 1.44, 0.06, 8);
-  topLip.translate(0, 0.39, 0);
+  const topLip = new CylinderGeometry(2.04, 2.04, 0.07, 8);
+  topLip.translate(0, 0.44, 0);
   parts.push(paintGeometry(topLip, 0x9c9587));
 
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-    const px = Math.cos(a) * 1.38;
-    const pz = Math.sin(a) * 1.38;
-    const post = new CylinderGeometry(0.08, 0.095, 0.46, 6);
-    post.translate(px, 0.24, pz);
+    const px = Math.cos(a) * 1.96;
+    const pz = Math.sin(a) * 1.96;
+    const post = new CylinderGeometry(0.095, 0.11, 0.52, 6);
+    post.translate(px, 0.27, pz);
     parts.push(paintGeometry(post, 0x918a7c));
 
-    const cap = new SphereGeometry(0.085, 8, 6);
+    const cap = new SphereGeometry(0.1, 8, 6);
     cap.scale(1, 0.75, 1);
-    cap.translate(px, 0.49, pz);
+    cap.translate(px, 0.55, pz);
     parts.push(paintGeometry(cap, 0xa69f90));
   }
 
-  const soil = new CylinderGeometry(1.26, 1.26, 0.32, 16);
-  soil.translate(0, 0.18, 0);
+  const soil = new CylinderGeometry(1.82, 1.82, 0.36, 16);
+  soil.translate(0, 0.2, 0);
   parts.push(paintGeometry(soil, 0x382a1d));
 
-  const moss = new SphereGeometry(1.24, 14, 8);
-  moss.scale(1, 0.18, 1);
-  moss.translate(0, 0.31, 0);
+  const moss = new SphereGeometry(1.8, 14, 8);
+  moss.scale(1, 0.2, 1);
+  moss.translate(0, 0.34, 0);
   parts.push(paintGeometry(moss, 0x3b522c));
 
   const merged = mergeGeometries(parts);
@@ -167,106 +192,108 @@ interface BranchTip {
 
 /**
  * Builds the gnarled Bodhi trunk, 8 buttress roots, 6 primary curved boughs,
- * 18 secondary forked branches, and 12 draping aerial roots.
+ * 18 secondary forked branches, and 14 draping aerial roots.
  */
 function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[]; hangSpots: BranchTip[] } {
   const parts: BufferGeometry[] = [];
   const tips: BranchTip[] = [];
   const hangSpots: BranchTip[] = [];
 
-  // 1. Gnarled main Bodhi trunk with natural S-curve
-  appendCurvedLimb(parts, [0, 0.22, 0], [0.12, 1.45, -0.08], [-0.06, 2.75, 0.05], 0.52, 0.32, 6, 10, 0x3d3524, 0x543e2c);
-  appendCurvedLimb(parts, [-0.06, 2.6, 0.05], [0.07, 3.5, -0.05], [0.0, 4.35, 0.0], 0.3, 0.12, 5, 8, 0x543e2c, 0x634a35);
-  tips.push({ x: 0, y: 4.5, z: 0, r: 1.15 });
+  // 1. Massive gnarled main Bodhi trunk with natural S-curve rising well above the 1.75m gate wall
+  appendCurvedLimb(parts, [0, 0.26, 0], [0.16, 1.75, -0.1], [-0.08, 3.35, 0.06], 0.68, 0.42, 7, 11, 0x3d3524, 0x543e2c, 0.14);
+  appendCurvedLimb(parts, [-0.08, 3.15, 0.06], [0.1, 4.35, -0.06], [0.0, 5.45, 0.0], 0.38, 0.15, 5, 9, 0x543e2c, 0x634a35, 0.1);
+  tips.push({ x: 0, y: 5.65, z: 0, r: 1.55 });
 
   // 2. 8 sinuous surface buttress roots gripping the mossy earth mound
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + (i % 2) * 0.18;
     const ca = Math.cos(a);
     const sa = Math.sin(a);
-    const side = i % 2 === 0 ? 0.16 : -0.16;
+    const side = i % 2 === 0 ? 0.22 : -0.22;
     appendCurvedLimb(
       parts,
-      [ca * 0.3, 1.02, sa * 0.3],
-      [ca * 0.74 - sa * side, 0.52, sa * 0.74 + ca * side],
-      [ca * 1.16, 0.26, sa * 1.16],
-      0.19,
-      0.055,
-      4,
-      7,
+      [ca * 0.38, 1.18, sa * 0.38],
+      [ca * 1.05 - sa * side, 0.58, sa * 1.05 + ca * side],
+      [ca * 1.68, 0.3, sa * 1.68],
+      0.25,
+      0.065,
+      5,
+      8,
       0x443826,
       0x364226,
+      0.13,
     );
   }
 
   // 3. 6 primary sweeping boughs + 18 secondary forked branches
   const mainBoughs = 6;
   for (let i = 0; i < mainBoughs; i++) {
-    const a = (i / mainBoughs) * Math.PI * 2 + 0.25;
+    const a = (i / mainBoughs) * Math.PI * 2 + 0.28;
     const ca = Math.cos(a);
     const sa = Math.sin(a);
-    const yStart = 2.34 + (i % 3) * 0.14;
-    const midR = 0.98;
-    const endR = 1.72 + (i % 2) * 0.16;
-    const endY = 3.22 + (i % 3) * 0.15;
+    const yStart = 2.85 + (i % 3) * 0.18;
+    const midR = 1.38;
+    const endR = 2.48 + (i % 2) * 0.22;
+    const endY = 3.92 + (i % 3) * 0.2;
 
-    const p0: [number, number, number] = [ca * 0.18, yStart, sa * 0.18];
-    const p1: [number, number, number] = [ca * midR - sa * 0.18, yStart + 0.58, sa * midR + ca * 0.18];
+    const p0: [number, number, number] = [ca * 0.24, yStart, sa * 0.24];
+    const p1: [number, number, number] = [ca * midR - sa * 0.24, yStart + 0.72, sa * midR + ca * 0.24];
     const p2: [number, number, number] = [ca * endR, endY, sa * endR];
 
-    appendCurvedLimb(parts, p0, p1, p2, 0.22, 0.095, 5, 8, 0x523c2b, 0x624934);
-    tips.push({ x: p2[0], y: p2[1] + 0.18, z: p2[2], r: 0.92 });
-    tips.push({ x: p1[0] * 0.9, y: p1[1] + 0.72, z: p1[2] * 0.9, r: 0.98 });
+    appendCurvedLimb(parts, p0, p1, p2, 0.29, 0.12, 6, 9, 0x523c2b, 0x624934, 0.1);
+    tips.push({ x: p2[0], y: p2[1] + 0.22, z: p2[2], r: 1.28 });
+    tips.push({ x: p1[0] * 0.92, y: p1[1] + 0.88, z: p1[2] * 0.92, r: 1.35 });
 
-    hangSpots.push({ x: p1[0], y: p1[1] - 0.1, z: p1[2], r: 1 });
-    hangSpots.push({ x: p2[0] * 0.9, y: p2[1] - 0.18, z: p2[2] * 0.9, r: 1 });
+    hangSpots.push({ x: p1[0], y: p1[1] - 0.12, z: p1[2], r: 1 });
+    hangSpots.push({ x: p2[0] * 0.9, y: p2[1] - 0.2, z: p2[2] * 0.9, r: 1 });
 
     for (const forkSide of [-1, 1] as const) {
       const fa = a + forkSide * 0.42;
       const fca = Math.cos(fa);
       const fsa = Math.sin(fa);
-      const forkLen = 2.05 + (forkSide > 0 ? 0.14 : 0);
-      const forkY = endY + 0.2 + (forkSide > 0 ? 0.12 : -0.04);
+      const forkLen = 3.05 + (forkSide > 0 ? 0.2 : 0);
+      const forkY = endY + 0.24 + (forkSide > 0 ? 0.15 : -0.05);
 
-      const fp0: [number, number, number] = [p1[0], p1[1] + 0.04, p1[2]];
-      const fp1: [number, number, number] = [fca * 1.5, endY + 0.14, fsa * 1.5];
+      const fp0: [number, number, number] = [p1[0], p1[1] + 0.05, p1[2]];
+      const fp1: [number, number, number] = [fca * 2.2, endY + 0.16, fsa * 2.2];
       const fp2: [number, number, number] = [fca * forkLen, forkY, fsa * forkLen];
 
-      appendCurvedLimb(parts, fp0, fp1, fp2, 0.12, 0.05, 4, 6, 0x594230, 0x69503a);
-      tips.push({ x: fp2[0], y: fp2[1] + 0.14, z: fp2[2], r: 0.8 });
-      hangSpots.push({ x: fp1[0] * 0.98, y: fp1[1] - 0.2, z: fp1[2] * 0.98, r: 1 });
+      appendCurvedLimb(parts, fp0, fp1, fp2, 0.16, 0.06, 5, 7, 0x594230, 0x69503a, 0.08);
+      tips.push({ x: fp2[0], y: fp2[1] + 0.18, z: fp2[2], r: 1.08 });
+      hangSpots.push({ x: fp1[0] * 0.96, y: fp1[1] - 0.22, z: fp1[2] * 0.96, r: 1 });
     }
 
     const ua = a + 0.52;
     const uca = Math.cos(ua);
     const usa = Math.sin(ua);
-    const up0: [number, number, number] = [p1[0] * 0.75, p1[1] + 0.12, p1[2] * 0.75];
-    const up1: [number, number, number] = [uca * 1.05, endY + 0.65, usa * 1.05];
-    const up2: [number, number, number] = [uca * 1.38, endY + 0.98, usa * 1.38];
-    appendCurvedLimb(parts, up0, up1, up2, 0.11, 0.045, 4, 6, 0x594230, 0x6b523b);
-    tips.push({ x: up2[0], y: up2[1] + 0.16, z: up2[2], r: 0.88 });
+    const up0: [number, number, number] = [p1[0] * 0.76, p1[1] + 0.15, p1[2] * 0.76];
+    const up1: [number, number, number] = [uca * 1.48, endY + 0.82, usa * 1.48];
+    const up2: [number, number, number] = [uca * 1.95, endY + 1.25, usa * 1.95];
+    appendCurvedLimb(parts, up0, up1, up2, 0.15, 0.055, 5, 7, 0x594230, 0x6b523b, 0.07);
+    tips.push({ x: up2[0], y: up2[1] + 0.2, z: up2[2], r: 1.2 });
   }
 
-  // 4. 12 sacred Bodhi aerial roots draping down from the main boughs
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 + 0.14;
-    const r = i % 2 === 0 ? 0.88 : 1.24;
+  // 4. 14 sacred Bodhi aerial roots (rễ khí sinh) draping down from the main boughs
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2 + 0.14;
+    const r = i % 2 === 0 ? 1.28 : 1.82;
     const rx = Math.cos(a) * r;
     const rz = Math.sin(a) * r;
-    const topY = i % 2 === 0 ? 2.84 : 3.02;
-    const botY = i % 3 === 0 ? 0.36 : 1.38 + (i % 2) * 0.32;
-    const drift = (i % 2 === 0 ? 1 : -1) * 0.08;
+    const topY = i % 2 === 0 ? 3.45 : 3.68;
+    const botY = i % 3 === 0 ? 0.42 : 1.75 + (i % 2) * 0.38;
+    const drift = (i % 2 === 0 ? 1 : -1) * 0.12;
     appendCurvedLimb(
       parts,
       [rx, topY, rz],
       [rx + drift, (topY + botY) * 0.5, rz - drift],
       [rx * 0.95, botY, rz * 0.95],
-      0.022,
-      0.01,
-      4,
+      0.028,
+      0.012,
+      5,
       5,
       0x4e3928,
       0x664f38,
+      0.04,
     );
   }
 
@@ -276,70 +303,116 @@ function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[];
   return { geometry: merged, tips, hangSpots };
 }
 
-const FOLIAGE_SHADES = [
-  0x1f4023, // Deep shaded underside foliage
-  0x29522b, // Rich forest green
-  0x346432, // Sacred Bodhi jade green
-  0x427637, // Mid-canopy leaf green
-  0x55883b, // Sunlit upper canopy green
-  0x729c3e, // Warm chartreuse-green leaf tips
-  0x9ab042, // Golden-green young Bodhi shoots
-] as const;
+/**
+ * Ruffled, cloud-like foliage cluster built by displacing a `SphereGeometry` with 3D sine lobes
+ * (same proven technique as `rockGeometry` in `garden.ts`), shaded per vertex from deep moss shadow
+ * on the underside to sunlit golden-green on the top crown.
+ */
+function foliagePadGeometry(
+  cx: number,
+  cy: number,
+  cz: number,
+  rx: number,
+  ry: number,
+  rz: number,
+  seed: number,
+  goldenTip: number,
+): BufferGeometry {
+  const g = new SphereGeometry(1, 11, 8);
+  const pos = g.getAttribute("position");
+  const count = pos.count;
+  const colors = new Float32Array(count * 3);
+
+  const deepShadow = new Color(0x1b3820);
+  const midJade = new Color(0x336431);
+  const sunlitGreen = new Color(0x6e993b);
+  const youngGold = new Color(0xb2a83e);
+  const cTmp = new Color();
+
+  for (let i = 0; i < count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+
+    // Organic leaf-clump lobes so it never looks like a rigid geometric ball
+    const lobe =
+      1 +
+      0.22 * Math.sin(3.6 * x + seed) * Math.cos(3.2 * z + seed * 1.4) +
+      0.14 * Math.sin(5.2 * y + 2.4 * x + seed * 2.1);
+
+    // Flatten the underside of each leaf pad like real bough foliage
+    const flatY = y < 0 ? y * 0.55 : y;
+
+    const wx = cx + x * rx * lobe;
+    const wy = cy + flatY * ry * lobe;
+    const wz = cz + z * rz * lobe;
+    pos.setXYZ(i, wx, wy, wz);
+
+    // Smooth vertical & local-normal shading from underside shadow to sunlit top
+    const heightNorm = Math.max(0, Math.min(1, (wy - 3.0) / 3.4));
+    const localTop = Math.max(0, Math.min(1, (y + 0.65) / 1.6));
+    const light = Math.max(0, Math.min(1, localTop * 0.68 + heightNorm * 0.32));
+
+    if (light < 0.46) {
+      cTmp.copy(deepShadow).lerp(midJade, light / 0.46);
+    } else {
+      cTmp.copy(midJade).lerp(sunlitGreen, (light - 0.46) / 0.54);
+    }
+    if (goldenTip > 0 && light > 0.62) {
+      cTmp.lerp(youngGold, goldenTip * (light - 0.62));
+    }
+
+    colors[i * 3] = cTmp.r;
+    colors[i * 3 + 1] = cTmp.g;
+    colors[i * 3 + 2] = cTmp.b;
+  }
+
+  g.setAttribute("color", new Float32BufferAttribute(colors, 3));
+  g.computeVertexNormals();
+  return g;
+}
 
 /**
- * Builds an organic, multi-layered Bodhi canopy out of 108 tilted, layered leaf pads
- * shaded from deep moss-green underneath to sunlit golden-green at the crown.
+ * Builds the multi-tiered organic Bodhi foliage canopy out of ruffled leaf pads.
  */
 function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
   const rand = seeded(0xb0d1);
   const parts: BufferGeometry[] = [];
 
-  const addLeafPad = (cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, colorHex: number): void => {
-    const pad = new SphereGeometry(1, 9, 7);
-    pad.scale(rx, ry, rz);
-    pad.rotateX((rand() - 0.5) * 0.36);
-    pad.rotateZ((rand() - 0.5) * 0.36);
-    pad.rotateY(rand() * Math.PI * 2);
-    pad.translate(cx, cy, cz);
-    parts.push(paintGeometry(pad, colorHex));
-  };
-
   for (let i = 0; i < tips.length; i++) {
     const t = tips[i];
     if (!t) continue;
+    const seedBase = i * 3.17 + 1.2;
+    const golden = i % 3 === 0 ? 0.48 : 0.15;
 
-    // 1. Shaded underside pad
-    addLeafPad(t.x, t.y - 0.14, t.z, t.r * 0.92, t.r * 0.34, t.r * 0.96, FOLIAGE_SHADES[1]);
-    // 2. Main middle leaf pad
-    addLeafPad(t.x, t.y + 0.04, t.z, t.r * 0.98, t.r * 0.42, t.r * 0.92, FOLIAGE_SHADES[3]);
-    // 3. Sunlit upper crown pad
-    const topShade = FOLIAGE_SHADES[4 + (i % 3)] ?? 0x55883b;
-    addLeafPad(t.x, t.y + 0.22, t.z, t.r * 0.76, t.r * 0.35, t.r * 0.78, topShade);
+    // Primary ruffled leaf pad at branch tip
+    parts.push(foliagePadGeometry(t.x, t.y, t.z, t.r, t.r * 0.54, t.r, seedBase, golden));
 
-    // 4. Two organic satellite leaf clusters around each branch tip
+    // 2 satellite leaf puffs around each branch tip for natural layered depth
     for (let s = 0; s < 2; s++) {
       const sa = rand() * Math.PI * 2;
-      const dist = t.r * (0.48 + rand() * 0.26);
-      const subR = t.r * (0.56 + rand() * 0.2);
-      const dy = (rand() - 0.35) * 0.28;
-      const shadeIdx = Math.min(FOLIAGE_SHADES.length - 1, Math.max(0, Math.floor(((t.y + dy - 2.6) / 2.2) * 5) + s));
-      addLeafPad(
-        t.x + Math.cos(sa) * dist,
-        t.y + dy,
-        t.z + Math.sin(sa) * dist,
-        subR,
-        subR * 0.4,
-        subR * 0.92,
-        FOLIAGE_SHADES[shadeIdx] ?? 0x427637,
+      const dist = t.r * (0.46 + rand() * 0.26);
+      const subR = t.r * (0.62 + rand() * 0.18);
+      const dy = (rand() - 0.35) * 0.38;
+      parts.push(
+        foliagePadGeometry(
+          t.x + Math.cos(sa) * dist,
+          t.y + dy,
+          t.z + Math.sin(sa) * dist,
+          subR,
+          subR * 0.52,
+          subR,
+          seedBase + (s + 1) * 4.1,
+          s === 0 ? 0.38 : 0.08,
+        ),
       );
     }
   }
 
-  // Crown dome clusters at the top of the tree
-  addLeafPad(0, 4.65, 0, 1.32, 0.55, 1.32, FOLIAGE_SHADES[4]);
-  addLeafPad(0, 4.92, 0, 0.96, 0.44, 0.96, FOLIAGE_SHADES[6]);
-  addLeafPad(0.55, 4.48, 0.45, 1.02, 0.45, 1.02, FOLIAGE_SHADES[5]);
-  addLeafPad(-0.55, 4.45, -0.45, 1.02, 0.45, 1.02, FOLIAGE_SHADES[5]);
+  // Crown dome clusters at the top of the sacred Bodhi tree
+  parts.push(foliagePadGeometry(0, 5.95, 0, 1.75, 0.92, 1.75, 91.3, 0.45));
+  parts.push(foliagePadGeometry(0.72, 5.58, 0.62, 1.38, 0.74, 1.38, 102.7, 0.35));
+  parts.push(foliagePadGeometry(-0.74, 5.52, -0.58, 1.38, 0.74, 1.38, 114.1, 0.35));
 
   const merged = mergeGeometries(parts);
   for (const p of parts) p.dispose();
@@ -351,25 +424,25 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
 function buildTreeLanternsGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
   const count = 6;
-  const radius = 1.54;
-  const yTop = 2.98;
+  const radius = 2.15;
+  const yTop = 3.68;
 
   for (let i = 0; i < count; i++) {
-    const a = (i / count) * Math.PI * 2 + 0.25;
+    const a = (i / count) * Math.PI * 2 + 0.28;
     const lx = Math.cos(a) * radius;
     const lz = Math.sin(a) * radius;
 
-    const cord = new CylinderGeometry(0.008, 0.008, 0.28, 5);
-    cord.translate(lx, yTop - 0.14, lz);
+    const cord = new CylinderGeometry(0.008, 0.008, 0.32, 5);
+    cord.translate(lx, yTop - 0.16, lz);
     parts.push(paintGeometry(cord, 0x3b2818));
 
-    const cap = new CylinderGeometry(0.085, 0.105, 0.038, 8);
-    cap.translate(lx, yTop - 0.28, lz);
+    const cap = new CylinderGeometry(0.09, 0.115, 0.04, 8);
+    cap.translate(lx, yTop - 0.32, lz);
     parts.push(paintGeometry(cap, 0x4a2e1b));
 
-    const glowCore = new SphereGeometry(0.09, 10, 8);
-    glowCore.scale(1, 1.28, 1);
-    glowCore.translate(lx, yTop - 0.38, lz);
+    const glowCore = new SphereGeometry(0.098, 10, 8);
+    glowCore.scale(1, 1.3, 1);
+    glowCore.translate(lx, yTop - 0.43, lz);
     parts.push(paintGeometry(glowCore, 0xffdfa0));
   }
 
@@ -471,9 +544,9 @@ export function createWishingTree(parent: Object3D): WishingTree {
       .replace(
         "#include <begin_vertex>",
         `#include <begin_vertex>
-        float swayWeight = clamp((transformed.y - 2.1) * 0.35, 0.0, 1.0);
-        float leafPhase = transformed.x * 1.1 + transformed.z * 0.9 + transformed.y * 0.7;
-        float leafSway = swayWeight * (0.046 * sin(uTime * 1.65 + leafPhase) + 0.022 * cos(uTime * 2.9 - leafPhase * 1.3));
+        float swayWeight = clamp((transformed.y - 2.6) * 0.32, 0.0, 1.0);
+        float leafPhase = transformed.x * 0.9 + transformed.z * 0.8 + transformed.y * 0.6;
+        float leafSway = swayWeight * (0.052 * sin(uTime * 1.65 + leafPhase) + 0.024 * cos(uTime * 2.9 - leafPhase * 1.3));
         transformed.x += leafSway;
         transformed.y += leafSway * 0.25;
         transformed.z += leafSway * 0.65;`,
@@ -512,14 +585,14 @@ export function createWishingTree(parent: Object3D): WishingTree {
     let py: number;
     let pz: number;
     if (anchor && i < hangSpots.length) {
-      px = anchor.x + (rand() - 0.5) * 0.18;
-      py = anchor.y + (rand() - 0.5) * 0.12;
-      pz = anchor.z + (rand() - 0.5) * 0.18;
+      px = anchor.x + (rand() - 0.5) * 0.26;
+      py = anchor.y + (rand() - 0.5) * 0.14;
+      pz = anchor.z + (rand() - 0.5) * 0.26;
     } else {
-      const r = 1.22 + (i % 3) * 0.28 + (rand() - 0.5) * 0.16;
+      const r = 1.65 + (i % 3) * 0.42 + (rand() - 0.5) * 0.22;
       px = Math.cos(jitterAngle) * r;
       pz = Math.sin(jitterAngle) * r;
-      py = 2.38 + (i % 3) * 0.2 + (rand() - 0.5) * 0.12;
+      py = 2.95 + (i % 3) * 0.24 + (rand() - 0.5) * 0.16;
     }
     const radialAngle = Math.atan2(pz, px);
     return {
@@ -530,7 +603,7 @@ export function createWishingTree(parent: Object3D): WishingTree {
       baseYaw: -radialAngle + Math.PI * 0.5 + (rand() - 0.5) * 0.45,
       phase: rand() * Math.PI * 2,
       freq: 1.55 + rand() * 0.7,
-      scale: 0.94 + rand() * 0.24,
+      scale: 0.96 + rand() * 0.24,
       impulse: 0,
     };
   });
@@ -572,8 +645,8 @@ export function createWishingTree(parent: Object3D): WishingTree {
   parent.add(root);
 
   registerCameraPreset("wishtree", {
-    position: [WISH_TREE_POS.x + 5.2, 2.7, WISH_TREE_POS.z + 5.6],
-    target: [WISH_TREE_POS.x, 2.3, WISH_TREE_POS.z],
+    position: [WISH_TREE_POS.x + 5.8, 3.2, WISH_TREE_POS.z - 6.8],
+    target: [WISH_TREE_POS.x, 3.0, WISH_TREE_POS.z],
   });
 
   return {
