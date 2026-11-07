@@ -54,15 +54,16 @@ export interface AccountActions {
   signOut: () => void;
 }
 
-/** Secondary HUD actions moved into SettingsDialog per user's Option B. */
+/** Secondary HUD actions moved into SettingsDialog. */
 export interface SettingsQuickActions {
   openPeople?: () => void;
   openInvite?: () => void;
   openOffering?: () => void;
   openRooms?: () => void;
+  exitGame?: () => void;
 }
 
-/** "Cài đặt" (design/settings.html): our name, robe colour, room/social tools, master sound, ambient / chant / effects, background play, controls, credits. */
+/** "Cài đặt" (design/settings.html): our name, robe colour, account & exit, room/social tools, master sound, ambient / chant / effects, background play, controls, credits. */
 export class SettingsDialog {
   private readonly dialog: HTMLDialogElement;
   private readonly desc: HTMLParagraphElement;
@@ -83,6 +84,7 @@ export class SettingsDialog {
   private readonly inviteBtn: HTMLButtonElement;
   private readonly roomsBtn: HTMLButtonElement;
   private readonly offeringBtn: HTMLButtonElement;
+  private readonly exitBtn: HTMLButtonElement;
   private readonly colorButtons: HTMLButtonElement[] = [];
   private username: string | null = null;
   private roomNumber = 1;
@@ -168,7 +170,7 @@ export class SettingsDialog {
     body.append(accountSection);
     this.renderAccount();
 
-    // Room, People, Invite & Offering section (integrated secondary HUD buttons)
+    // Room, People, Invite, Offering & Exit section (integrated secondary HUD buttons)
     const socialSection = el("section", "section");
     const socialHead = el("div", "section-text");
     socialHead.append(el("h3", "", "Không gian & Đạo hữu"));
@@ -234,6 +236,21 @@ export class SettingsDialog {
     const bgSection = this.section(t.background, t.backgroundOff, this.bgToggle);
     this.bgDesc = bgSection.querySelector("small") ?? el("small");
     body.append(bgSection);
+
+    // Exit / Leave Temple section moved inside Settings per user request
+    this.exitBtn = el("button", "btn btn--ghost", vi.hud.exit);
+    this.exitBtn.type = "button";
+    this.exitBtn.setAttribute("aria-label", vi.hud.exit);
+    this.exitBtn.addEventListener("click", () => {
+      this.close();
+      this.quickActions.exitGame?.();
+    });
+    const exitSection = this.section(
+      "Rời chùa tạm nghỉ",
+      "Tạm rời phòng tu tập và dừng âm thanh",
+      this.exitBtn,
+    );
+    body.append(exitSection);
 
     const info = el("section", "section");
     const controls = el("details");
