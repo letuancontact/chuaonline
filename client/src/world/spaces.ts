@@ -12,6 +12,7 @@ import { createMaterials } from "./materials.ts";
 import { createNature } from "./nature.ts";
 import { createPond } from "./pond.ts";
 import { Regions } from "./regions.ts";
+import { createWishingTree } from "./wishing-tree.ts";
 
 /** 3D solids the walkers' 2D collision map does not cover (walls up to the roof, the roof itself). */
 export interface CameraSolids {
@@ -29,6 +30,7 @@ export interface SceneContext {
 export interface BuiltScene {
   lightIncense(): void;
   releaseLantern(): void;
+  hangWish(): void;
   update(dt: number, t: number, daylight: number, camera: Camera): void;
 }
 
@@ -48,6 +50,7 @@ async function buildTichMacDuong({ scene, assets }: SceneContext): Promise<Built
   regions.track("hall", interior.group);
   const garden = await createGarden(scene, assets, materials, regions);
   const pond = createPond(regions.group("garden-east"), materials, scene.fog?.color ?? new Color());
+  const wishingTree = createWishingTree(scene);
   const grass = createGrass(regions);
   const glow = createLanternGlow(scene, garden.lanterns);
   const nature = createNature(scene);
@@ -60,10 +63,14 @@ async function buildTichMacDuong({ scene, assets }: SceneContext): Promise<Built
     releaseLantern() {
       pond.releaseLantern();
     },
+    hangWish() {
+      wishingTree.hangWish();
+    },
     update(dt, t, day, camera) {
       interior.update(dt, t, day);
       garden.update(day);
       pond.update(t, day);
+      wishingTree.update(t, day);
       grass.update(t);
       glow.update(day);
       nature.update(dt, t, day);
