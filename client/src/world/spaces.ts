@@ -50,7 +50,7 @@ async function buildTichMacDuong({ scene, assets }: SceneContext): Promise<Built
   regions.track("hall", interior.group);
   const garden = await createGarden(scene, assets, materials, regions);
   const pond = createPond(regions.group("garden-east"), materials, scene.fog?.color ?? new Color());
-  const wishingTree = createWishingTree(scene);
+  const wishingTree = createWishingTree(regions.group("gate"));
   const grass = createGrass(regions);
   const glow = createLanternGlow(scene, garden.lanterns);
   const nature = createNature(scene);
