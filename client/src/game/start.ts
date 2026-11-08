@@ -377,6 +377,11 @@ export async function start(): Promise<void> {
 
     const tapWoodblock = (): void => {
       if (suspended || beadsScreen.isOpen) return;
+      if (actions.asleep) {
+        actions.wake();
+        if (selfId) labels.setAsleep(selfId, false);
+      }
+      hud.closeGestureMenu();
       woodblockCount += 1;
       saveWoodblockCount(woodblockCount);
       hud.setWoodblockCount(woodblockCount, true);
@@ -395,13 +400,26 @@ export async function start(): Promise<void> {
       driver.sendChat(wish);
     };
 
+    /** Local reverent palm-clasp posture for temple offerings without broadcasting a social greeting event. */
+    const localClasp = (): void => {
+      if (actions.asleep) {
+        actions.wake();
+        if (selfId) labels.setAsleep(selfId, false);
+      }
+      if (!actions.bowing && !actions.beadsOpen) {
+        movement.stop();
+        self.setPose("hello");
+      }
+      audio.hello();
+    };
+
     const dharma = new DharmaDialog({
       onShakeTick: () => {
         audio.bead();
       },
       onDrawn: (title) => {
         audio.bell();
-        actions.hello();
+        localClasp();
         progression.recordAction("offering", 1);
         toasts.show(vi.toast.dharmaDrawn.replace("{title}", title));
       },
@@ -420,7 +438,7 @@ export async function start(): Promise<void> {
       onHangWish: (wishText) => {
         scenery.hangWish();
         audio.bell();
-        actions.hello();
+        localClasp();
         progression.recordAction("offering", 1);
         toasts.show(vi.toast.wishHung);
         sendWishIfAllowed(wishText);
@@ -429,6 +447,9 @@ export async function start(): Promise<void> {
         toasts.show(vi.toast.wishEmpty, "warn");
       },
     });
+    for (let i = 0; i < wishTree.savedCount; i++) {
+      scenery.hangWish();
+    }
 
     const offering = new OfferingDialog({
       onIncense: (wish) => {
@@ -438,7 +459,7 @@ export async function start(): Promise<void> {
           scenery.hangWish();
         }
         audio.bell();
-        actions.hello();
+        localClasp();
         progression.recordAction("offering", 1);
         toasts.show(vi.toast.incenseOffered);
         sendWishIfAllowed(wish);
@@ -450,14 +471,14 @@ export async function start(): Promise<void> {
           scenery.hangWish();
         }
         audio.bell();
-        actions.hello();
+        localClasp();
         progression.recordAction("offering", 1);
         toasts.show(vi.toast.lanternOffered);
         sendWishIfAllowed(wish);
       },
       onBell: () => {
         audio.templeBell();
-        actions.hello();
+        localClasp();
         progression.recordAction("offering", 1);
         toasts.show(vi.toast.bellRung);
       },
@@ -543,14 +564,14 @@ export async function start(): Promise<void> {
       if (kind === "lantern") {
         scenery.releaseLantern();
         audio.bell();
-        actions.hello();
+        localClasp();
         progression.recordAction("offering", 1);
         toasts.show(vi.toast.lanternOffered);
         return;
       }
       if (kind === "bell") {
         audio.templeBell();
-        actions.hello();
+        localClasp();
         progression.recordAction("offering", 1);
         toasts.show(vi.toast.bellRung);
         return;
@@ -737,6 +758,7 @@ export async function start(): Promise<void> {
       progressionDialog.close();
       nameDialog.dismiss();
       accountDialog.close();
+      hud.closeGestureMenu();
       joystick.reset();
       audio.setSuspended(true);
       actions.wake();
