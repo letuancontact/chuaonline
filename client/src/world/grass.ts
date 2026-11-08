@@ -18,12 +18,13 @@ const CLUMPS = 420;
 const TUFTS_PER_CLUMP = [6, 14] as const;
 const CLUMP_RADIUS = 1.6;
 const BLADES = 9;
-const BLADE_HEIGHT = [0.14, 0.32] as const;
+const BLADE_HEIGHT = [0.15, 0.34] as const;
 /** Wind sway at the blade tip (metres). */
 const SWAY = 0.09;
 
-const BASE = new Color(0x262e15);
-const TIP = new Color(0x667340);
+/** Vibrant emerald-green base blending into sunlit spring-green blade tips. */
+const BASE = new Color(0x246b32);
+const TIP = new Color(0x76d158);
 
 /** Several thin triangles fanned around the origin, leaning outwards. `uv.y` = height fraction (wind weight). */
 function tuftGeometry(rand: () => number): BufferGeometry {
@@ -96,7 +97,12 @@ export function createGrass(regions: Regions): Grass {
   const rand = seeded(0x6a55);
   const geometry = tuftGeometry(rand);
   const time = { value: 0 };
-  const material = new MeshLambertMaterial({ vertexColors: true, side: DoubleSide });
+  const material = new MeshLambertMaterial({
+    vertexColors: true,
+    emissive: new Color(0x0e2912),
+    emissiveIntensity: 0.32,
+    side: DoubleSide,
+  });
   material.onBeforeCompile = (shader) => {
     shader.uniforms["uTime"] = time;
     shader.vertexShader = shader.vertexShader.replace("#include <common>", "#include <common>\nuniform float uTime;").replace(
