@@ -28,7 +28,7 @@ export function createRenderer(opts: RendererOptions): WebGLRenderer {
   const renderer = new WebGLRenderer({ antialias: true, powerPreference: "default" });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1;
+  renderer.toneMappingExposure = 1.22;
   renderer.shadowMap.enabled = opts.shadows;
   renderer.shadowMap.type = PCFSoftShadowMap;
   renderer.setPixelRatio(basePixelRatio());
