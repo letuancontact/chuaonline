@@ -8,6 +8,11 @@ const ROOM = "san-08";
 const selfName = (p: Page) => p.evaluate(() => window.__santinh?.selfName ?? null);
 const peopleList = (p: Page) => p.getByRole("dialog", { name: "Ai đang ở đây" });
 
+async function openPeopleFromSettings(p: Page): Promise<void> {
+  await p.getByRole("button", { name: "Cài đặt" }).click();
+  await p.getByRole("button", { name: /Xem ai đang ở đây/ }).click();
+}
+
 test("P3-D4: first visit asks the name, the other tab sees it, reload keeps it, renaming reaches the room", async ({ browser }) => {
   test.setTimeout(420_000);
   // A starts from a blank profile (no seeded `santinh.name`); B is seeded.
@@ -28,7 +33,7 @@ test("P3-D4: first visit asks the name, the other tab sees it, reload keeps it, 
 
   // B sees A's name in the people dialog.
   await expect.poll(() => count(b), { timeout: 20_000 }).toBe(2);
-  await b.getByRole("button", { name: /Xem ai đang ở đây/ }).click();
+  await openPeopleFromSettings(b);
   await expect(peopleList(b).getByText("Minh Tâm", { exact: true })).toBeVisible({ timeout: 15_000 });
 
   // Reload: no second ask, same name.
@@ -38,7 +43,7 @@ test("P3-D4: first visit asks the name, the other tab sees it, reload keeps it, 
   expect(await a.evaluate(() => localStorage.getItem("santinh.name"))).toBe("Minh Tâm");
 
   // Our own row in the people dialog opens the same dialog in "Lưu" mode; closing keeps the name.
-  await a.getByRole("button", { name: /Xem ai đang ở đây/ }).click();
+  await openPeopleFromSettings(a);
   await peopleList(a).getByRole("button", { name: "Đổi tên của bạn (Minh Tâm)" }).click();
   const rename = a.getByRole("dialog", { name: "Đổi tên của bạn" });
   await expect(rename.getByRole("button", { name: "Lưu" })).toBeVisible();
