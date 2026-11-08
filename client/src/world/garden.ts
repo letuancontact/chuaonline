@@ -31,6 +31,7 @@ import { GeometryBatch, disposeGroupGeometry } from "./merge.ts";
 import { gardenRegionOf, type GardenRegion, type Regions } from "./regions.ts";
 import { createRoofGeometry } from "./roof.ts";
 import { seeded } from "./random.ts";
+import { attachAncientTreeToWishingTree } from "./wishing-tree.ts";
 
 type Key = MaterialKey | "gravel" | "rock" | "lanternPaper" | "lotusLamp";
 
@@ -97,6 +98,11 @@ interface PreparedAncientTree {
   material: MeshStandardMaterial;
   textures: Texture[];
 }
+
+type Object3DLike = {
+  updateMatrixWorld(force?: boolean): void;
+  traverse(cb: (node: unknown) => void): void;
+};
 
 /**
  * Extracts meshes from `cothu.glb`, shifts the bottom of the trunk (`min.y ≈ -0.4409`)
@@ -180,7 +186,11 @@ function prepareAncientTreeModel(
       .replace(
         "#include <begin_vertex>",
         `#include <begin_vertex>
-        vec2 treePos = vec2(instanceMatrix[3][0], instanceMatrix[3][2]);
+        #ifdef USE_INSTANCING
+          vec2 treePos = vec2(instanceMatrix[3][0], instanceMatrix[3][2]);
+        #else
+          vec2 treePos = vec2(modelMatrix[3][0], modelMatrix[3][2]);
+        #endif
         float swayWeight = clamp((transformed.y - 2.4) * 0.25, 0.0, 1.0);
         float leafPhase = transformed.x * 0.85 + transformed.z * 0.75 + treePos.x * 0.18 + treePos.y * 0.14;
         float leafSway = swayWeight * (0.045 * sin(uTime * 1.55 + leafPhase) + 0.02 * cos(uTime * 2.7 - leafPhase * 1.2));
@@ -192,11 +202,6 @@ function prepareAncientTreeModel(
 
   return { geometry: merged, material, textures };
 }
-
-type Object3DLike = {
-  updateMatrixWorld(force?: boolean): void;
-  traverse(cb: (node: unknown) => void): void;
-};
 
 /** Distant broad-canopy tree (unit height) for the outer forest ring. */
 function createFarCanopyTreeGeometry(): BufferGeometry {
@@ -247,7 +252,6 @@ function loopRibbon(points: readonly Vec2[], width: number): BufferGeometry {
     uv.push(0, 0, 0, 0);
     if (i > 0) {
       const k = (i - 1) * 2;
-      // Left/right swap with the travel direction; pick the winding whose face points up.
       const e1x = pos[(k + 1) * 3]! - pos[k * 3]!;
       const e1z = pos[(k + 1) * 3 + 2]! - pos[k * 3 + 2]!;
       const e2x = pos[(k + 2) * 3]! - pos[k * 3]!;
@@ -323,7 +327,6 @@ function rockGeometry(seed: number): BufferGeometry {
 function addGate(batch: GeometryBatch<Key>): void {
   const z0 = GATE.zMin;
   const z1 = GATE.zMax;
-  // Pillars on stone plinths.
   const pillar = new CylinderGeometry(0.26, 0.3, 4.2, 14);
   const plinth = new CylinderGeometry(0.42, 0.48, 0.3, 14);
   for (const x of [-GATE_PILLAR_X, GATE_PILLAR_X]) {
@@ -332,10 +335,8 @@ function addGate(batch: GeometryBatch<Key>): void {
   }
   pillar.dispose();
   plinth.dispose();
-  // Lintel beams.
   box(batch, "paintRed", -GATE_PILLAR_X - 0.5, GATE_PILLAR_X + 0.5, 3.4, 3.62, GATE_Z - 0.16, GATE_Z + 0.16, 1);
   box(batch, "darkWood", -GATE_PILLAR_X - 0.7, GATE_PILLAR_X + 0.7, 4.1, 4.5, GATE_Z - 0.22, GATE_Z + 0.22, 1);
-  // Small hip roof.
   const roof = createRoofGeometry({
     cx: 0,
     cz: GATE_Z,
@@ -354,7 +355,6 @@ function addGate(batch: GeometryBatch<Key>): void {
   roof.top.dispose();
   roof.bottom.dispose();
   roof.fascia.dispose();
-  // Low walls either side of the gate, capped with tile trim.
   for (const s of [-1, 1]) {
     const xa = s * (GATE_PILLAR_X + 0.4);
     const xb = s * GATE_WALL_X;
@@ -401,7 +401,6 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       polygonOffsetUnits: -2,
     }),
   );
-  // Weathered granite: the stone set's relief without its cobble colour pattern.
   const rock = own(
     new MeshStandardMaterial({ normalMap: materials.stone.normalMap, roughnessMap: materials.stone.roughnessMap, color: 0x827d73, metalness: 0 }),
   );
@@ -450,10 +449,11 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
     built.push(group);
   }
 
-  // 14 ancient trees (`models/cothu.glb`) surrounding the courtyard boundary in a single InstancedMesh.
+  // 14 ancient trees (`models/cothu.glb`) surrounding the courtyard boundary + shared with Wishing Tree.
   const uTreeTime = { value: 0 };
   const preparedTree = prepareAncientTreeModel(cothuGltf.scene, uTreeTime);
   own(preparedTree.material);
+  attachAncientTreeToWishingTree(preparedTree.geometry, preparedTree.material);
 
   const ancientTrees = new InstancedMesh(preparedTree.geometry, preparedTree.material, ANCIENT_TREE_COUNT);
   const arc = Math.PI * 2 - 2 * GATE_GAP_RAD;
