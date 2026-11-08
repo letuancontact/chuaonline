@@ -15,6 +15,7 @@ test("a server that goes silent (socket still open) is noticed: 'Mất kết n�
   const before = await selfId();
   expect(before).not.toBeNull();
 
+  await page.getByRole("button", { name: "Cài đặt" }).click();
   server.pause();
   try {
     // SILENCE_MS 12 s + up to one ping period; no close ever arrives from a frozen server.
