@@ -1,13 +1,16 @@
 import {
+  Box3,
   BoxGeometry,
   BufferGeometry,
   Color,
   ConeGeometry,
   CylinderGeometry,
+  DoubleSide,
   Float32BufferAttribute,
   InstancedMesh,
   LatheGeometry,
   Matrix4,
+  Mesh,
   MeshLambertMaterial,
   MeshStandardMaterial,
   Quaternion,
@@ -17,6 +20,7 @@ import {
   type Group,
   type Material,
   type Scene,
+  type Texture,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { BOUNDARY, GATE, LANTERN_LOOP, PATH, PATH_LANTERNS, ROCKS, type Vec2 } from "@santinh/shared";
@@ -41,10 +45,12 @@ export const SLAB_TOP = 0.05;
 /** Loop ribbon height above the ground; polygonOffset keeps it from z-fighting. */
 const LOOP_Y = 0.02;
 
-/** Wide-canopy ancient trees surrounding the temple courtyard (matching cothu.glb proportions). */
+/** 14 ancient trees (`models/cothu.glb`) surrounding the temple courtyard. */
 const ANCIENT_TREE_COUNT = 14;
 const ANCIENT_RING = [1.05, 1.15] as const;
-const ANCIENT_SCALE = [1.02, 1.38] as const;
+/** Normalised base height (metres) for `cothu.glb` before per-instance scale variation. */
+const ANCIENT_BASE_HEIGHT = 7.6;
+const ANCIENT_SCALE = [0.95, 1.32] as const;
 /** Lush broad-canopy trees beyond the boundary: vibrant green forest edge softened by fog. */
 const FAR_TREE_COUNT = 160;
 const FAR_RING = [1.65, 2.55] as const;
@@ -61,11 +67,6 @@ const q = new Quaternion();
 const v3 = new Vector3();
 const s3 = new Vector3();
 const UP = new Vector3(0, 1, 0);
-const segDir = new Vector3();
-const segQuat = new Quaternion();
-const segPos = new Vector3();
-const segScale = new Vector3(1, 1, 1);
-const segMat = new Matrix4();
 
 function box(batch: GeometryBatch<Key>, key: Key, x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, tile = 1, castShadow = true): void {
   const g = new BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
@@ -91,286 +92,111 @@ function colorGeo(g: BufferGeometry, hex: number): BufferGeometry {
   return g;
 }
 
-/** Gnarled, fluted bark cylinder for ancient tree trunks, roots, and boughs. */
-function barkCylinder(
-  rTop: number,
-  rBottom: number,
-  height: number,
-  radialSegs: number,
-  seed: number,
-  gnarl = 0.14,
-): CylinderGeometry {
-  const g = new CylinderGeometry(rTop, rBottom, height, radialSegs, 2);
-  const pos = g.getAttribute("position");
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-    const angle = Math.atan2(z, x);
-    const flute =
-      1 +
-      gnarl * Math.sin(angle * 5 + y * 2.1 + seed) +
-      gnarl * 0.48 * Math.cos(angle * 3 - y * 2.9 + seed * 1.3);
-    pos.setXYZ(i, x * flute, y, z * flute);
-  }
-  g.computeVertexNormals();
-  return g;
+interface PreparedAncientTree {
+  geometry: BufferGeometry;
+  material: MeshStandardMaterial;
+  textures: Texture[];
 }
 
-/** Appends a curved, tapering quadratic-Bézier limb made of gnarled bark segments. */
-function appendCurvedLimb(
-  parts: BufferGeometry[],
-  p0: readonly [number, number, number],
-  p1: readonly [number, number, number],
-  p2: readonly [number, number, number],
-  rStart: number,
-  rEnd: number,
-  segments: number,
-  radialSegs: number,
-  colorStart: number,
-  colorEnd: number,
-  gnarl = 0.11,
-): void {
-  const c0 = new Color(colorStart);
-  const c1 = new Color(colorEnd);
-  const cStep = new Color();
+/**
+ * Extracts meshes from `cothu.glb`, shifts the bottom of the trunk (`min.y ≈ -0.4409`)
+ * to sit flush on `y = 0`, scales the tree to `ANCIENT_BASE_HEIGHT` (7.6 m), and fixes
+ * the PBR material (`metalness = 0`, `roughness = 0.82`, `DoubleSide`) while preserving its texture.
+ */
+function prepareAncientTreeModel(
+  root: Object3DLike,
+  uTime: { value: number },
+): PreparedAncientTree {
+  const parts: BufferGeometry[] = [];
+  const textures: Texture[] = [];
+  let baseMap: Texture | null = null;
+  let baseColor = new Color(0xffffff);
 
-  const evalPt = (t: number, out: [number, number, number]): void => {
-    const inv = 1 - t;
-    out[0] = inv * inv * p0[0] + 2 * inv * t * p1[0] + t * t * p2[0];
-    out[1] = inv * inv * p0[1] + 2 * inv * t * p1[1] + t * t * p2[1];
-    out[2] = inv * inv * p0[2] + 2 * inv * t * p1[2] + t * t * p2[2];
+  root.updateMatrixWorld(true);
+  root.traverse((node) => {
+    if (!(node instanceof Mesh)) return;
+    const geom = (node.geometry as BufferGeometry).clone();
+    geom.applyMatrix4(node.matrixWorld);
+    parts.push(geom);
+
+    const srcMat = (Array.isArray(node.material) ? node.material[0] : node.material) as
+      | MeshStandardMaterial
+      | undefined;
+    if (srcMat) {
+      if (srcMat.map && !baseMap) {
+        baseMap = srcMat.map;
+        textures.push(srcMat.map);
+      }
+      if (srcMat.metalnessMap && !textures.includes(srcMat.metalnessMap)) {
+        textures.push(srcMat.metalnessMap);
+      }
+      if (srcMat.roughnessMap && !textures.includes(srcMat.roughnessMap)) {
+        textures.push(srcMat.roughnessMap);
+      }
+      if (srcMat.normalMap && !textures.includes(srcMat.normalMap)) {
+        textures.push(srcMat.normalMap);
+      }
+      if (srcMat.color) {
+        baseColor = srcMat.color.clone();
+      }
+      srcMat.dispose();
+    }
+    (node.geometry as BufferGeometry).dispose();
+  });
+
+  const merged = parts.length === 1 ? parts[0]! : mergeGeometries(parts);
+  if (parts.length > 1) {
+    for (const p of parts) p.dispose();
+  }
+  if (!merged) throw new Error("cothu.glb: no mesh geometry found");
+
+  // Align bottom (`min.y`) to y = 0, centre X/Z at 0, and scale height to ANCIENT_BASE_HEIGHT (7.6 m).
+  merged.computeBoundingBox();
+  const bbox = merged.boundingBox ?? new Box3();
+  const cx = (bbox.min.x + bbox.max.x) * 0.5;
+  const cz = (bbox.min.z + bbox.max.z) * 0.5;
+  const rawHeight = Math.max(0.01, bbox.max.y - bbox.min.y);
+  const normalizeScale = ANCIENT_BASE_HEIGHT / rawHeight;
+
+  merged.translate(-cx, -bbox.min.y, -cz);
+  merged.scale(normalizeScale, normalizeScale, normalizeScale);
+  merged.computeBoundingBox();
+  merged.computeBoundingSphere();
+
+  const material = new MeshStandardMaterial({
+    map: baseMap,
+    color: baseColor,
+    roughness: 0.82,
+    metalness: 0.0,
+    emissive: new Color(0x112b15),
+    emissiveIntensity: 0.18,
+    side: DoubleSide,
+  });
+
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms["uTime"] = uTime;
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nuniform float uTime;")
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        vec2 treePos = vec2(instanceMatrix[3][0], instanceMatrix[3][2]);
+        float swayWeight = clamp((transformed.y - 2.4) * 0.25, 0.0, 1.0);
+        float leafPhase = transformed.x * 0.85 + transformed.z * 0.75 + treePos.x * 0.18 + treePos.y * 0.14;
+        float leafSway = swayWeight * (0.045 * sin(uTime * 1.55 + leafPhase) + 0.02 * cos(uTime * 2.7 - leafPhase * 1.2));
+        transformed.x += leafSway;
+        transformed.y += leafSway * 0.2;
+        transformed.z += leafSway * 0.6;`,
+      );
   };
 
-  const a: [number, number, number] = [0, 0, 0];
-  const b: [number, number, number] = [0, 0, 0];
-
-  for (let i = 0; i < segments; i++) {
-    const t0 = i / segments;
-    const t1 = (i + 1) / segments;
-    evalPt(t0, a);
-    evalPt(t1, b);
-
-    const dx = b[0] - a[0];
-    const dy = b[1] - a[1];
-    const dz = b[2] - a[2];
-    const len = Math.hypot(dx, dy, dz);
-    if (len < 0.001) continue;
-
-    const r0 = rStart + (rEnd - rStart) * Math.pow(t0, 0.82);
-    const r1 = rStart + (rEnd - rStart) * Math.pow(t1, 0.82);
-
-    const cyl = barkCylinder(r1, r0, len * 1.14, radialSegs, i * 1.9 + rStart * 11, gnarl);
-    segDir.set(dx / len, dy / len, dz / len);
-    segQuat.setFromUnitVectors(UP, segDir);
-    segPos.set((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5, (a[2] + b[2]) * 0.5);
-    segMat.compose(segPos, segQuat, segScale);
-    cyl.applyMatrix4(segMat);
-
-    cStep.copy(c0).lerp(c1, (t0 + t1) * 0.5);
-    parts.push(colorGeo(cyl, cStep.getHex()));
-  }
+  return { geometry: merged, material, textures };
 }
 
-/**
- * Sculpted billowy foliage pad with 4-tone vertex-color shading (deep shaded underside ->
- * emerald mid-tone -> vibrant fresh leaf green -> sunlit golden-green crown).
- */
-function foliageCloudGeometry(
-  cx: number,
-  cy: number,
-  cz: number,
-  rx: number,
-  ry: number,
-  rz: number,
-  seed: number,
-  goldenTip: number,
-): BufferGeometry {
-  const g = new SphereGeometry(1, 10, 7);
-  const pos = g.getAttribute("position");
-  const count = pos.count;
-  const colors = new Float32Array(count * 3);
-
-  const deepShade = new Color(0x1b5228);
-  const richEmerald = new Color(0x2f853e);
-  const sunlitGreen = new Color(0x5ec454);
-  const crownGold = new Color(0xa8e052);
-  const cTmp = new Color();
-
-  for (let i = 0; i < count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-
-    const lobe =
-      1 +
-      0.21 * Math.sin(3.5 * x + seed) * Math.cos(3.1 * z + seed * 1.3) +
-      0.13 * Math.sin(4.8 * y + 2.3 * x + seed * 1.9);
-
-    // Flattened underside like real layered banyan/bodhi leaf pads
-    const flatY = y < 0 ? y * 0.54 : y;
-
-    const wx = cx + x * rx * lobe;
-    const wy = cy + flatY * ry * lobe;
-    const wz = cz + z * rz * lobe;
-    pos.setXYZ(i, wx, wy, wz);
-
-    const heightNorm = Math.max(0, Math.min(1, (wy - 3.2) / 4.2));
-    const localTop = Math.max(0, Math.min(1, (y + 0.65) / 1.6));
-    const light = Math.max(0, Math.min(1, localTop * 0.66 + heightNorm * 0.34));
-
-    if (light < 0.44) {
-      cTmp.copy(deepShade).lerp(richEmerald, light / 0.44);
-    } else {
-      cTmp.copy(richEmerald).lerp(sunlitGreen, (light - 0.44) / 0.56);
-    }
-    if (goldenTip > 0 && light > 0.64) {
-      cTmp.lerp(crownGold, goldenTip * (light - 0.64));
-    }
-
-    colors[i * 3] = cTmp.r;
-    colors[i * 3 + 1] = cTmp.g;
-    colors[i * 3 + 2] = cTmp.b;
-  }
-
-  g.setAttribute("color", new Float32BufferAttribute(colors, 3));
-  g.computeVertexNormals();
-  return g;
-}
-
-/**
- * Simulates the `cothu.glb` ancient banyan/bodhi tree:
- * - Wide aspect ratio (width ~8.6 m, height ~7.5 m -> ~1.14 : 1 matching `cothu.glb`).
- * - Flared buttress roots, gnarled twisted trunk, 6 sweeping primary boughs, 12 fork branches,
- *   and hanging aerial roots.
- * - 25 layered, billowy multi-lobed green foliage clouds.
- */
-function createAncientTreeGeometries(): { trunk: BufferGeometry; canopy: BufferGeometry } {
-  const trunkParts: BufferGeometry[] = [];
-  const canopyParts: BufferGeometry[] = [];
-
-  // 1. Massive gnarled main trunk with natural S-curve taper
-  appendCurvedLimb(trunkParts, [0, -0.05, 0], [0.18, 1.65, -0.12], [-0.08, 3.35, 0.08], 0.78, 0.48, 5, 9, 0x3d2b1c, 0x573e29, 0.16);
-  appendCurvedLimb(trunkParts, [-0.08, 3.15, 0.08], [0.12, 4.35, -0.06], [0.0, 5.4, 0.0], 0.44, 0.18, 4, 8, 0x573e29, 0x694c34, 0.12);
-
-  // 2. 8 flared buttress roots gripping the earth around the base
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2 + (i % 2) * 0.16;
-    const ca = Math.cos(a);
-    const sa = Math.sin(a);
-    const twist = (i % 2 === 0 ? 1 : -1) * 0.25;
-    appendCurvedLimb(
-      trunkParts,
-      [ca * 0.42, 1.35, sa * 0.42],
-      [ca * 1.18 - sa * twist, 0.55, sa * 1.18 + ca * twist],
-      [ca * 1.95, -0.04, sa * 1.95],
-      0.28,
-      0.08,
-      4,
-      6,
-      0x473322,
-      0x38281a,
-      0.15,
-    );
-  }
-
-  // 3. 6 heavy, wide-spreading primary boughs + 12 secondary fork branches + canopy clouds
-  const mainBoughs = 6;
-  for (let i = 0; i < mainBoughs; i++) {
-    const a = (i / mainBoughs) * Math.PI * 2 + 0.24;
-    const ca = Math.cos(a);
-    const sa = Math.sin(a);
-    const yStart = 2.75 + (i % 3) * 0.22;
-    const midR = 1.65;
-    const endR = 3.05 + (i % 2) * 0.28;
-    const endY = 4.05 + (i % 3) * 0.25;
-
-    const p0: [number, number, number] = [ca * 0.28, yStart, sa * 0.28];
-    const p1: [number, number, number] = [ca * midR - sa * 0.28, yStart + 0.82, sa * midR + ca * 0.28];
-    const p2: [number, number, number] = [ca * endR, endY, sa * endR];
-
-    appendCurvedLimb(trunkParts, p0, p1, p2, 0.34, 0.13, 4, 7, 0x543b27, 0x6b4d35, 0.11);
-
-    // Lower outer foliage pad at the end of each primary bough
-    canopyParts.push(
-      foliageCloudGeometry(p2[0], p2[1] + 0.35, p2[2], 1.85, 0.98, 1.85, i * 5.1 + 1.0, 0.22),
-    );
-    // Mid-tier inner foliage pad above the bough elbow
-    canopyParts.push(
-      foliageCloudGeometry(p1[0] * 0.95, p1[1] + 1.05, p1[2] * 0.95, 1.92, 1.05, 1.92, i * 5.1 + 2.3, 0.35),
-    );
-
-    // Secondary left & right fork branches reaching further out
-    for (const side of [-1, 1] as const) {
-      const fa = a + side * 0.44;
-      const fca = Math.cos(fa);
-      const fsa = Math.sin(fa);
-      const forkLen = 3.55 + (side > 0 ? 0.22 : 0);
-      const forkY = endY + 0.32 + (side > 0 ? 0.18 : -0.06);
-
-      const fp0: [number, number, number] = [p1[0], p1[1] + 0.06, p1[2]];
-      const fp1: [number, number, number] = [fca * 2.55, endY + 0.2, fsa * 2.55];
-      const fp2: [number, number, number] = [fca * forkLen, forkY, fsa * forkLen];
-
-      appendCurvedLimb(trunkParts, fp0, fp1, fp2, 0.18, 0.065, 3, 6, 0x5e432d, 0x73543b, 0.09);
-
-      canopyParts.push(
-        foliageCloudGeometry(
-          fp2[0],
-          fp2[1] + 0.25,
-          fp2[2],
-          1.52,
-          0.84,
-          1.52,
-          i * 7.3 + (side > 0 ? 3.1 : 4.7),
-          side > 0 ? 0.38 : 0.16,
-        ),
-      );
-    }
-  }
-
-  // 4. 10 hanging aerial roots (rễ phụ cây đa / bồ đề cổ thụ) draping from lower boughs
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2 + 0.18;
-    const r = i % 2 === 0 ? 1.45 : 2.05;
-    const rx = Math.cos(a) * r;
-    const rz = Math.sin(a) * r;
-    const topY = i % 2 === 0 ? 3.55 : 3.85;
-    const botY = i % 3 === 0 ? 0.0 : 1.55 + (i % 2) * 0.42;
-    const sway = (i % 2 === 0 ? 1 : -1) * 0.14;
-    appendCurvedLimb(
-      trunkParts,
-      [rx, topY, rz],
-      [rx + sway, (topY + botY) * 0.5, rz - sway],
-      [rx * 0.96, botY, rz * 0.96],
-      0.036,
-      0.016,
-      3,
-      5,
-      0x4f3825,
-      0x664b33,
-      0.05,
-    );
-  }
-
-  // 5. Upper sunlit crown domes uniting the silhouette into a grand, lush dome
-  canopyParts.push(foliageCloudGeometry(0, 6.05, 0, 2.55, 1.28, 2.55, 71.2, 0.48));
-  canopyParts.push(foliageCloudGeometry(1.15, 5.75, 0.95, 1.95, 1.02, 1.95, 83.4, 0.42));
-  canopyParts.push(foliageCloudGeometry(-1.18, 5.68, -0.92, 1.95, 1.02, 1.95, 95.6, 0.42));
-  canopyParts.push(foliageCloudGeometry(-0.95, 5.82, 1.12, 1.85, 0.98, 1.85, 107.8, 0.45));
-  canopyParts.push(foliageCloudGeometry(0.98, 5.78, -1.08, 1.85, 0.98, 1.85, 119.1, 0.45));
-  canopyParts.push(foliageCloudGeometry(0, 6.65, 0, 1.95, 1.05, 1.95, 131.5, 0.58));
-
-  const trunk = mergeGeometries(trunkParts);
-  for (const g of trunkParts) g.dispose();
-  if (!trunk) throw new Error("merge: ancient tree trunk");
-
-  const canopy = mergeGeometries(canopyParts);
-  for (const g of canopyParts) g.dispose();
-  if (!canopy) throw new Error("merge: ancient tree canopy");
-
-  return { trunk, canopy };
-}
+type Object3DLike = {
+  updateMatrixWorld(force?: boolean): void;
+  traverse(cb: (node: unknown) => void): void;
+};
 
 /** Distant broad-canopy tree (unit height) for the outer forest ring. */
 function createFarCanopyTreeGeometry(): BufferGeometry {
@@ -555,7 +381,8 @@ export interface Garden {
   dispose(): void;
 }
 
-export async function createGarden(scene: Scene, _assets: Assets, materials: Materials, regions: Regions): Promise<Garden> {
+export async function createGarden(scene: Scene, assets: Assets, materials: Materials, regions: Regions): Promise<Garden> {
+  const cothuGltf = await assets.model("models/cothu.glb");
   const rand = seeded(0x5a7d);
 
   const owned: Material[] = [];
@@ -623,59 +450,25 @@ export async function createGarden(scene: Scene, _assets: Assets, materials: Mat
     built.push(group);
   }
 
-  // Wide-canopy ancient trees surrounding the courtyard boundary (matching cothu.glb silhouette & foliage).
-  const ancientGeo = createAncientTreeGeometries();
+  // 14 ancient trees (`models/cothu.glb`) surrounding the courtyard boundary in a single InstancedMesh.
   const uTreeTime = { value: 0 };
-  const trunkMat = own(new MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0.02 }));
-  const canopyMat = own(
-    new MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.66,
-      metalness: 0.0,
-      emissive: new Color(0x113016),
-      emissiveIntensity: 0.22,
-    }),
-  );
-  canopyMat.onBeforeCompile = (shader) => {
-    shader.uniforms["uTime"] = uTreeTime;
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nuniform float uTime;")
-      .replace(
-        "#include <begin_vertex>",
-        `#include <begin_vertex>
-        vec2 treePos = vec2(instanceMatrix[3][0], instanceMatrix[3][2]);
-        float swayWeight = clamp((transformed.y - 2.5) * 0.28, 0.0, 1.0);
-        float leafPhase = transformed.x * 0.85 + transformed.z * 0.75 + treePos.x * 0.18 + treePos.y * 0.14;
-        float leafSway = swayWeight * (0.048 * sin(uTime * 1.55 + leafPhase) + 0.022 * cos(uTime * 2.8 - leafPhase * 1.2));
-        transformed.x += leafSway;
-        transformed.y += leafSway * 0.22;
-        transformed.z += leafSway * 0.65;`,
-      );
-  };
+  const preparedTree = prepareAncientTreeModel(cothuGltf.scene, uTreeTime);
+  own(preparedTree.material);
 
-  const trunks = new InstancedMesh(ancientGeo.trunk, trunkMat, ANCIENT_TREE_COUNT);
-  const canopies = new InstancedMesh(ancientGeo.canopy, canopyMat, ANCIENT_TREE_COUNT);
-
+  const ancientTrees = new InstancedMesh(preparedTree.geometry, preparedTree.material, ANCIENT_TREE_COUNT);
   const arc = Math.PI * 2 - 2 * GATE_GAP_RAD;
   for (let k = 0; k < ANCIENT_TREE_COUNT; k++) {
     const a = Math.PI / 2 + GATE_GAP_RAD + ((k + 0.2 + rand() * 0.6) / ANCIENT_TREE_COUNT) * arc;
     const p = ringPoint(a, ANCIENT_RING[0] + rand() * (ANCIENT_RING[1] - ANCIENT_RING[0]));
     const sc = ANCIENT_SCALE[0] + rand() * (ANCIENT_SCALE[1] - ANCIENT_SCALE[0]);
-    const spread = sc * (1.06 + rand() * 0.18);
+    const spread = sc * (1.0 + rand() * 0.14);
     const yaw = rand() * Math.PI * 2;
-    const mat = place(p.x, 0, p.z, yaw, spread, sc, spread);
-    trunks.setMatrixAt(k, mat);
-    canopies.setMatrixAt(k, mat);
+    ancientTrees.setMatrixAt(k, place(p.x, 0, p.z, yaw, spread, sc, spread));
   }
-  trunks.castShadow = true;
-  trunks.receiveShadow = true;
-  trunks.computeBoundingSphere();
-  trunks.name = "ancient-tree-trunks";
-
-  canopies.castShadow = true;
-  canopies.receiveShadow = true;
-  canopies.computeBoundingSphere();
-  canopies.name = "ancient-tree-canopies";
+  ancientTrees.castShadow = true;
+  ancientTrees.receiveShadow = true;
+  ancientTrees.computeBoundingSphere();
+  ancientTrees.name = "ancient-trees";
 
   // Distant broad-canopy forest ring beyond the boundary.
   const farGeo = createFarCanopyTreeGeometry();
@@ -691,7 +484,7 @@ export async function createGarden(scene: Scene, _assets: Assets, materials: Mat
   far.computeBoundingSphere();
   far.name = "far-trees";
 
-  const forest: InstancedMesh[] = [trunks, canopies, far];
+  const forest: InstancedMesh[] = [ancientTrees, far];
   for (const o of forest) {
     o.matrixAutoUpdate = false;
     o.updateMatrix();
@@ -708,7 +501,7 @@ export async function createGarden(scene: Scene, _assets: Assets, materials: Mat
       const k = GLOW_DAY + (GLOW_NIGHT - GLOW_DAY) * (1 - daylight);
       lanternPaper.emissiveIntensity = k;
       lotusLamp.emissiveIntensity = k;
-      canopyMat.emissiveIntensity = 0.16 + 0.14 * daylight;
+      preparedTree.material.emissiveIntensity = 0.14 + 0.12 * daylight;
     },
     dispose() {
       for (const g of built) {
@@ -719,8 +512,8 @@ export async function createGarden(scene: Scene, _assets: Assets, materials: Mat
         scene.remove(o);
         o.dispose();
       }
-      ancientGeo.trunk.dispose();
-      ancientGeo.canopy.dispose();
+      preparedTree.geometry.dispose();
+      for (const tex of preparedTree.textures) tex.dispose();
       farGeo.dispose();
       for (const m of owned) m.dispose();
     },
