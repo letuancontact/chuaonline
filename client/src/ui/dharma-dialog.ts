@@ -1,5 +1,7 @@
+import { CHAT_LIMITS } from "@santinh/shared";
 import { safeLocalStorage } from "../beads/counter.ts";
 import { vi } from "../i18n/vi.ts";
+import { closeOnBackdrop } from "./dialog.ts";
 import "./base.css";
 
 const DHARMA_STORAGE_KEY = "santinh.dharma.v1";
@@ -80,6 +82,7 @@ export class DharmaDialog {
   private readonly drawBtn: HTMLButtonElement;
   private readonly statsEl: HTMLParagraphElement;
   private readonly handlers: DharmaDialogHandlers;
+  private readonly offBackdrop: () => void;
   private state: DharmaStoredState;
   private shaking = false;
   private timers: ReturnType<typeof setTimeout>[] = [];
@@ -149,9 +152,7 @@ export class DharmaDialog {
     body.append(wrap);
     this.dialog.append(head, desc, body);
 
-    this.dialog.addEventListener("click", (e) => {
-      if (e.target === this.dialog) this.close();
-    });
+    this.offBackdrop = closeOnBackdrop(this.dialog);
 
     parent.append(this.dialog);
     this.renderCard();
@@ -180,6 +181,7 @@ export class DharmaDialog {
 
   dispose(): void {
     this.close();
+    this.offBackdrop();
     this.dialog.remove();
   }
 
@@ -236,8 +238,11 @@ export class DharmaDialog {
   private shareCurrentCard(): void {
     const card = vi.dharma.cards[this.state.lastIndex] ?? vi.dharma.cards[0];
     if (!card) return;
-    // Keep under 120 characters so free-tier room chat accepts the shared verse without truncation.
-    const verse = `【${card.title}】 ${card.lines[0]} ${card.lines[1]}`;
+    // Fit within CHAT_LIMITS.free.maxChars (80 code points) so free-tier room chat never rejects the verse.
+    const max = CHAT_LIMITS.free.maxChars;
+    const full = `【${card.title}】 ${card.lines[0]} ${card.lines[1]}`;
+    const short = `${card.lines[0]} ${card.lines[1]}`;
+    const verse = [...full].length <= max ? full : [...short].length <= max ? short : [...short].slice(0, max).join("");
     this.handlers.onShare?.(verse);
   }
 
