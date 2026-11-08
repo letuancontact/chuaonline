@@ -188,6 +188,7 @@ export class SettingsDialog {
 
     this.inviteBtn = el("button", "btn btn--ghost", vi.hud.invite);
     this.inviteBtn.type = "button";
+    this.inviteBtn.setAttribute("aria-label", vi.hud.invite);
     this.inviteBtn.addEventListener("click", () => {
       this.close();
       this.quickActions.openInvite?.();
@@ -222,6 +223,7 @@ export class SettingsDialog {
 
     this.chantBtn = el("button", "btn btn--ghost");
     this.chantBtn.type = "button";
+    this.chantBtn.setAttribute("aria-label", vi.hud.chant);
     this.chantBtn.addEventListener("click", () => chant.toggle());
     const chantSection = this.section(t.chant, t.chantDesc, this.chantBtn, "chantVolume");
     this.chantDesc = chantSection.querySelector("small") ?? el("small");
@@ -342,6 +344,12 @@ export class SettingsDialog {
         : "Mất kết nối";
     this.socialDescEl.textContent = `Phòng ${this.roomNumber} · ${this.roomName} (${statusText})`;
     this.peopleBtn.textContent = connected ? `Đạo hữu (${this.peopleCount})` : "Ai đang ở đây";
+    const peopleLabel = connected
+      ? vi.hud.people.replace("{n}", String(this.peopleCount))
+      : this.connStatus === "connecting"
+        ? vi.hud.peopleConnecting
+        : vi.hud.peopleOffline;
+    this.peopleBtn.setAttribute("aria-label", peopleLabel);
     this.inviteBtn.disabled = !connected;
   }
 
