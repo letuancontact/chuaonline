@@ -46,23 +46,27 @@ export const SLAB_TOP = 0.05;
 const LOOP_Y = 0.02;
 
 /**
- * Multi-layered ancient trees (`models/cothu.glb`) surrounding the temple courtyard:
- * - Inner ring frames the courtyard edge.
- * - Outer woodland ring creates natural staggered groves so the map feels organic.
+ * Three-tiered dense ancient trees (`models/cothu.glb`) surrounding the courtyard
+ * interlocked organically with zero empty white gaps.
  */
 const ANCIENT_INNER_COUNT = 18;
 const ANCIENT_OUTER_COUNT = 18;
-const ANCIENT_TREE_COUNT = ANCIENT_INNER_COUNT + ANCIENT_OUTER_COUNT;
+const ANCIENT_DEEP_COUNT = 18;
+const ANCIENT_TREE_COUNT = ANCIENT_INNER_COUNT + ANCIENT_OUTER_COUNT + ANCIENT_DEEP_COUNT;
+
 const ANCIENT_INNER_RING = [1.03, 1.16] as const;
-const ANCIENT_OUTER_RING = [1.20, 1.56] as const;
+const ANCIENT_OUTER_RING = [1.20, 1.58] as const;
+const ANCIENT_DEEP_RING = [1.62, 2.08] as const;
+
 /** Normalised base height (metres) for `cothu.glb` before per-instance scale variation. */
 const ANCIENT_BASE_HEIGHT = 7.6;
-const ANCIENT_INNER_SCALE = [0.92, 1.34] as const;
-const ANCIENT_OUTER_SCALE = [1.05, 1.52] as const;
+const ANCIENT_INNER_SCALE = [0.92, 1.32] as const;
+const ANCIENT_OUTER_SCALE = [1.12, 1.55] as const;
+const ANCIENT_DEEP_SCALE = [1.35, 1.88] as const;
 
 /** Deep-toned broad-canopy trees beyond the boundary: muted forest edge softened by fog. */
 const FAR_TREE_COUNT = 180;
-const FAR_RING = [1.58, 2.65] as const;
+const FAR_RING = [2.12, 2.85] as const;
 const FAR_HEIGHT = [11, 21] as const;
 /** Gate sector (around +z) stays open so the gate reads against the sky. */
 const GATE_GAP_RAD = 0.28;
@@ -211,11 +215,7 @@ function prepareAncientTreeModel(
   return { geometry: merged, material, textures };
 }
 
-/**
- * Distant broad-canopy tree (unit height) for the outer forest ring.
- * Uses deep, muted old-growth foliage tones so distant trees blend naturally
- * with `cothu.glb` instead of appearing overly bright under sunlight.
- */
+/** Distant broad-canopy tree (unit height) for the outer forest ring. */
 function createFarCanopyTreeGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
   const trunk = colorGeo(new CylinderGeometry(0.042, 0.072, 0.38, 6).translate(0, 0.19, 0), 0x2b1d12);
@@ -462,7 +462,7 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
     built.push(group);
   }
 
-  // 36 ancient trees (`models/cothu.glb`) in two staggered natural rings + shared with Wishing Tree.
+  // 54 ancient trees (`models/cothu.glb`) in three tightly interlocked rings + shared with Wishing Tree.
   const uTreeTime = { value: 0 };
   const preparedTree = prepareAncientTreeModel(cothuGltf.scene, uTreeTime);
   own(preparedTree.material);
@@ -472,24 +472,36 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
   const arc = Math.PI * 2 - 2 * GATE_GAP_RAD;
   let treeIdx = 0;
 
-  // Inner courtyard perimeter ring (18 ancient trees)
+  // Ring 1: Inner courtyard perimeter (18 trees)
   for (let k = 0; k < ANCIENT_INNER_COUNT; k++) {
-    const a = Math.PI / 2 + GATE_GAP_RAD + ((k + 0.18 + rand() * 0.64) / ANCIENT_INNER_COUNT) * arc;
+    const a = Math.PI / 2 + GATE_GAP_RAD + ((k + 0.15 + rand() * 0.7) / ANCIENT_INNER_COUNT) * arc;
     const p = ringPoint(a, ANCIENT_INNER_RING[0] + rand() * (ANCIENT_INNER_RING[1] - ANCIENT_INNER_RING[0]));
     const sc = ANCIENT_INNER_SCALE[0] + rand() * (ANCIENT_INNER_SCALE[1] - ANCIENT_INNER_SCALE[0]);
-    const spread = sc * (0.98 + rand() * 0.18);
+    const spread = sc * (0.95 + rand() * 0.16);
     const yaw = rand() * Math.PI * 2;
     ancientTrees.setMatrixAt(treeIdx++, place(p.x, 0, p.z, yaw, spread, sc, spread));
   }
 
-  // Outer staggered woodland ring (18 ancient trees forming natural groves)
-  const outerGap = GATE_GAP_RAD * 0.75;
-  const outerArc = Math.PI * 2 - 2 * outerGap;
+  // Ring 2: Intermediate interlocking woodland ring (18 trees)
+  const midGap = GATE_GAP_RAD * 0.85;
+  const midArc = Math.PI * 2 - 2 * midGap;
   for (let k = 0; k < ANCIENT_OUTER_COUNT; k++) {
-    const a = Math.PI / 2 + outerGap + ((k + 0.1 + rand() * 0.8) / ANCIENT_OUTER_COUNT) * outerArc;
+    const a = Math.PI / 2 + midGap + ((k + 0.45 + rand() * 0.55) / ANCIENT_OUTER_COUNT) * midArc;
     const p = ringPoint(a, ANCIENT_OUTER_RING[0] + rand() * (ANCIENT_OUTER_RING[1] - ANCIENT_OUTER_RING[0]));
     const sc = ANCIENT_OUTER_SCALE[0] + rand() * (ANCIENT_OUTER_SCALE[1] - ANCIENT_OUTER_SCALE[0]);
-    const spread = sc * (1.02 + rand() * 0.22);
+    const spread = sc * (1.0 + rand() * 0.2);
+    const yaw = rand() * Math.PI * 2;
+    ancientTrees.setMatrixAt(treeIdx++, place(p.x, 0, p.z, yaw, spread, sc, spread));
+  }
+
+  // Ring 3: Deep outer dense forest ring (18 trees interlocked to eliminate gaps)
+  const deepGap = GATE_GAP_RAD * 0.5;
+  const deepArc = Math.PI * 2 - 2 * deepGap;
+  for (let k = 0; k < ANCIENT_DEEP_COUNT; k++) {
+    const a = Math.PI / 2 + deepGap + ((k + 0.25 + rand() * 0.75) / ANCIENT_DEEP_COUNT) * deepArc;
+    const p = ringPoint(a, ANCIENT_DEEP_RING[0] + rand() * (ANCIENT_DEEP_RING[1] - ANCIENT_DEEP_RING[0]));
+    const sc = ANCIENT_DEEP_SCALE[0] + rand() * (ANCIENT_DEEP_SCALE[1] - ANCIENT_DEEP_SCALE[0]);
+    const spread = sc * (1.05 + rand() * 0.25);
     const yaw = rand() * Math.PI * 2;
     ancientTrees.setMatrixAt(treeIdx++, place(p.x, 0, p.z, yaw, spread, sc, spread));
   }
