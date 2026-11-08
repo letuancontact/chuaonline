@@ -257,14 +257,27 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
 
   const waterGeo = new CircleGeometry(1, 72);
   waterGeo.rotateX(-Math.PI / 2);
-  const waterMat = new MeshStandardMaterial({ color: 0x14292b, roughness: 0.1, metalness: 0 });
+  // Crystal-clear ocean blue water with gentle turquoise emissive glow
+  const waterMat = new MeshStandardMaterial({
+    color: 0x0c749e,
+    emissive: new Color(0x073e59),
+    emissiveIntensity: 0.38,
+    roughness: 0.08,
+    metalness: 0.04,
+  });
   waterMat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vWaterPos;")
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvWaterPos = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+      .replace("#include <common>", "#include <common>\nvarying vec3 vWaterPos;\nvarying vec2 vPondLocal;")
+      .replace(
+        "#include <begin_vertex>",
+        "#include <begin_vertex>\nvPondLocal = transformed.xz;\nvWaterPos = (modelMatrix * vec4(transformed, 1.0)).xyz;",
+      );
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform float uTime;\nuniform vec3 uSky;\nuniform float uNight;\nvarying vec3 vWaterPos;")
+      .replace(
+        "#include <common>",
+        "#include <common>\nuniform float uTime;\nuniform vec3 uSky;\nuniform float uNight;\nvarying vec3 vWaterPos;\nvarying vec2 vPondLocal;",
+      )
       .replace(
         "#include <normal_fragment_maps>",
         `#include <normal_fragment_maps>
@@ -275,15 +288,22 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
       )
       .replace(
         "#include <opaque_fragment>",
-        `float fres = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 4.0);
-        outgoingLight = mix(outgoingLight, uSky * 0.55, 0.12 + 0.45 * fres);
+        `float fres = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 3.6);
+        float radial = clamp(length(vPondLocal), 0.0, 1.0);
+        vec3 turquoiseCenter = vec3(0.12, 0.68, 0.84);
+        vec3 oceanDeep = vec3(0.04, 0.36, 0.56);
+        vec3 seaTone = mix(turquoiseCenter, oceanDeep, smoothstep(0.15, 0.95, radial));
+        float caustic = 0.5 + 0.5 * sin(wp.x * 2.8 + uTime * 1.4) * cos(wp.y * 2.6 - uTime * 1.1);
+        seaTone += vec3(0.05, 0.14, 0.18) * caustic * (1.0 - 0.5 * uNight);
+        outgoingLight = mix(outgoingLight, seaTone, 0.46);
+        outgoingLight = mix(outgoingLight, max(uSky * 0.78, vec3(0.18, 0.55, 0.74)), 0.14 + 0.42 * fres);
         vec2 gc = wp * 2.2 + slope * 6.0;
         vec2 cell = floor(gc);
         float h = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
         vec2 jit = vec2(h, fract(h * 7.31)) * 0.6 + 0.2;
         float tw = 0.5 + 0.5 * sin(uTime * (1.3 + 2.0 * h) + h * 40.0);
         float glint = step(0.82, h) * smoothstep(0.1, 0.0, length(fract(gc) - jit)) * tw * tw;
-        outgoingLight += vec3(1.0, 0.78, 0.45) * glint * uNight * 1.6;
+        outgoingLight += vec3(1.0, 0.84, 0.52) * glint * uNight * 1.6;
         #include <opaque_fragment>`,
       );
   };
@@ -299,7 +319,7 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
     map: materials.stone.map,
     normalMap: materials.stone.normalMap,
     roughnessMap: materials.stone.roughnessMap,
-    color: 0x8f897c,
+    color: 0x9c9587,
     polygonOffset: true,
     polygonOffsetFactor: -2,
     polygonOffsetUnits: -2,
@@ -312,7 +332,7 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
 
   const leafGeo = new CircleGeometry(1, 20, 0.25, Math.PI * 2 - 0.5);
   leafGeo.rotateX(-Math.PI / 2);
-  const leafMat = new MeshStandardMaterial({ color: 0x3e5d2c, roughness: 0.6, side: DoubleSide });
+  const leafMat = new MeshStandardMaterial({ color: 0x3b8038, roughness: 0.55, side: DoubleSide });
   const leaves = new InstancedMesh(leafGeo, leafMat, LEAF_COUNT);
   for (let i = 0; i < LEAF_COUNT; i++) {
     const f = LOTUS_FLOWERS[i % LOTUS_FLOWERS.length];
@@ -410,12 +430,12 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
 
   const rippleGeo = rippleGeometry();
   const rippleMat = new MeshStandardMaterial({
-    color: 0xd8f0ec,
-    emissive: new Color(0x4c7a74),
-    emissiveIntensity: 0.35,
-    roughness: 0.25,
+    color: 0xbaf2ff,
+    emissive: new Color(0x2d96b8),
+    emissiveIntensity: 0.42,
+    roughness: 0.2,
     transparent: true,
-    opacity: 0.34,
+    opacity: 0.38,
     depthWrite: false,
     side: DoubleSide,
   });
@@ -550,9 +570,10 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
       uniforms.uTime.value = t;
       const night = 1 - daylight;
       uniforms.uNight.value = night;
+      waterMat.emissiveIntensity = 0.34 + daylight * 0.14;
       lanternMat.emissiveIntensity = 0.7 + night * 1.6 + 0.12 * Math.sin(t * 3.1);
-      koiMat.emissiveIntensity = 0.18 + night * 0.28;
-      rippleMat.opacity = 0.26 + daylight * 0.14;
+      koiMat.emissiveIntensity = 0.22 + night * 0.28;
+      rippleMat.opacity = 0.3 + daylight * 0.14;
       updateDynamicPond(t);
     },
     dispose() {
