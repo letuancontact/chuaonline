@@ -109,7 +109,7 @@ interface PreparedAncientTree {
 
 type Object3DLike = {
   updateMatrixWorld(force?: boolean): void;
-  traverse(cb: (node: unknown) => void): void): void;
+  traverse(cb: (node: unknown) => void): void;
 };
 
 /**
