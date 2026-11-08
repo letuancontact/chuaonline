@@ -214,7 +214,6 @@ export class Avatar {
   setMoving(speed: number): void {
     this.targetSpeed = Math.max(0, speed);
     if (this.targetSpeed > 0.05) {
-      this.woodblockHold = 0;
       if (this.activeGesture === "gardenSit" || this.activeGesture === "bowGreet") {
         this.activeGesture = null;
       }
@@ -374,7 +373,7 @@ export class Avatar {
     if (this.woodblockHold > 0) {
       this.woodblockHold = Math.max(0, this.woodblockHold - dt);
     }
-    const wantHold = this.woodblockHold > 0 && !this.dozing && this.current !== "hello" && this.current !== "beads" && this.targetSpeed <= 0.05 ? 1 : 0;
+    const wantHold = this.woodblockHold > 0 && !this.dozing && this.current !== "hello" && this.current !== "beads" ? 1 : 0;
     this.holdWeight = MathUtils.damp(this.holdWeight, wantHold, HOLD_DAMP, dt);
     if (this.holdWeight < 0.01 && wantHold === 0) {
       this.holdWeight = 0;
@@ -407,6 +406,7 @@ export class Avatar {
       bones.chest.quaternion.slerp(setQuatEuler(0.03 + breath + 0.012 * recoil, 0, 0), w);
       bones.head.quaternion.slerp(setQuatEuler(0.14 + 0.02 * recoil, 0, 0), w);
       if (this.current === "kneel") {
+        bones.hips.quaternion.slerp(setQuatEuler(0, 0, 0), w);
         bones.hips.position.y = MathUtils.lerp(bones.hips.position.y, JOINT.hips.y - 0.26, w);
         bones.hips.position.z = MathUtils.lerp(bones.hips.position.z, 0, w);
       }
