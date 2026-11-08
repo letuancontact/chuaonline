@@ -41,10 +41,10 @@ export const SLAB_TOP = 0.05;
 /** Loop ribbon height above the ground; polygonOffset keeps it from z-fighting. */
 const LOOP_Y = 0.02;
 
-/** Wide-canopy ancient trees surrounding the temple courtyard. */
+/** Wide-canopy ancient trees surrounding the temple courtyard (matching cothu.glb proportions). */
 const ANCIENT_TREE_COUNT = 14;
-const ANCIENT_RING = [1.04, 1.14] as const;
-const ANCIENT_SCALE = [0.95, 1.32] as const;
+const ANCIENT_RING = [1.05, 1.15] as const;
+const ANCIENT_SCALE = [1.02, 1.38] as const;
 /** Lush broad-canopy trees beyond the boundary: vibrant green forest edge softened by fog. */
 const FAR_TREE_COUNT = 160;
 const FAR_RING = [1.65, 2.55] as const;
@@ -61,6 +61,11 @@ const q = new Quaternion();
 const v3 = new Vector3();
 const s3 = new Vector3();
 const UP = new Vector3(0, 1, 0);
+const segDir = new Vector3();
+const segQuat = new Quaternion();
+const segPos = new Vector3();
+const segScale = new Vector3(1, 1, 1);
+const segMat = new Matrix4();
 
 function box(batch: GeometryBatch<Key>, key: Key, x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, tile = 1, castShadow = true): void {
   const g = new BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
@@ -72,7 +77,7 @@ function place(x: number, y: number, z: number, yaw = 0, sx = 1, sy = 1, sz = 1)
   return m4.compose(v3.set(x, y, z), q.setFromAxisAngle(UP, yaw), s3.set(sx, sy, sz));
 }
 
-/** Paint vertex colors onto a geometry so merged parts share one draw call with rich colour variation. */
+/** Paint a solid vertex color onto a geometry. */
 function colorGeo(g: BufferGeometry, hex: number): BufferGeometry {
   const c = new Color(hex);
   const count = g.getAttribute("position").count;
@@ -86,85 +91,279 @@ function colorGeo(g: BufferGeometry, hex: number): BufferGeometry {
   return g;
 }
 
+/** Gnarled, fluted bark cylinder for ancient tree trunks, roots, and boughs. */
+function barkCylinder(
+  rTop: number,
+  rBottom: number,
+  height: number,
+  radialSegs: number,
+  seed: number,
+  gnarl = 0.14,
+): CylinderGeometry {
+  const g = new CylinderGeometry(rTop, rBottom, height, radialSegs, 2);
+  const pos = g.getAttribute("position");
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const angle = Math.atan2(z, x);
+    const flute =
+      1 +
+      gnarl * Math.sin(angle * 5 + y * 2.1 + seed) +
+      gnarl * 0.48 * Math.cos(angle * 3 - y * 2.9 + seed * 1.3);
+    pos.setXYZ(i, x * flute, y, z * flute);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Appends a curved, tapering quadratic-Bézier limb made of gnarled bark segments. */
+function appendCurvedLimb(
+  parts: BufferGeometry[],
+  p0: readonly [number, number, number],
+  p1: readonly [number, number, number],
+  p2: readonly [number, number, number],
+  rStart: number,
+  rEnd: number,
+  segments: number,
+  radialSegs: number,
+  colorStart: number,
+  colorEnd: number,
+  gnarl = 0.11,
+): void {
+  const c0 = new Color(colorStart);
+  const c1 = new Color(colorEnd);
+  const cStep = new Color();
+
+  const evalPt = (t: number, out: [number, number, number]): void => {
+    const inv = 1 - t;
+    out[0] = inv * inv * p0[0] + 2 * inv * t * p1[0] + t * t * p2[0];
+    out[1] = inv * inv * p0[1] + 2 * inv * t * p1[1] + t * t * p2[1];
+    out[2] = inv * inv * p0[2] + 2 * inv * t * p1[2] + t * t * p2[2];
+  };
+
+  const a: [number, number, number] = [0, 0, 0];
+  const b: [number, number, number] = [0, 0, 0];
+
+  for (let i = 0; i < segments; i++) {
+    const t0 = i / segments;
+    const t1 = (i + 1) / segments;
+    evalPt(t0, a);
+    evalPt(t1, b);
+
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const dz = b[2] - a[2];
+    const len = Math.hypot(dx, dy, dz);
+    if (len < 0.001) continue;
+
+    const r0 = rStart + (rEnd - rStart) * Math.pow(t0, 0.82);
+    const r1 = rStart + (rEnd - rStart) * Math.pow(t1, 0.82);
+
+    const cyl = barkCylinder(r1, r0, len * 1.14, radialSegs, i * 1.9 + rStart * 11, gnarl);
+    segDir.set(dx / len, dy / len, dz / len);
+    segQuat.setFromUnitVectors(UP, segDir);
+    segPos.set((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5, (a[2] + b[2]) * 0.5);
+    segMat.compose(segPos, segQuat, segScale);
+    cyl.applyMatrix4(segMat);
+
+    cStep.copy(c0).lerp(c1, (t0 + t1) * 0.5);
+    parts.push(colorGeo(cyl, cStep.getHex()));
+  }
+}
+
 /**
- * Builds a majestic wide-canopy ancient tree ("Cây Cổ Thụ Tán Rộng"):
- * - `trunk`: sturdy flared root base, main trunk and 5 spreading boughs.
- * - `canopy`: 11 layered, wide-spreading lush green foliage domes with sunlit top highlights.
+ * Sculpted billowy foliage pad with 4-tone vertex-color shading (deep shaded underside ->
+ * emerald mid-tone -> vibrant fresh leaf green -> sunlit golden-green crown).
+ */
+function foliageCloudGeometry(
+  cx: number,
+  cy: number,
+  cz: number,
+  rx: number,
+  ry: number,
+  rz: number,
+  seed: number,
+  goldenTip: number,
+): BufferGeometry {
+  const g = new SphereGeometry(1, 10, 7);
+  const pos = g.getAttribute("position");
+  const count = pos.count;
+  const colors = new Float32Array(count * 3);
+
+  const deepShade = new Color(0x1b5228);
+  const richEmerald = new Color(0x2f853e);
+  const sunlitGreen = new Color(0x5ec454);
+  const crownGold = new Color(0xa8e052);
+  const cTmp = new Color();
+
+  for (let i = 0; i < count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+
+    const lobe =
+      1 +
+      0.21 * Math.sin(3.5 * x + seed) * Math.cos(3.1 * z + seed * 1.3) +
+      0.13 * Math.sin(4.8 * y + 2.3 * x + seed * 1.9);
+
+    // Flattened underside like real layered banyan/bodhi leaf pads
+    const flatY = y < 0 ? y * 0.54 : y;
+
+    const wx = cx + x * rx * lobe;
+    const wy = cy + flatY * ry * lobe;
+    const wz = cz + z * rz * lobe;
+    pos.setXYZ(i, wx, wy, wz);
+
+    const heightNorm = Math.max(0, Math.min(1, (wy - 3.2) / 4.2));
+    const localTop = Math.max(0, Math.min(1, (y + 0.65) / 1.6));
+    const light = Math.max(0, Math.min(1, localTop * 0.66 + heightNorm * 0.34));
+
+    if (light < 0.44) {
+      cTmp.copy(deepShade).lerp(richEmerald, light / 0.44);
+    } else {
+      cTmp.copy(richEmerald).lerp(sunlitGreen, (light - 0.44) / 0.56);
+    }
+    if (goldenTip > 0 && light > 0.64) {
+      cTmp.lerp(crownGold, goldenTip * (light - 0.64));
+    }
+
+    colors[i * 3] = cTmp.r;
+    colors[i * 3 + 1] = cTmp.g;
+    colors[i * 3 + 2] = cTmp.b;
+  }
+
+  g.setAttribute("color", new Float32BufferAttribute(colors, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
+ * Simulates the `cothu.glb` ancient banyan/bodhi tree:
+ * - Wide aspect ratio (width ~8.6 m, height ~7.5 m -> ~1.14 : 1 matching `cothu.glb`).
+ * - Flared buttress roots, gnarled twisted trunk, 6 sweeping primary boughs, 12 fork branches,
+ *   and hanging aerial roots.
+ * - 25 layered, billowy multi-lobed green foliage clouds.
  */
 function createAncientTreeGeometries(): { trunk: BufferGeometry; canopy: BufferGeometry } {
   const trunkParts: BufferGeometry[] = [];
-  const addWood = (g: BufferGeometry, hex: number): void => {
-    trunkParts.push(colorGeo(g, hex));
-  };
+  const canopyParts: BufferGeometry[] = [];
 
-  // Flared root base + main trunk
-  addWood(new CylinderGeometry(0.46, 0.78, 1.3, 9).translate(0, 0.65, 0), 0x4f3522);
-  addWood(new CylinderGeometry(0.34, 0.48, 2.8, 9).translate(0, 2.6, 0), 0x5c3e28);
+  // 1. Massive gnarled main trunk with natural S-curve taper
+  appendCurvedLimb(trunkParts, [0, -0.05, 0], [0.18, 1.65, -0.12], [-0.08, 3.35, 0.08], 0.78, 0.48, 5, 9, 0x3d2b1c, 0x573e29, 0.16);
+  appendCurvedLimb(trunkParts, [-0.08, 3.15, 0.08], [0.12, 4.35, -0.06], [0.0, 5.4, 0.0], 0.44, 0.18, 4, 8, 0x573e29, 0x694c34, 0.12);
 
-  // 5 spreading primary branches reaching outward to support the wide crown
-  const branches: readonly { yaw: number; tilt: number; len: number; r0: number; r1: number; y: number }[] = [
-    { yaw: 0.2, tilt: 0.62, len: 3.1, r0: 0.14, r1: 0.26, y: 3.4 },
-    { yaw: 1.45, tilt: 0.58, len: 2.9, r0: 0.13, r1: 0.24, y: 3.55 },
-    { yaw: 2.75, tilt: 0.64, len: 3.2, r0: 0.14, r1: 0.26, y: 3.35 },
-    { yaw: 4.0, tilt: 0.56, len: 2.8, r0: 0.13, r1: 0.23, y: 3.6 },
-    { yaw: 5.2, tilt: 0.6, len: 3.0, r0: 0.14, r1: 0.25, y: 3.45 },
-  ];
-  for (const b of branches) {
-    const bg = new CylinderGeometry(b.r0, b.r1, b.len, 7);
-    bg.translate(0, b.len / 2, 0);
-    bg.rotateZ(b.tilt);
-    bg.rotateY(b.yaw);
-    bg.translate(0, b.y, 0);
-    addWood(bg, 0x543824);
+  // 2. 8 flared buttress roots gripping the earth around the base
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + (i % 2) * 0.16;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    const twist = (i % 2 === 0 ? 1 : -1) * 0.25;
+    appendCurvedLimb(
+      trunkParts,
+      [ca * 0.42, 1.35, sa * 0.42],
+      [ca * 1.18 - sa * twist, 0.55, sa * 1.18 + ca * twist],
+      [ca * 1.95, -0.04, sa * 1.95],
+      0.28,
+      0.08,
+      4,
+      6,
+      0x473322,
+      0x38281a,
+      0.15,
+    );
   }
+
+  // 3. 6 heavy, wide-spreading primary boughs + 12 secondary fork branches + canopy clouds
+  const mainBoughs = 6;
+  for (let i = 0; i < mainBoughs; i++) {
+    const a = (i / mainBoughs) * Math.PI * 2 + 0.24;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    const yStart = 2.75 + (i % 3) * 0.22;
+    const midR = 1.65;
+    const endR = 3.05 + (i % 2) * 0.28;
+    const endY = 4.05 + (i % 3) * 0.25;
+
+    const p0: [number, number, number] = [ca * 0.28, yStart, sa * 0.28];
+    const p1: [number, number, number] = [ca * midR - sa * 0.28, yStart + 0.82, sa * midR + ca * 0.28];
+    const p2: [number, number, number] = [ca * endR, endY, sa * endR];
+
+    appendCurvedLimb(trunkParts, p0, p1, p2, 0.34, 0.13, 4, 7, 0x543b27, 0x6b4d35, 0.11);
+
+    // Lower outer foliage pad at the end of each primary bough
+    canopyParts.push(
+      foliageCloudGeometry(p2[0], p2[1] + 0.35, p2[2], 1.85, 0.98, 1.85, i * 5.1 + 1.0, 0.22),
+    );
+    // Mid-tier inner foliage pad above the bough elbow
+    canopyParts.push(
+      foliageCloudGeometry(p1[0] * 0.95, p1[1] + 1.05, p1[2] * 0.95, 1.92, 1.05, 1.92, i * 5.1 + 2.3, 0.35),
+    );
+
+    // Secondary left & right fork branches reaching further out
+    for (const side of [-1, 1] as const) {
+      const fa = a + side * 0.44;
+      const fca = Math.cos(fa);
+      const fsa = Math.sin(fa);
+      const forkLen = 3.55 + (side > 0 ? 0.22 : 0);
+      const forkY = endY + 0.32 + (side > 0 ? 0.18 : -0.06);
+
+      const fp0: [number, number, number] = [p1[0], p1[1] + 0.06, p1[2]];
+      const fp1: [number, number, number] = [fca * 2.55, endY + 0.2, fsa * 2.55];
+      const fp2: [number, number, number] = [fca * forkLen, forkY, fsa * forkLen];
+
+      appendCurvedLimb(trunkParts, fp0, fp1, fp2, 0.18, 0.065, 3, 6, 0x5e432d, 0x73543b, 0.09);
+
+      canopyParts.push(
+        foliageCloudGeometry(
+          fp2[0],
+          fp2[1] + 0.25,
+          fp2[2],
+          1.52,
+          0.84,
+          1.52,
+          i * 7.3 + (side > 0 ? 3.1 : 4.7),
+          side > 0 ? 0.38 : 0.16,
+        ),
+      );
+    }
+  }
+
+  // 4. 10 hanging aerial roots (rễ phụ cây đa / bồ đề cổ thụ) draping from lower boughs
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 + 0.18;
+    const r = i % 2 === 0 ? 1.45 : 2.05;
+    const rx = Math.cos(a) * r;
+    const rz = Math.sin(a) * r;
+    const topY = i % 2 === 0 ? 3.55 : 3.85;
+    const botY = i % 3 === 0 ? 0.0 : 1.55 + (i % 2) * 0.42;
+    const sway = (i % 2 === 0 ? 1 : -1) * 0.14;
+    appendCurvedLimb(
+      trunkParts,
+      [rx, topY, rz],
+      [rx + sway, (topY + botY) * 0.5, rz - sway],
+      [rx * 0.96, botY, rz * 0.96],
+      0.036,
+      0.016,
+      3,
+      5,
+      0x4f3825,
+      0x664b33,
+      0.05,
+    );
+  }
+
+  // 5. Upper sunlit crown domes uniting the silhouette into a grand, lush dome
+  canopyParts.push(foliageCloudGeometry(0, 6.05, 0, 2.55, 1.28, 2.55, 71.2, 0.48));
+  canopyParts.push(foliageCloudGeometry(1.15, 5.75, 0.95, 1.95, 1.02, 1.95, 83.4, 0.42));
+  canopyParts.push(foliageCloudGeometry(-1.18, 5.68, -0.92, 1.95, 1.02, 1.95, 95.6, 0.42));
+  canopyParts.push(foliageCloudGeometry(-0.95, 5.82, 1.12, 1.85, 0.98, 1.85, 107.8, 0.45));
+  canopyParts.push(foliageCloudGeometry(0.98, 5.78, -1.08, 1.85, 0.98, 1.85, 119.1, 0.45));
+  canopyParts.push(foliageCloudGeometry(0, 6.65, 0, 1.95, 1.05, 1.95, 131.5, 0.58));
 
   const trunk = mergeGeometries(trunkParts);
   for (const g of trunkParts) g.dispose();
   if (!trunk) throw new Error("merge: ancient tree trunk");
-
-  // Lush multi-tiered broad green canopy
-  const canopyParts: BufferGeometry[] = [];
-  const addLeaf = (
-    x: number,
-    y: number,
-    z: number,
-    rx: number,
-    ry: number,
-    rz: number,
-    hex: number,
-  ): void => {
-    const g = new SphereGeometry(1, 10, 7);
-    const pos = g.getAttribute("position");
-    for (let i = 0; i < pos.count; i++) {
-      const px = pos.getX(i);
-      const py = pos.getY(i);
-      const pz = pos.getZ(i);
-      // Organic scalloped leaf cluster silhouette with slightly flattened underside
-      const ripple = 1 + 0.08 * Math.sin(3.4 * px + 2.1 * pz) * Math.cos(2.7 * py);
-      const flatBottom = py < 0 ? py * 0.68 : py;
-      pos.setXYZ(i, px * rx * ripple, flatBottom * ry * ripple, pz * rz * ripple);
-    }
-    g.translate(x, y, z);
-    g.computeVertexNormals();
-    canopyParts.push(colorGeo(g, hex));
-  };
-
-  // Lower wide shade layer (rich emerald-jade green)
-  addLeaf(-2.3, 4.9, 0.7, 2.35, 1.18, 2.15, 0x2b7a3d);
-  addLeaf(2.25, 5.0, -0.6, 2.3, 1.15, 2.1, 0x2f8241);
-  addLeaf(0.4, 4.85, 2.35, 2.25, 1.15, 2.2, 0x29753b);
-  addLeaf(-0.5, 4.95, -2.25, 2.3, 1.18, 2.15, 0x318644);
-
-  // Middle broad crown layer (vibrant fresh leaf green)
-  addLeaf(-1.55, 5.85, -1.35, 2.45, 1.3, 2.35, 0x3b9949);
-  addLeaf(1.65, 5.9, 1.4, 2.45, 1.28, 2.3, 0x41a14e);
-  addLeaf(-1.6, 5.95, 1.5, 2.2, 1.25, 2.15, 0x389446);
-  addLeaf(1.5, 5.8, -1.5, 2.25, 1.22, 2.15, 0x45a651);
-
-  // Central & upper sunlit crown domes (bright spring-leaf green)
-  addLeaf(0, 6.45, 0, 3.05, 1.48, 2.95, 0x4eb356);
-  addLeaf(-0.85, 7.15, 0.45, 2.15, 1.18, 2.05, 0x5cc25e);
-  addLeaf(0.8, 7.25, -0.35, 2.05, 1.15, 1.95, 0x67cc64);
 
   const canopy = mergeGeometries(canopyParts);
   for (const g of canopyParts) g.dispose();
@@ -176,11 +375,11 @@ function createAncientTreeGeometries(): { trunk: BufferGeometry; canopy: BufferG
 /** Distant broad-canopy tree (unit height) for the outer forest ring. */
 function createFarCanopyTreeGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
-  const trunk = colorGeo(new CylinderGeometry(0.035, 0.055, 0.36, 6).translate(0, 0.18, 0), 0x4a3321);
-  const low = colorGeo(new SphereGeometry(0.34, 8, 6).scale(1.15, 0.62, 1.15).translate(-0.08, 0.52, 0.05), 0x296e37);
-  const mid = colorGeo(new SphereGeometry(0.36, 8, 6).scale(1.2, 0.65, 1.2).translate(0.09, 0.62, -0.04), 0x358543);
-  const top = colorGeo(new SphereGeometry(0.32, 8, 6).scale(1.12, 0.68, 1.12).translate(0, 0.78, 0), 0x479e52);
-  parts.push(trunk, low, mid, top);
+  const trunk = colorGeo(new CylinderGeometry(0.038, 0.062, 0.36, 6).translate(0, 0.18, 0), 0x4a3321);
+  const lowL = colorGeo(new SphereGeometry(0.36, 8, 6).scale(1.22, 0.6, 1.22).translate(-0.1, 0.5, 0.06), 0x266934);
+  const lowR = colorGeo(new SphereGeometry(0.36, 8, 6).scale(1.25, 0.62, 1.25).translate(0.11, 0.58, -0.05), 0x338241);
+  const top = colorGeo(new SphereGeometry(0.34, 8, 6).scale(1.18, 0.66, 1.18).translate(0, 0.76, 0), 0x4ba352);
+  parts.push(trunk, lowL, lowR, top);
   const merged = mergeGeometries(parts);
   for (const g of parts) g.dispose();
   if (!merged) throw new Error("merge: far canopy trees");
@@ -424,18 +623,35 @@ export async function createGarden(scene: Scene, _assets: Assets, materials: Mat
     built.push(group);
   }
 
-  // Wide-canopy ancient trees surrounding the courtyard boundary (2 instanced meshes: trunks + lush canopies).
+  // Wide-canopy ancient trees surrounding the courtyard boundary (matching cothu.glb silhouette & foliage).
   const ancientGeo = createAncientTreeGeometries();
+  const uTreeTime = { value: 0 };
   const trunkMat = own(new MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0.02 }));
   const canopyMat = own(
     new MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.68,
+      roughness: 0.66,
       metalness: 0.0,
-      emissive: new Color(0x102e14),
+      emissive: new Color(0x113016),
       emissiveIntensity: 0.22,
     }),
   );
+  canopyMat.onBeforeCompile = (shader) => {
+    shader.uniforms["uTime"] = uTreeTime;
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nuniform float uTime;")
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        vec2 treePos = vec2(instanceMatrix[3][0], instanceMatrix[3][2]);
+        float swayWeight = clamp((transformed.y - 2.5) * 0.28, 0.0, 1.0);
+        float leafPhase = transformed.x * 0.85 + transformed.z * 0.75 + treePos.x * 0.18 + treePos.y * 0.14;
+        float leafSway = swayWeight * (0.048 * sin(uTime * 1.55 + leafPhase) + 0.022 * cos(uTime * 2.8 - leafPhase * 1.2));
+        transformed.x += leafSway;
+        transformed.y += leafSway * 0.22;
+        transformed.z += leafSway * 0.65;`,
+      );
+  };
 
   const trunks = new InstancedMesh(ancientGeo.trunk, trunkMat, ANCIENT_TREE_COUNT);
   const canopies = new InstancedMesh(ancientGeo.canopy, canopyMat, ANCIENT_TREE_COUNT);
@@ -445,7 +661,7 @@ export async function createGarden(scene: Scene, _assets: Assets, materials: Mat
     const a = Math.PI / 2 + GATE_GAP_RAD + ((k + 0.2 + rand() * 0.6) / ANCIENT_TREE_COUNT) * arc;
     const p = ringPoint(a, ANCIENT_RING[0] + rand() * (ANCIENT_RING[1] - ANCIENT_RING[0]));
     const sc = ANCIENT_SCALE[0] + rand() * (ANCIENT_SCALE[1] - ANCIENT_SCALE[0]);
-    const spread = sc * (1.02 + rand() * 0.22);
+    const spread = sc * (1.06 + rand() * 0.18);
     const yaw = rand() * Math.PI * 2;
     const mat = place(p.x, 0, p.z, yaw, spread, sc, spread);
     trunks.setMatrixAt(k, mat);
@@ -469,7 +685,7 @@ export async function createGarden(scene: Scene, _assets: Assets, materials: Mat
     const a = rand() * Math.PI * 2;
     const p = ringPoint(a, FAR_RING[0] + rand() * (FAR_RING[1] - FAR_RING[0]));
     const h = FAR_HEIGHT[0] + rand() * (FAR_HEIGHT[1] - FAR_HEIGHT[0]);
-    const w = h * (0.9 + rand() * 0.35);
+    const w = h * (0.95 + rand() * 0.35);
     far.setMatrixAt(i, place(p.x, 0, p.z, rand() * Math.PI, w, h, w));
   }
   far.computeBoundingSphere();
@@ -488,6 +704,7 @@ export async function createGarden(scene: Scene, _assets: Assets, materials: Mat
   return {
     lanterns: { stone, lotus },
     update(daylight) {
+      uTreeTime.value = performance.now() * 0.001;
       const k = GLOW_DAY + (GLOW_NIGHT - GLOW_DAY) * (1 - daylight);
       lanternPaper.emissiveIntensity = k;
       lotusLamp.emissiveIntensity = k;
