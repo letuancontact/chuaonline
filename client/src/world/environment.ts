@@ -18,7 +18,7 @@ import { SHADOW_MAP_SIZE } from "../engine/renderer.ts";
 import type { Assets } from "./assets.ts";
 
 interface Palette {
-  /** Multiplies the panorama: white = as photographed, dark blue = night. */
+  /** Multiplies the panorama: white = as photographed, soft blue = night. */
   skyTint: Color;
   fog: Color;
   fogNear: number;
@@ -36,32 +36,32 @@ interface Palette {
 
 const DAY: Palette = {
   skyTint: new Color(0xffffff),
-  fog: new Color(0xb4c2bd),
-  fogNear: 35,
-  fogFar: 150,
-  hemiSky: new Color(0xdce8ec),
-  hemiGround: new Color(0x5b5446),
-  hemiIntensity: 1.15,
-  ambient: new Color(0xffffff),
-  ambientIntensity: 0.12,
-  sun: new Color(0xfff0d6),
-  sunIntensity: 2.6,
-  sunDir: new Vector3(0.45, 0.8, 0.35).normalize(),
+  fog: new Color(0xcce2dc),
+  fogNear: 48,
+  fogFar: 185,
+  hemiSky: new Color(0xe8f4fa),
+  hemiGround: new Color(0x7a725e),
+  hemiIntensity: 1.55,
+  ambient: new Color(0xfffcf5),
+  ambientIntensity: 0.42,
+  sun: new Color(0xfff5e0),
+  sunIntensity: 3.1,
+  sunDir: new Vector3(0.45, 0.82, 0.35).normalize(),
 };
 
 const NIGHT: Palette = {
-  skyTint: new Color(0x3a4868),
-  fog: new Color(0x222c3c),
-  fogNear: 22,
-  fogFar: 110,
-  hemiSky: new Color(0x5a6c96),
-  hemiGround: new Color(0x2a241e),
-  hemiIntensity: 0.95,
-  ambient: new Color(0x8090b4),
-  ambientIntensity: 0.12,
-  sun: new Color(0xb6c6ff),
-  sunIntensity: 0.8,
-  sunDir: new Vector3(-0.35, 0.75, 0.55).normalize(),
+  skyTint: new Color(0x6882ad),
+  fog: new Color(0x3b4f6b),
+  fogNear: 36,
+  fogFar: 155,
+  hemiSky: new Color(0x88a4d4),
+  hemiGround: new Color(0x4c463c),
+  hemiIntensity: 1.38,
+  ambient: new Color(0xa8bee0),
+  ambientIntensity: 0.45,
+  sun: new Color(0xd6e4ff),
+  sunIntensity: 1.45,
+  sunDir: new Vector3(-0.35, 0.78, 0.52).normalize(),
 };
 
 const SKY_RADIUS = 400;
