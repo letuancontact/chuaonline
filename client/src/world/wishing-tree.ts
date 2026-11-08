@@ -145,15 +145,15 @@ function buildPlanterGeometry(): BufferGeometry {
 
   const baseStep = new CylinderGeometry(2.15, 2.25, 0.14, 8);
   baseStep.translate(0, 0.07, 0);
-  parts.push(paintGeometry(baseStep, 0x6e695f));
+  parts.push(paintGeometry(baseStep, 0x7a7469));
 
   const curbWall = new CylinderGeometry(1.92, 2.0, 0.32, 8);
   curbWall.translate(0, 0.26, 0);
-  parts.push(paintGeometry(curbWall, 0x857f73));
+  parts.push(paintGeometry(curbWall, 0x918a7d));
 
   const topLip = new CylinderGeometry(2.04, 2.04, 0.07, 8);
   topLip.translate(0, 0.44, 0);
-  parts.push(paintGeometry(topLip, 0x9c9587));
+  parts.push(paintGeometry(topLip, 0xa8a092));
 
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
@@ -161,22 +161,22 @@ function buildPlanterGeometry(): BufferGeometry {
     const pz = Math.sin(a) * 1.96;
     const post = new CylinderGeometry(0.095, 0.11, 0.52, 6);
     post.translate(px, 0.27, pz);
-    parts.push(paintGeometry(post, 0x918a7c));
+    parts.push(paintGeometry(post, 0x9c9587));
 
     const cap = new SphereGeometry(0.1, 8, 6);
     cap.scale(1, 0.75, 1);
     cap.translate(px, 0.55, pz);
-    parts.push(paintGeometry(cap, 0xa69f90));
+    parts.push(paintGeometry(cap, 0xb3ab9c));
   }
 
   const soil = new CylinderGeometry(1.82, 1.82, 0.36, 16);
   soil.translate(0, 0.2, 0);
-  parts.push(paintGeometry(soil, 0x382a1d));
+  parts.push(paintGeometry(soil, 0x453424));
 
   const moss = new SphereGeometry(1.8, 14, 8);
   moss.scale(1, 0.2, 1);
   moss.translate(0, 0.34, 0);
-  parts.push(paintGeometry(moss, 0x3b522c));
+  parts.push(paintGeometry(moss, 0x3b8038));
 
   const merged = mergeGeometries(parts);
   for (const p of parts) p.dispose();
@@ -196,9 +196,9 @@ function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[];
   const tips: BranchTip[] = [];
   const hangSpots: BranchTip[] = [];
 
-  appendCurvedLimb(parts, [0, 0.26, 0], [0.16, 1.75, -0.1], [-0.08, 3.35, 0.06], 0.68, 0.42, 7, 11, 0x3d3524, 0x543e2c, 0.14);
-  appendCurvedLimb(parts, [-0.08, 3.15, 0.06], [0.1, 4.35, -0.06], [0.0, 5.45, 0.0], 0.38, 0.15, 5, 9, 0x543e2c, 0x634a35, 0.1);
-  tips.push({ x: 0, y: 5.65, z: 0, r: 1.55 });
+  appendCurvedLimb(parts, [0, 0.26, 0], [0.16, 1.75, -0.1], [-0.08, 3.35, 0.06], 0.68, 0.42, 7, 11, 0x4a3b28, 0x614833, 0.14);
+  appendCurvedLimb(parts, [-0.08, 3.15, 0.06], [0.1, 4.35, -0.06], [0.0, 5.45, 0.0], 0.38, 0.15, 5, 9, 0x614833, 0x70543c, 0.1);
+  tips.push({ x: 0, y: 5.65, z: 0, r: 1.78 });
 
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + (i % 2) * 0.18;
@@ -214,8 +214,8 @@ function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[];
       0.065,
       5,
       8,
-      0x443826,
-      0x364226,
+      0x52402b,
+      0x3d5c2e,
       0.13,
     );
   }
@@ -234,9 +234,9 @@ function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[];
     const p1: [number, number, number] = [ca * midR - sa * 0.24, yStart + 0.72, sa * midR + ca * 0.24];
     const p2: [number, number, number] = [ca * endR, endY, sa * endR];
 
-    appendCurvedLimb(parts, p0, p1, p2, 0.29, 0.12, 6, 9, 0x523c2b, 0x624934, 0.1);
-    tips.push({ x: p2[0], y: p2[1] + 0.22, z: p2[2], r: 1.28 });
-    tips.push({ x: p1[0] * 0.92, y: p1[1] + 0.88, z: p1[2] * 0.92, r: 1.35 });
+    appendCurvedLimb(parts, p0, p1, p2, 0.29, 0.12, 6, 9, 0x5c4330, 0x6e523b, 0.1);
+    tips.push({ x: p2[0], y: p2[1] + 0.22, z: p2[2], r: 1.48 });
+    tips.push({ x: p1[0] * 0.92, y: p1[1] + 0.88, z: p1[2] * 0.92, r: 1.55 });
 
     hangSpots.push({ x: p1[0], y: p1[1] - 0.12, z: p1[2], r: 1 });
     hangSpots.push({ x: p2[0] * 0.9, y: p2[1] - 0.2, z: p2[2] * 0.9, r: 1 });
@@ -252,8 +252,8 @@ function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[];
       const fp1: [number, number, number] = [fca * 2.2, endY + 0.16, fsa * 2.2];
       const fp2: [number, number, number] = [fca * forkLen, forkY, fsa * forkLen];
 
-      appendCurvedLimb(parts, fp0, fp1, fp2, 0.16, 0.06, 5, 7, 0x594230, 0x69503a, 0.08);
-      tips.push({ x: fp2[0], y: fp2[1] + 0.18, z: fp2[2], r: 1.08 });
+      appendCurvedLimb(parts, fp0, fp1, fp2, 0.16, 0.06, 5, 7, 0x634a35, 0x755941, 0.08);
+      tips.push({ x: fp2[0], y: fp2[1] + 0.18, z: fp2[2], r: 1.26 });
       hangSpots.push({ x: fp1[0] * 0.96, y: fp1[1] - 0.22, z: fp1[2] * 0.96, r: 1 });
     }
 
@@ -263,8 +263,8 @@ function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[];
     const up0: [number, number, number] = [p1[0] * 0.76, p1[1] + 0.15, p1[2] * 0.76];
     const up1: [number, number, number] = [uca * 1.48, endY + 0.82, usa * 1.48];
     const up2: [number, number, number] = [uca * 1.95, endY + 1.25, usa * 1.95];
-    appendCurvedLimb(parts, up0, up1, up2, 0.15, 0.055, 5, 7, 0x594230, 0x6b523b, 0.07);
-    tips.push({ x: up2[0], y: up2[1] + 0.2, z: up2[2], r: 1.2 });
+    appendCurvedLimb(parts, up0, up1, up2, 0.15, 0.055, 5, 7, 0x634a35, 0x785b42, 0.07);
+    tips.push({ x: up2[0], y: up2[1] + 0.2, z: up2[2], r: 1.38 });
   }
 
   for (let i = 0; i < 14; i++) {
@@ -284,8 +284,8 @@ function buildTrunkAndBranches(): { geometry: BufferGeometry; tips: BranchTip[];
       0.012,
       5,
       5,
-      0x4e3928,
-      0x664f38,
+      0x57402d,
+      0x70573e,
       0.04,
     );
   }
@@ -311,10 +311,10 @@ function foliagePadGeometry(
   const count = pos.count;
   const colors = new Float32Array(count * 3);
 
-  const deepShadow = new Color(0x1b3820);
-  const midJade = new Color(0x336431);
-  const sunlitGreen = new Color(0x6e993b);
-  const youngGold = new Color(0xb2a83e);
+  const deepEmerald = new Color(0x1f6630);
+  const midJade = new Color(0x389645);
+  const sunlitGreen = new Color(0x68cc5c);
+  const youngGold = new Color(0xb8e655);
   const cTmp = new Color();
 
   for (let i = 0; i < count; i++) {
@@ -339,7 +339,7 @@ function foliagePadGeometry(
     const light = Math.max(0, Math.min(1, localTop * 0.68 + heightNorm * 0.32));
 
     if (light < 0.46) {
-      cTmp.copy(deepShadow).lerp(midJade, light / 0.46);
+      cTmp.copy(deepEmerald).lerp(midJade, light / 0.46);
     } else {
       cTmp.copy(midJade).lerp(sunlitGreen, (light - 0.46) / 0.54);
     }
@@ -367,12 +367,12 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
     const seedBase = i * 3.17 + 1.2;
     const golden = i % 3 === 0 ? 0.48 : 0.15;
 
-    parts.push(foliagePadGeometry(t.x, t.y, t.z, t.r, t.r * 0.54, t.r, seedBase, golden));
+    parts.push(foliagePadGeometry(t.x, t.y, t.z, t.r, t.r * 0.56, t.r, seedBase, golden));
 
     for (let s = 0; s < 2; s++) {
       const sa = rand() * Math.PI * 2;
       const dist = t.r * (0.46 + rand() * 0.26);
-      const subR = t.r * (0.62 + rand() * 0.18);
+      const subR = t.r * (0.64 + rand() * 0.18);
       const dy = (rand() - 0.35) * 0.38;
       parts.push(
         foliagePadGeometry(
@@ -380,7 +380,7 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
           t.y + dy,
           t.z + Math.sin(sa) * dist,
           subR,
-          subR * 0.52,
+          subR * 0.54,
           subR,
           seedBase + (s + 1) * 4.1,
           s === 0 ? 0.38 : 0.08,
@@ -389,9 +389,9 @@ function buildCanopyGeometry(tips: readonly BranchTip[]): BufferGeometry {
     }
   }
 
-  parts.push(foliagePadGeometry(0, 5.95, 0, 1.75, 0.92, 1.75, 91.3, 0.45));
-  parts.push(foliagePadGeometry(0.72, 5.58, 0.62, 1.38, 0.74, 1.38, 102.7, 0.35));
-  parts.push(foliagePadGeometry(-0.74, 5.52, -0.58, 1.38, 0.74, 1.38, 114.1, 0.35));
+  parts.push(foliagePadGeometry(0, 6.0, 0, 2.05, 1.05, 2.05, 91.3, 0.45));
+  parts.push(foliagePadGeometry(0.78, 5.62, 0.66, 1.58, 0.82, 1.58, 102.7, 0.35));
+  parts.push(foliagePadGeometry(-0.8, 5.56, -0.62, 1.58, 0.82, 1.58, 114.1, 0.35));
 
   const merged = mergeGeometries(parts);
   for (const p of parts) p.dispose();
@@ -511,7 +511,13 @@ export function createWishingTree(parent: Object3D): WishingTree {
   trunkMesh.receiveShadow = true;
 
   const canopyGeo = buildCanopyGeometry(tips);
-  const canopyMat = new MeshStandardMaterial({ vertexColors: true, roughness: 0.74, metalness: 0.02 });
+  const canopyMat = new MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.68,
+    metalness: 0.0,
+    emissive: new Color(0x123318),
+    emissiveIntensity: 0.24,
+  });
   canopyMat.onBeforeCompile = (shader) => {
     shader.uniforms["uTime"] = uTime;
     shader.vertexShader = shader.vertexShader
@@ -536,7 +542,7 @@ export function createWishingTree(parent: Object3D): WishingTree {
     vertexColors: true,
     roughness: 0.38,
     emissive: new Color(0xffa438),
-    emissiveIntensity: 0.75,
+    emissiveIntensity: 0.85,
   });
   const lanternMesh = new Mesh(lanternGeo, lanternMat);
 
@@ -546,7 +552,7 @@ export function createWishingTree(parent: Object3D): WishingTree {
     roughness: 0.4,
     metalness: 0.12,
     emissive: new Color(0x8a1c10),
-    emissiveIntensity: 0.28,
+    emissiveIntensity: 0.32,
   });
   const plaqueMesh = new InstancedMesh(plaqueGeo, plaqueMat, MAX_PLAQUES);
   plaqueMesh.frustumCulled = false;
@@ -639,8 +645,9 @@ export function createWishingTree(parent: Object3D): WishingTree {
       lastT = t;
       uTime.value = t;
       const night = Math.max(0, Math.min(1, 1 - daylight));
-      lanternMat.emissiveIntensity = 0.65 + night * 1.55 + 0.1 * Math.sin(t * 2.8);
-      plaqueMat.emissiveIntensity = 0.22 + night * 0.48;
+      canopyMat.emissiveIntensity = 0.18 + 0.12 * daylight;
+      lanternMat.emissiveIntensity = 0.75 + night * 1.65 + 0.1 * Math.sin(t * 2.8);
+      plaqueMat.emissiveIntensity = 0.26 + night * 0.52;
       updatePlaques(t, dt);
     },
     dispose() {
