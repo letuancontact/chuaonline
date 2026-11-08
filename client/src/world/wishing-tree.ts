@@ -13,6 +13,7 @@ import {
   SphereGeometry,
   Vector3,
   type BufferGeometry,
+  type Material,
   type Object3D,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -34,7 +35,7 @@ export const WISH_TREE_POS = {
 
 const MAX_PLAQUES = 36;
 const INITIAL_PLAQUES = 16;
-/** Scale applied to the normalized 7.6 m `cothu.glb` geometry so it fits the octagonal stone planter. */
+/** Scale applied to the normalized 7.6 m `cothu1.glb` geometry so it fits the octagonal stone planter. */
 const WISHING_TREE_SCALE = 0.88;
 const WISHING_TREE_BASE_Y = 0.22;
 
@@ -44,17 +45,17 @@ const v3 = new Vector3();
 const s3 = new Vector3();
 const tmpEuler = new Euler();
 
-/** Shared `cothu.glb` geometry & material provided by `createGarden`. */
-let cachedAncientTree: { geometry: BufferGeometry; material: MeshStandardMaterial } | null = null;
-let activeTreeSlot: ((geometry: BufferGeometry, material: MeshStandardMaterial) => void) | null = null;
+/** Dedicated `cothu1.glb` geometry & material(s) provided by `createGarden`. */
+let cachedAncientTree: { geometry: BufferGeometry; material: Material | Material[] } | null = null;
+let activeTreeSlot: ((geometry: BufferGeometry, material: Material | Material[]) => void) | null = null;
 
 /**
- * Shares the normalized `cothu.glb` geometry and material from `garden.ts`
- * with the Wishing Tree so the model is loaded and stored in GPU memory only once.
+ * Attaches the normalized `cothu1.glb` geometry and material(s) prepared in `garden.ts`
+ * to the Wishing Tree planter.
  */
 export function attachAncientTreeToWishingTree(
   geometry: BufferGeometry,
-  material: MeshStandardMaterial,
+  material: Material | Material[],
 ): void {
   cachedAncientTree = { geometry, material };
   if (activeTreeSlot) {
@@ -126,7 +127,7 @@ interface HangSpot {
   z: number;
 }
 
-/** Generates anchor positions beneath the lower boughs of the `cothu.glb` canopy. */
+/** Generates anchor positions beneath the lower boughs of the `cothu1.glb` canopy. */
 function buildHangSpots(): HangSpot[] {
   const spots: HangSpot[] = [];
   const mainBoughs = 6;
@@ -258,9 +259,9 @@ export function createWishingTree(parent: Object3D): WishingTree {
   planterMesh.matrixAutoUpdate = false;
   planterMesh.updateMatrix();
 
-  // Mount for the `cothu.glb` ancient tree model shared from `garden.ts`.
+  // Mount for the dedicated `cothu1.glb` model prepared in `garden.ts`.
   let treeMesh: Mesh | null = null;
-  const mountAncientTree = (geometry: BufferGeometry, material: MeshStandardMaterial): void => {
+  const mountAncientTree = (geometry: BufferGeometry, material: Material | Material[]): void => {
     if (treeMesh) {
       root.remove(treeMesh);
     }
