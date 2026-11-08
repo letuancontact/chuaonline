@@ -536,13 +536,15 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
   return {
     releaseLantern() {
       const st = states[nextSlot]!;
+      const nowT = uniforms.uTime.value;
+      const spawnAngle = Math.PI + (Math.random() - 0.5) * 0.8;
       st.active = true;
-      st.angle = Math.PI + (Math.random() - 0.5) * 0.8;
-      st.radius = 0.45 + Math.random() * 0.28;
       st.speed = 0.04 + Math.random() * 0.025;
+      st.angle = spawnAngle - nowT * st.speed;
+      st.radius = 0.45 + Math.random() * 0.28;
       st.phase = Math.random() * Math.PI * 2;
       nextSlot = (nextSlot + 1) % MAX_LANTERNS;
-      updateDynamicPond(uniforms.uTime.value);
+      updateDynamicPond(nowT);
     },
     update(t, daylight) {
       uniforms.uTime.value = t;
