@@ -338,11 +338,19 @@
   line-height: 1;
 }
 
-/* Force-hide legacy top-left / top-right HUD toolbars and the persistent ceremony status-chip */
+/* Force-hide legacy top-left toolbar; keep .hud-top-right centered at the top for CeremonyBanner */
 .game-hud .hud-top-left,
-.game-hud .hud-top-right,
 .game-hud .status-chip {
   display: none !important;
+}
+
+.game-hud .hud-top-right {
+  top: max(10px, env(safe-area-inset-top, 0px));
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  align-items: center;
+  pointer-events: none;
 }
 
 /* ============================================================================
@@ -690,6 +698,9 @@ body:has(dialog.beads[open]) .lotus-top-right {
   .lotus-quick-label {
     font-size: 0.58rem;
     padding: 1px 6px;
+  }
+  .game-hud .hud-top-right {
+    top: 96px;
   }
 }
 
