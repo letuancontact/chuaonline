@@ -1,9 +1,12 @@
+import { CHAT_LIMITS } from "@santinh/shared";
 import { safeLocalStorage } from "../beads/counter.ts";
 import { vi } from "../i18n/vi.ts";
+import { closeOnBackdrop } from "./dialog.ts";
 import "./base.css";
 
 const WISH_TREE_STORAGE_KEY = "santinh.wishtree.v1";
 const MAX_SAVED_WISHES = 20;
+const BASE_TREE_PLAQUES = 16;
 
 interface StoredWishes {
   wishes: string[];
@@ -50,6 +53,7 @@ export class WishTreeDialog {
   private readonly board: HTMLUListElement;
   private readonly statsEl: HTMLParagraphElement;
   private readonly handlers: WishTreeDialogHandlers;
+  private readonly offBackdrop: () => void;
   private myWishes: string[];
 
   constructor(handlers: WishTreeDialogHandlers = {}, parent: HTMLElement = document.body) {
@@ -90,7 +94,7 @@ export class WishTreeDialog {
     this.input = document.createElement("input");
     this.input.type = "text";
     this.input.className = "invite-link";
-    this.input.maxLength = 100;
+    this.input.maxLength = CHAT_LIMITS.free.maxChars;
     this.input.placeholder = vi.wishTree.inputPlaceholder;
 
     const submitBtn = document.createElement("button");
@@ -103,7 +107,7 @@ export class WishTreeDialog {
 
     form.addEventListener("submit", (e) => {
       e.preventDefault();
-      const text = this.input.value.trim();
+      const text = this.input.value.trim().replace(/\s+/g, " ");
       if (!text) {
         this.handlers.onEmptyWish?.();
         this.input.focus();
@@ -127,17 +131,20 @@ export class WishTreeDialog {
     body.append(form, boardTitle, this.board, this.statsEl);
     this.dialog.append(head, desc, body);
 
-    this.dialog.addEventListener("click", (e) => {
-      if (e.target === this.dialog) this.close();
-    });
+    this.offBackdrop = closeOnBackdrop(this.dialog);
 
     parent.append(this.dialog);
     this.renderBoard();
   }
 
+  /** Number of personal wishes saved in localStorage. */
+  get savedCount(): number {
+    return this.myWishes.length;
+  }
+
   /** Records a wish plaque (e.g. from the Wish Tree dialog or Offering dialog) without duplicating consecutive entries. */
   recordWish(wishText: string): void {
-    const clean = wishText.trim();
+    const clean = wishText.trim().replace(/\s+/g, " ");
     if (!clean) return;
     if (this.myWishes[0] !== clean) {
       this.myWishes.unshift(clean);
@@ -164,6 +171,7 @@ export class WishTreeDialog {
 
   dispose(): void {
     this.close();
+    this.offBackdrop();
     this.dialog.remove();
   }
 
@@ -195,7 +203,7 @@ export class WishTreeDialog {
       renderItem(w, false);
     }
 
-    const totalPlaques = 14 + this.myWishes.length;
+    const totalPlaques = Math.min(36, BASE_TREE_PLAQUES + this.myWishes.length);
     this.statsEl.textContent = vi.wishTree.stats
       .replace("{total}", String(totalPlaques))
       .replace("{mine}", String(this.myWishes.length));
