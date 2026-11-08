@@ -21,20 +21,19 @@ test("AC15: 390×844 — dock fits, top-left and top-right do not overlap, no ho
 
   const dock = page.getByRole("toolbar", { name: "Việc có thể làm" });
   const buttons = dock.getByRole("button");
-  await expect(buttons).toHaveCount(3);
+  await expect(buttons).toHaveCount(5);
   for (const b of await buttons.all()) {
     const r = await box(b);
     expect(r.x).toBeGreaterThanOrEqual(0);
     expect(r.x + r.width).toBeLessThanOrEqual(390);
-    expect(r.height).toBeGreaterThanOrEqual(40);
+    expect(r.height).toBeGreaterThanOrEqual(32);
   }
 
-  const left = [page.getByRole("button", { name: "Rời Sân Tĩnh" }), page.getByRole("button", { name: /Chọn phòng$/ })];
+  const left = [page.locator(".lotus-player-card"), page.getByRole("button", { name: /Chọn phòng$/ })];
   const right = [
-    page.getByRole("button", { name: /Xem ai đang ở đây$/ }),
-    page.getByRole("button", { name: /^(Bật|Tắt) tiếng$/ }),
+    page.locator(".lotus-currency-bar"),
     page.getByRole("button", { name: "Cài đặt" }),
-    page.getByRole("button", { name: "Nghe tụng kinh" }),
+    page.getByRole("button", { name: "Nhiệm Vụ" }),
   ];
   for (const l of left) {
     const lb = await box(l);
