@@ -30,9 +30,7 @@ test("L7: sound on by default, starts at the first gesture; switching it off and
   await page.goto("/?e2e=1&mock");
   await page.waitForFunction(() => window.__santinh?.ready === true, undefined, { timeout: 30_000 });
 
-  // Chosen state shows before any gesture, but nothing plays yet (autoplay rules).
-  await expect(page.getByRole("button", { name: "Tắt tiếng" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Nghe tụng kinh" })).toHaveAttribute("aria-pressed", "true");
+  // Nothing plays before the first user gesture (browser autoplay rules).
   expect(await page.evaluate(() => window.__audioCtx?.state ?? "none")).toBe("none");
 
   await page.mouse.click(5, 300);
@@ -41,32 +39,36 @@ test("L7: sound on by default, starts at the first gesture; switching it off and
 
   await page.getByRole("button", { name: "Cài đặt" }).click();
   const dialog = page.getByRole("dialog", { name: "Cài đặt" });
+  const masterSwitch = dialog.getByRole("switch", { name: "Âm thanh tổng" });
+  const chantBtn = dialog.getByRole("button", { name: "Nghe tụng kinh" });
+
+  await expect(masterSwitch).toHaveAttribute("aria-checked", "true");
+  await expect(chantBtn).toHaveAttribute("aria-pressed", "true");
   await expect(dialog.getByRole("switch", { name: "Âm nền" })).toHaveAttribute("aria-checked", "true");
+
   await dialog.getByRole("switch", { name: "Phát khi đổi tab" }).click();
   await expect(dialog.getByRole("switch", { name: "Phát khi đổi tab" })).toHaveAttribute("aria-checked", "true");
+
+  await masterSwitch.click();
+  await expect(masterSwitch).toHaveAttribute("aria-checked", "false");
+  await expect.poll(() => page.evaluate(() => window.__chantPlaying?.() ?? true)).toBe(false);
+
+  // Muted with listening still on: clicking the chant button unmutes the sound rather than stopping the chant.
+  await expect(chantBtn).toHaveAttribute("aria-pressed", "true");
+  await chantBtn.click();
+  await expect(masterSwitch).toHaveAttribute("aria-checked", "true");
+  await expect(chantBtn).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => page.evaluate(() => window.__chantPlaying?.() ?? false)).toBe(true);
+
+  await masterSwitch.click();
+  await expect(masterSwitch).toHaveAttribute("aria-checked", "false");
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
 
-  await page.getByRole("button", { name: "Tắt tiếng" }).click();
-  await expect(page.getByRole("button", { name: "Bật tiếng" })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.__chantPlaying?.() ?? true)).toBe(false);
-
-  // Muted with listening still on: the chip turns the sound back on, it does not stop the chant.
-  const chip = page.getByRole("button", { name: "Nghe tụng kinh" });
-  await expect(chip).toHaveAttribute("aria-pressed", "true");
-  await chip.click();
-  await expect(page.getByRole("button", { name: "Tắt tiếng" })).toBeVisible();
-  await expect(chip).toHaveAttribute("aria-pressed", "true");
-  await expect.poll(() => page.evaluate(() => window.__chantPlaying?.() ?? false)).toBe(true);
-  await page.getByRole("button", { name: "Tắt tiếng" }).click();
-  await expect(page.getByRole("button", { name: "Bật tiếng" })).toBeVisible();
-
   await page.reload();
   await page.waitForFunction(() => window.__santinh?.ready === true, undefined, { timeout: 30_000 });
-  await expect(page.getByRole("button", { name: "Bật tiếng" })).toBeVisible();
   await page.getByRole("button", { name: "Cài đặt" }).click();
-  await expect(page.getByRole("dialog", { name: "Cài đặt" }).getByRole("switch", { name: "Phát khi đổi tab" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  const reloadedDialog = page.getByRole("dialog", { name: "Cài đặt" });
+  await expect(reloadedDialog.getByRole("switch", { name: "Âm thanh tổng" })).toHaveAttribute("aria-checked", "false");
+  await expect(reloadedDialog.getByRole("switch", { name: "Phát khi đổi tab" })).toHaveAttribute("aria-checked", "true");
 });
