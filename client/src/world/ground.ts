@@ -1,4 +1,4 @@
-import { Mesh, MeshStandardMaterial, PlaneGeometry, type Scene } from "three";
+import { Color, Mesh, MeshStandardMaterial, PlaneGeometry, type Scene } from "three";
 import { BOUNDARY } from "@santinh/shared";
 import type { Assets } from "./assets.ts";
 
@@ -8,7 +8,7 @@ const SIZE = 420;
 const REPEAT = Math.round(SIZE / 3.7);
 /** A second, much larger sample of the same map breaks up the visible tiling grid. */
 const MACRO_SCALE = 0.123;
-const MACRO_AMOUNT = 0.45;
+const MACRO_AMOUNT = 0.38;
 
 export interface Ground {
   readonly mesh: Mesh;
@@ -25,13 +25,22 @@ export async function createGround(scene: Scene, assets: Assets): Promise<Ground
 
   const geometry = new PlaneGeometry(SIZE, SIZE);
   geometry.rotateX(-Math.PI / 2);
-  const material = new MeshStandardMaterial({ map, normalMap, roughnessMap, roughness: 1, metalness: 0 });
+  const material = new MeshStandardMaterial({
+    map,
+    normalMap,
+    roughnessMap,
+    color: new Color(0xd8ebd0),
+    emissive: new Color(0x162914),
+    emissiveIntensity: 0.22,
+    roughness: 0.92,
+    metalness: 0,
+  });
   material.onBeforeCompile = (shader) => {
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <map_fragment>",
       `#include <map_fragment>
       vec3 macroTint = texture2D(map, vMapUv * ${MACRO_SCALE}).rgb;
-      diffuseColor.rgb *= mix(vec3(1.0), macroTint * 2.2, ${MACRO_AMOUNT});`,
+      diffuseColor.rgb *= mix(vec3(1.05, 1.14, 1.0), macroTint * vec3(2.1, 2.45, 1.95), ${MACRO_AMOUNT});`,
     );
   };
   const mesh = new Mesh(geometry, material);
