@@ -18,7 +18,9 @@ test("AC5 + AC6 + AC7: two real tabs see each other, greet, and the count drops 
   // AC5
   await expect.poll(() => count(a), { timeout: 15_000 }).toBe(2);
   await expect.poll(() => count(b), { timeout: 15_000 }).toBe(2);
+  await b.getByRole("button", { name: "Cài đặt" }).click();
   await expect(b.getByRole("button", { name: "2 người đang ở đây. Xem ai đang ở đây" })).toBeVisible();
+  await b.keyboard.press("Escape");
 
   // Each tab draws the other visitor (not just counts them).
   const idOf = (p: typeof a) => p.evaluate(() => window.__santinh?.selfId ?? "");
