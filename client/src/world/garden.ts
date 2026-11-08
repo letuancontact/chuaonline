@@ -46,7 +46,7 @@ export const SLAB_TOP = 0.05;
 /** Loop ribbon height above the ground; polygonOffset keeps it from z-fighting. */
 const LOOP_Y = 0.02;
 
-/** Normalised base height (metres) for `cothu.glb` before per-instance scale variation. */
+/** Normalised base height (metres) for `cothu.glb` and `cothu1.glb` before per-instance scale variation. */
 const ANCIENT_BASE_HEIGHT = 7.6;
 
 /**
@@ -262,9 +262,9 @@ function attachWindSwayShader(material: MeshStandardMaterial, uTime: { value: nu
 }
 
 /**
- * Extracts all sub-meshes from `cothu.glb`, preserves each sub-mesh's own texture/color/alphaTest
- * via geometry groups (`mergeGeometries(parts, true)`), aligns the bottom of the trunk (`min.y`)
- * to `y = 0`, and scales the tree to `ANCIENT_BASE_HEIGHT` (7.6 m).
+ * Extracts all sub-meshes from a tree GLB (`cothu.glb` or `cothu1.glb`), preserves each sub-mesh's
+ * own texture/color/alphaTest via geometry groups (`mergeGeometries(parts, true)`), aligns the
+ * bottom of the trunk (`min.y`) to `y = 0`, and scales the tree to `ANCIENT_BASE_HEIGHT` (7.6 m).
  */
 function prepareAncientTreeModel(
   root: Object3DLike,
@@ -331,7 +331,7 @@ function prepareAncientTreeModel(
   });
 
   if (parts.length === 0) {
-    throw new Error("cothu.glb: no mesh geometry found");
+    throw new Error("Tree GLB: no mesh geometry found");
   }
 
   // Use `useGroups = true` so each sub-mesh retains its own material index (bark vs foliage).
@@ -339,7 +339,7 @@ function prepareAncientTreeModel(
   if (parts.length > 1) {
     for (const p of parts) p.dispose();
   }
-  if (!merged) throw new Error("cothu.glb: failed to merge mesh geometries");
+  if (!merged) throw new Error("Tree GLB: failed to merge mesh geometries");
 
   // Align bottom (`min.y`) to y = 0, centre X/Z at 0, and scale height to ANCIENT_BASE_HEIGHT (7.6 m).
   merged.computeBoundingBox();
@@ -540,7 +540,10 @@ export interface Garden {
 }
 
 export async function createGarden(scene: Scene, assets: Assets, materials: Materials, regions: Regions): Promise<Garden> {
-  const cothuGltf = await assets.model("models/cothu.glb");
+  const [cothuGltf, wishTreeGltf] = await Promise.all([
+    assets.model("models/cothu.glb"),
+    assets.model("models/cothu1.glb"),
+  ]);
   const rand = seeded(0x5a7d);
 
   const owned: Material[] = [];
@@ -607,14 +610,15 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
     built.push(group);
   }
 
-  // 120 ancient trees (`models/cothu.glb`) in 4 brick-staggered rings + shared with Wishing Tree.
+  // 1. Prepare `models/cothu.glb` for the 120 ancient forest trees in 4 brick-staggered rings.
   const uTreeTime = { value: 0 };
   const preparedTree = prepareAncientTreeModel(cothuGltf.scene, uTreeTime);
   for (const mat of preparedTree.materials) own(mat);
-  attachAncientTreeToWishingTree(
-    preparedTree.geometry,
-    preparedTree.materialOrArray as unknown as MeshStandardMaterial,
-  );
+
+  // 2. Prepare `models/cothu1.glb` specifically for the Wishing Tree outside the gate.
+  const preparedWishTree = prepareAncientTreeModel(wishTreeGltf.scene, uTreeTime);
+  for (const mat of preparedWishTree.materials) own(mat);
+  attachAncientTreeToWishingTree(preparedWishTree.geometry, preparedWishTree.materialOrArray);
 
   const ancientTrees = new InstancedMesh(
     preparedTree.geometry,
@@ -697,6 +701,9 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       for (const mat of preparedTree.materials) {
         mat.emissiveIntensity = treeEmissive;
       }
+      for (const mat of preparedWishTree.materials) {
+        mat.emissiveIntensity = treeEmissive;
+      }
     },
     dispose() {
       for (const g of built) {
@@ -709,6 +716,8 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       }
       preparedTree.geometry.dispose();
       for (const tex of preparedTree.textures) tex.dispose();
+      preparedWishTree.geometry.dispose();
+      for (const tex of preparedWishTree.textures) tex.dispose();
       farGeo.dispose();
       for (const m of owned) m.dispose();
     },
