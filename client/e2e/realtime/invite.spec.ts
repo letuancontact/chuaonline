@@ -10,7 +10,8 @@ test("T9: invite link seats the friend next to the inviter and A gets a toast", 
   await openRoom(a, "san-04");
   await expect.poll(() => a.evaluate(() => window.__santinh?.selfId ?? null), { timeout: 15_000 }).not.toBeNull();
 
-  // The HUD button, straight from the game: no people dialog in between.
+  // Open Settings to access the Invite button ("Mời bạn ngồi cạnh").
+  await a.getByRole("button", { name: "Cài đặt" }).click();
   const hudInvite = a.getByRole("button", { name: "Mời bạn ngồi cạnh" });
   await expect(hudInvite).toBeEnabled({ timeout: 15_000 });
   await hudInvite.click();
