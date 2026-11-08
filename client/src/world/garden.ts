@@ -11,7 +11,6 @@ import {
   LatheGeometry,
   Matrix4,
   Mesh,
-  MeshLambertMaterial,
   MeshStandardMaterial,
   Quaternion,
   SphereGeometry,
@@ -46,18 +45,27 @@ export const SLAB_TOP = 0.05;
 /** Loop ribbon height above the ground; polygonOffset keeps it from z-fighting. */
 const LOOP_Y = 0.02;
 
-/** 14 ancient trees (`models/cothu.glb`) surrounding the temple courtyard. */
-const ANCIENT_TREE_COUNT = 14;
-const ANCIENT_RING = [1.05, 1.15] as const;
+/**
+ * Multi-layered ancient trees (`models/cothu.glb`) surrounding the temple courtyard:
+ * - Inner ring frames the courtyard edge.
+ * - Outer woodland ring creates natural staggered groves so the map feels organic.
+ */
+const ANCIENT_INNER_COUNT = 18;
+const ANCIENT_OUTER_COUNT = 18;
+const ANCIENT_TREE_COUNT = ANCIENT_INNER_COUNT + ANCIENT_OUTER_COUNT;
+const ANCIENT_INNER_RING = [1.03, 1.16] as const;
+const ANCIENT_OUTER_RING = [1.20, 1.56] as const;
 /** Normalised base height (metres) for `cothu.glb` before per-instance scale variation. */
 const ANCIENT_BASE_HEIGHT = 7.6;
-const ANCIENT_SCALE = [0.95, 1.32] as const;
-/** Lush broad-canopy trees beyond the boundary: vibrant green forest edge softened by fog. */
-const FAR_TREE_COUNT = 160;
-const FAR_RING = [1.65, 2.55] as const;
-const FAR_HEIGHT = [12, 22] as const;
+const ANCIENT_INNER_SCALE = [0.92, 1.34] as const;
+const ANCIENT_OUTER_SCALE = [1.05, 1.52] as const;
+
+/** Deep-toned broad-canopy trees beyond the boundary: muted forest edge softened by fog. */
+const FAR_TREE_COUNT = 180;
+const FAR_RING = [1.58, 2.65] as const;
+const FAR_HEIGHT = [11, 21] as const;
 /** Gate sector (around +z) stays open so the gate reads against the sky. */
-const GATE_GAP_RAD = 0.32;
+const GATE_GAP_RAD = 0.28;
 
 const GATE_Z = (GATE.zMin + GATE.zMax) / 2;
 const GATE_PILLAR_X = 3.4;
@@ -101,13 +109,13 @@ interface PreparedAncientTree {
 
 type Object3DLike = {
   updateMatrixWorld(force?: boolean): void;
-  traverse(cb: (node: unknown) => void): void;
+  traverse(cb: (node: unknown) => void): void): void;
 };
 
 /**
  * Extracts meshes from `cothu.glb`, shifts the bottom of the trunk (`min.y ≈ -0.4409`)
  * to sit flush on `y = 0`, scales the tree to `ANCIENT_BASE_HEIGHT` (7.6 m), and fixes
- * the PBR material (`metalness = 0`, `roughness = 0.82`, `DoubleSide`) while preserving its texture.
+ * the PBR material (`metalness = 0`, `roughness = 0.86`, `DoubleSide`) while preserving its texture.
  */
 function prepareAncientTreeModel(
   root: Object3DLike,
@@ -172,10 +180,10 @@ function prepareAncientTreeModel(
   const material = new MeshStandardMaterial({
     map: baseMap,
     color: baseColor,
-    roughness: 0.82,
+    roughness: 0.86,
     metalness: 0.0,
-    emissive: new Color(0x112b15),
-    emissiveIntensity: 0.18,
+    emissive: new Color(0x09170b),
+    emissiveIntensity: 0.06,
     side: DoubleSide,
   });
 
@@ -203,14 +211,19 @@ function prepareAncientTreeModel(
   return { geometry: merged, material, textures };
 }
 
-/** Distant broad-canopy tree (unit height) for the outer forest ring. */
+/**
+ * Distant broad-canopy tree (unit height) for the outer forest ring.
+ * Uses deep, muted old-growth foliage tones so distant trees blend naturally
+ * with `cothu.glb` instead of appearing overly bright under sunlight.
+ */
 function createFarCanopyTreeGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
-  const trunk = colorGeo(new CylinderGeometry(0.038, 0.062, 0.36, 6).translate(0, 0.18, 0), 0x4a3321);
-  const lowL = colorGeo(new SphereGeometry(0.36, 8, 6).scale(1.22, 0.6, 1.22).translate(-0.1, 0.5, 0.06), 0x266934);
-  const lowR = colorGeo(new SphereGeometry(0.36, 8, 6).scale(1.25, 0.62, 1.25).translate(0.11, 0.58, -0.05), 0x338241);
-  const top = colorGeo(new SphereGeometry(0.34, 8, 6).scale(1.18, 0.66, 1.18).translate(0, 0.76, 0), 0x4ba352);
-  parts.push(trunk, lowL, lowR, top);
+  const trunk = colorGeo(new CylinderGeometry(0.042, 0.072, 0.38, 6).translate(0, 0.19, 0), 0x2b1d12);
+  const subShade = colorGeo(new SphereGeometry(0.38, 8, 6).scale(1.32, 0.52, 1.32).translate(0, 0.44, 0), 0x102413);
+  const lowL = colorGeo(new SphereGeometry(0.36, 8, 6).scale(1.25, 0.58, 1.25).translate(-0.12, 0.54, 0.07), 0x152e19);
+  const lowR = colorGeo(new SphereGeometry(0.36, 8, 6).scale(1.28, 0.6, 1.28).translate(0.12, 0.6, -0.06), 0x1a381f);
+  const top = colorGeo(new SphereGeometry(0.34, 8, 6).scale(1.2, 0.62, 1.2).translate(0, 0.75, 0), 0x214226);
+  parts.push(trunk, subShade, lowL, lowR, top);
   const merged = mergeGeometries(parts);
   for (const g of parts) g.dispose();
   if (!merged) throw new Error("merge: far canopy trees");
@@ -449,7 +462,7 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
     built.push(group);
   }
 
-  // 14 ancient trees (`models/cothu.glb`) surrounding the courtyard boundary + shared with Wishing Tree.
+  // 36 ancient trees (`models/cothu.glb`) in two staggered natural rings + shared with Wishing Tree.
   const uTreeTime = { value: 0 };
   const preparedTree = prepareAncientTreeModel(cothuGltf.scene, uTreeTime);
   own(preparedTree.material);
@@ -457,28 +470,51 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
 
   const ancientTrees = new InstancedMesh(preparedTree.geometry, preparedTree.material, ANCIENT_TREE_COUNT);
   const arc = Math.PI * 2 - 2 * GATE_GAP_RAD;
-  for (let k = 0; k < ANCIENT_TREE_COUNT; k++) {
-    const a = Math.PI / 2 + GATE_GAP_RAD + ((k + 0.2 + rand() * 0.6) / ANCIENT_TREE_COUNT) * arc;
-    const p = ringPoint(a, ANCIENT_RING[0] + rand() * (ANCIENT_RING[1] - ANCIENT_RING[0]));
-    const sc = ANCIENT_SCALE[0] + rand() * (ANCIENT_SCALE[1] - ANCIENT_SCALE[0]);
-    const spread = sc * (1.0 + rand() * 0.14);
+  let treeIdx = 0;
+
+  // Inner courtyard perimeter ring (18 ancient trees)
+  for (let k = 0; k < ANCIENT_INNER_COUNT; k++) {
+    const a = Math.PI / 2 + GATE_GAP_RAD + ((k + 0.18 + rand() * 0.64) / ANCIENT_INNER_COUNT) * arc;
+    const p = ringPoint(a, ANCIENT_INNER_RING[0] + rand() * (ANCIENT_INNER_RING[1] - ANCIENT_INNER_RING[0]));
+    const sc = ANCIENT_INNER_SCALE[0] + rand() * (ANCIENT_INNER_SCALE[1] - ANCIENT_INNER_SCALE[0]);
+    const spread = sc * (0.98 + rand() * 0.18);
     const yaw = rand() * Math.PI * 2;
-    ancientTrees.setMatrixAt(k, place(p.x, 0, p.z, yaw, spread, sc, spread));
+    ancientTrees.setMatrixAt(treeIdx++, place(p.x, 0, p.z, yaw, spread, sc, spread));
   }
+
+  // Outer staggered woodland ring (18 ancient trees forming natural groves)
+  const outerGap = GATE_GAP_RAD * 0.75;
+  const outerArc = Math.PI * 2 - 2 * outerGap;
+  for (let k = 0; k < ANCIENT_OUTER_COUNT; k++) {
+    const a = Math.PI / 2 + outerGap + ((k + 0.1 + rand() * 0.8) / ANCIENT_OUTER_COUNT) * outerArc;
+    const p = ringPoint(a, ANCIENT_OUTER_RING[0] + rand() * (ANCIENT_OUTER_RING[1] - ANCIENT_OUTER_RING[0]));
+    const sc = ANCIENT_OUTER_SCALE[0] + rand() * (ANCIENT_OUTER_SCALE[1] - ANCIENT_OUTER_SCALE[0]);
+    const spread = sc * (1.02 + rand() * 0.22);
+    const yaw = rand() * Math.PI * 2;
+    ancientTrees.setMatrixAt(treeIdx++, place(p.x, 0, p.z, yaw, spread, sc, spread));
+  }
+
   ancientTrees.castShadow = true;
   ancientTrees.receiveShadow = true;
   ancientTrees.computeBoundingSphere();
   ancientTrees.name = "ancient-trees";
 
-  // Distant broad-canopy forest ring beyond the boundary.
+  // Distant broad-canopy forest ring beyond the boundary with darkened, non-glowing PBR foliage.
   const farGeo = createFarCanopyTreeGeometry();
-  const farMat = own(new MeshLambertMaterial({ vertexColors: true }));
+  const farMat = own(
+    new MeshStandardMaterial({
+      vertexColors: true,
+      color: new Color(0x829985),
+      roughness: 0.94,
+      metalness: 0.0,
+    }),
+  );
   const far = new InstancedMesh(farGeo, farMat, FAR_TREE_COUNT);
   for (let i = 0; i < FAR_TREE_COUNT; i++) {
     const a = rand() * Math.PI * 2;
     const p = ringPoint(a, FAR_RING[0] + rand() * (FAR_RING[1] - FAR_RING[0]));
     const h = FAR_HEIGHT[0] + rand() * (FAR_HEIGHT[1] - FAR_HEIGHT[0]);
-    const w = h * (0.95 + rand() * 0.35);
+    const w = h * (0.98 + rand() * 0.36);
     far.setMatrixAt(i, place(p.x, 0, p.z, rand() * Math.PI, w, h, w));
   }
   far.computeBoundingSphere();
@@ -501,7 +537,7 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       const k = GLOW_DAY + (GLOW_NIGHT - GLOW_DAY) * (1 - daylight);
       lanternPaper.emissiveIntensity = k;
       lotusLamp.emissiveIntensity = k;
-      preparedTree.material.emissiveIntensity = 0.14 + 0.12 * daylight;
+      preparedTree.material.emissiveIntensity = 0.04 + 0.05 * daylight;
     },
     dispose() {
       for (const g of built) {
