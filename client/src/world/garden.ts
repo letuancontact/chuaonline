@@ -8,7 +8,6 @@ import {
   InstancedMesh,
   LatheGeometry,
   Matrix4,
-  Mesh,
   MeshLambertMaterial,
   MeshStandardMaterial,
   Quaternion,
@@ -16,7 +15,6 @@ import {
   Vector2,
   Vector3,
   type Group,
-  type Object3D,
   type Material,
   type Scene,
 } from "three";
@@ -33,8 +31,8 @@ import { seeded } from "./random.ts";
 type Key = MaterialKey | "gravel" | "rock" | "lanternPaper" | "lotusLamp";
 
 /** Lantern emissive: faint by day, glowing at night. */
-const GLOW_DAY = 0.15;
-const GLOW_NIGHT = 2.2;
+const GLOW_DAY = 0.22;
+const GLOW_NIGHT = 2.4;
 /** Stone lantern light box: centre height, used for the halo. */
 const STONE_LIGHT_Y = 1.04;
 const LOTUS_LIGHT_Y = 0.28;
@@ -43,14 +41,14 @@ export const SLAB_TOP = 0.05;
 /** Loop ribbon height above the ground; polygonOffset keeps it from z-fighting. */
 const LOOP_Y = 0.02;
 
-const PINE_COUNT = 12;
-const PINE_RING = [1.03, 1.1] as const;
-const PINE_HEIGHT = [9, 13] as const;
-/** Cheap dark cone trees beyond the pines: the forest edge, softened by fog. */
-const FAR_TREE_COUNT = 170;
-const FAR_RING = [1.7, 2.6] as const;
-const FAR_HEIGHT = [14, 26] as const;
-const FAR_TREE_COLOR = 0x18231c;
+/** Wide-canopy ancient trees surrounding the temple courtyard. */
+const ANCIENT_TREE_COUNT = 14;
+const ANCIENT_RING = [1.04, 1.14] as const;
+const ANCIENT_SCALE = [0.95, 1.32] as const;
+/** Lush broad-canopy trees beyond the boundary: vibrant green forest edge softened by fog. */
+const FAR_TREE_COUNT = 160;
+const FAR_RING = [1.65, 2.55] as const;
+const FAR_HEIGHT = [12, 22] as const;
 /** Gate sector (around +z) stays open so the gate reads against the sky. */
 const GATE_GAP_RAD = 0.32;
 
@@ -72,6 +70,121 @@ function box(batch: GeometryBatch<Key>, key: Key, x0: number, x1: number, y0: nu
 
 function place(x: number, y: number, z: number, yaw = 0, sx = 1, sy = 1, sz = 1): Matrix4 {
   return m4.compose(v3.set(x, y, z), q.setFromAxisAngle(UP, yaw), s3.set(sx, sy, sz));
+}
+
+/** Paint vertex colors onto a geometry so merged parts share one draw call with rich colour variation. */
+function colorGeo(g: BufferGeometry, hex: number): BufferGeometry {
+  const c = new Color(hex);
+  const count = g.getAttribute("position").count;
+  const arr = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    arr[i * 3] = c.r;
+    arr[i * 3 + 1] = c.g;
+    arr[i * 3 + 2] = c.b;
+  }
+  g.setAttribute("color", new Float32BufferAttribute(arr, 3));
+  return g;
+}
+
+/**
+ * Builds a majestic wide-canopy ancient tree ("Cây Cổ Thụ Tán Rộng"):
+ * - `trunk`: sturdy flared root base, main trunk and 5 spreading boughs.
+ * - `canopy`: 11 layered, wide-spreading lush green foliage domes with sunlit top highlights.
+ */
+function createAncientTreeGeometries(): { trunk: BufferGeometry; canopy: BufferGeometry } {
+  const trunkParts: BufferGeometry[] = [];
+  const addWood = (g: BufferGeometry, hex: number): void => {
+    trunkParts.push(colorGeo(g, hex));
+  };
+
+  // Flared root base + main trunk
+  addWood(new CylinderGeometry(0.46, 0.78, 1.3, 9).translate(0, 0.65, 0), 0x4f3522);
+  addWood(new CylinderGeometry(0.34, 0.48, 2.8, 9).translate(0, 2.6, 0), 0x5c3e28);
+
+  // 5 spreading primary branches reaching outward to support the wide crown
+  const branches: readonly { yaw: number; tilt: number; len: number; r0: number; r1: number; y: number }[] = [
+    { yaw: 0.2, tilt: 0.62, len: 3.1, r0: 0.14, r1: 0.26, y: 3.4 },
+    { yaw: 1.45, tilt: 0.58, len: 2.9, r0: 0.13, r1: 0.24, y: 3.55 },
+    { yaw: 2.75, tilt: 0.64, len: 3.2, r0: 0.14, r1: 0.26, y: 3.35 },
+    { yaw: 4.0, tilt: 0.56, len: 2.8, r0: 0.13, r1: 0.23, y: 3.6 },
+    { yaw: 5.2, tilt: 0.6, len: 3.0, r0: 0.14, r1: 0.25, y: 3.45 },
+  ];
+  for (const b of branches) {
+    const bg = new CylinderGeometry(b.r0, b.r1, b.len, 7);
+    bg.translate(0, b.len / 2, 0);
+    bg.rotateZ(b.tilt);
+    bg.rotateY(b.yaw);
+    bg.translate(0, b.y, 0);
+    addWood(bg, 0x543824);
+  }
+
+  const trunk = mergeGeometries(trunkParts);
+  for (const g of trunkParts) g.dispose();
+  if (!trunk) throw new Error("merge: ancient tree trunk");
+
+  // Lush multi-tiered broad green canopy
+  const canopyParts: BufferGeometry[] = [];
+  const addLeaf = (
+    x: number,
+    y: number,
+    z: number,
+    rx: number,
+    ry: number,
+    rz: number,
+    hex: number,
+  ): void => {
+    const g = new SphereGeometry(1, 10, 7);
+    const pos = g.getAttribute("position");
+    for (let i = 0; i < pos.count; i++) {
+      const px = pos.getX(i);
+      const py = pos.getY(i);
+      const pz = pos.getZ(i);
+      // Organic scalloped leaf cluster silhouette with slightly flattened underside
+      const ripple = 1 + 0.08 * Math.sin(3.4 * px + 2.1 * pz) * Math.cos(2.7 * py);
+      const flatBottom = py < 0 ? py * 0.68 : py;
+      pos.setXYZ(i, px * rx * ripple, flatBottom * ry * ripple, pz * rz * ripple);
+    }
+    g.translate(x, y, z);
+    g.computeVertexNormals();
+    canopyParts.push(colorGeo(g, hex));
+  };
+
+  // Lower wide shade layer (rich emerald-jade green)
+  addLeaf(-2.3, 4.9, 0.7, 2.35, 1.18, 2.15, 0x2b7a3d);
+  addLeaf(2.25, 5.0, -0.6, 2.3, 1.15, 2.1, 0x2f8241);
+  addLeaf(0.4, 4.85, 2.35, 2.25, 1.15, 2.2, 0x29753b);
+  addLeaf(-0.5, 4.95, -2.25, 2.3, 1.18, 2.15, 0x318644);
+
+  // Middle broad crown layer (vibrant fresh leaf green)
+  addLeaf(-1.55, 5.85, -1.35, 2.45, 1.3, 2.35, 0x3b9949);
+  addLeaf(1.65, 5.9, 1.4, 2.45, 1.28, 2.3, 0x41a14e);
+  addLeaf(-1.6, 5.95, 1.5, 2.2, 1.25, 2.15, 0x389446);
+  addLeaf(1.5, 5.8, -1.5, 2.25, 1.22, 2.15, 0x45a651);
+
+  // Central & upper sunlit crown domes (bright spring-leaf green)
+  addLeaf(0, 6.45, 0, 3.05, 1.48, 2.95, 0x4eb356);
+  addLeaf(-0.85, 7.15, 0.45, 2.15, 1.18, 2.05, 0x5cc25e);
+  addLeaf(0.8, 7.25, -0.35, 2.05, 1.15, 1.95, 0x67cc64);
+
+  const canopy = mergeGeometries(canopyParts);
+  for (const g of canopyParts) g.dispose();
+  if (!canopy) throw new Error("merge: ancient tree canopy");
+
+  return { trunk, canopy };
+}
+
+/** Distant broad-canopy tree (unit height) for the outer forest ring. */
+function createFarCanopyTreeGeometry(): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+  const trunk = colorGeo(new CylinderGeometry(0.035, 0.055, 0.36, 6).translate(0, 0.18, 0), 0x4a3321);
+  const low = colorGeo(new SphereGeometry(0.34, 8, 6).scale(1.15, 0.62, 1.15).translate(-0.08, 0.52, 0.05), 0x296e37);
+  const mid = colorGeo(new SphereGeometry(0.36, 8, 6).scale(1.2, 0.65, 1.2).translate(0.09, 0.62, -0.04), 0x358543);
+  const top = colorGeo(new SphereGeometry(0.32, 8, 6).scale(1.12, 0.68, 1.12).translate(0, 0.78, 0), 0x479e52);
+  parts.push(trunk, low, mid, top);
+  const merged = mergeGeometries(parts);
+  for (const g of parts) g.dispose();
+  if (!merged) throw new Error("merge: far canopy trees");
+  return merged;
 }
 
 /** Two columns of irregular flagstones along the stone path. */
@@ -227,65 +340,6 @@ function addGate(batch: GeometryBatch<Key>): void {
   }
 }
 
-interface PineVariant {
-  parts: { geometry: BufferGeometry; material: Material }[];
-  /** Height after recentring (base at y = 0). */
-  height: number;
-}
-
-/**
- * Copy with every attribute as plain float. pine.glb is quantized (int16/uint16 normalized + a node scale);
- * baking the node matrix into a normalized integer attribute would clamp everything to ±1.
- */
-function dequantized(src: BufferGeometry): BufferGeometry {
-  const g = new BufferGeometry();
-  for (const [name, attr] of Object.entries(src.attributes)) {
-    const out = new Float32Array(attr.count * attr.itemSize);
-    for (let i = 0; i < attr.count; i++) for (let c = 0; c < attr.itemSize; c++) out[i * attr.itemSize + c] = attr.getComponent(i, c);
-    g.setAttribute(name, new Float32BufferAttribute(out, attr.itemSize));
-  }
-  g.setIndex(src.index ? src.index.clone() : null);
-  for (const grp of src.groups) g.addGroup(grp.start, grp.count, grp.materialIndex);
-  return g;
-}
-
-/** pine.glb holds three variants side by side; bake each variant's parts to its own origin (base centre at 0). */
-function pineVariants(root: Object3D): PineVariant[] {
-  root.updateMatrixWorld(true);
-  const byVariant = new Map<Object3D, Mesh[]>();
-  root.traverse((o) => {
-    if (!(o instanceof Mesh)) return;
-    // The variant root is the direct child of the GLB scene.
-    let v: Object3D = o;
-    while (v.parent && v.parent !== root) v = v.parent;
-    let list = byVariant.get(v);
-    if (!list) byVariant.set(v, (list = []));
-    list.push(o);
-  });
-  const out: PineVariant[] = [];
-  for (const meshes of byVariant.values()) {
-    out.push({ parts: meshes.map((m) => ({ geometry: dequantized(m.geometry).applyMatrix4(m.matrixWorld), material: m.material as Material })), height: 1 });
-  }
-  // Recentre: x/z centre of the variant, base at y = 0.
-  for (const v of out) {
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    for (const p of v.parts) {
-      p.geometry.computeBoundingBox();
-      const b = p.geometry.boundingBox;
-      if (!b) continue;
-      minX = Math.min(minX, b.min.x);
-      maxX = Math.max(maxX, b.max.x);
-      minY = Math.min(minY, b.min.y);
-      maxY = Math.max(maxY, b.max.y);
-      minZ = Math.min(minZ, b.min.z);
-      maxZ = Math.max(maxZ, b.max.z);
-    }
-    for (const p of v.parts) p.geometry.translate(-(minX + maxX) / 2, -minY, -(minZ + maxZ) / 2);
-    v.height = maxY > minY ? maxY - minY : 1;
-  }
-  return out;
-}
-
 /** Point on the boundary ellipse at angle a, scaled outwards by s. */
 function ringPoint(a: number, s: number): Vec2 {
   return { x: BOUNDARY.x + Math.cos(a) * BOUNDARY.rx * s, z: BOUNDARY.z + Math.sin(a) * BOUNDARY.rz * s };
@@ -302,8 +356,7 @@ export interface Garden {
   dispose(): void;
 }
 
-export async function createGarden(scene: Scene, assets: Assets, materials: Materials, regions: Regions): Promise<Garden> {
-  const pineGltf = await assets.model("models/pine.glb");
+export async function createGarden(scene: Scene, _assets: Assets, materials: Materials, regions: Regions): Promise<Garden> {
   const rand = seeded(0x5a7d);
 
   const owned: Material[] = [];
@@ -316,7 +369,7 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       map: materials.stone.map,
       normalMap: materials.stone.normalMap,
       roughnessMap: materials.stone.roughnessMap,
-      color: 0x9a9384,
+      color: 0xa69f90,
       polygonOffset: true,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2,
@@ -324,10 +377,10 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
   );
   // Weathered granite: the stone set's relief without its cobble colour pattern.
   const rock = own(
-    new MeshStandardMaterial({ normalMap: materials.stone.normalMap, roughnessMap: materials.stone.roughnessMap, color: 0x77736a, metalness: 0 }),
+    new MeshStandardMaterial({ normalMap: materials.stone.normalMap, roughnessMap: materials.stone.roughnessMap, color: 0x827d73, metalness: 0 }),
   );
-  const lanternPaper = own(new MeshStandardMaterial({ color: 0xf2e4c4, roughness: 0.9, emissive: 0xffc27a, emissiveIntensity: GLOW_DAY }));
-  const lotusLamp = own(new MeshStandardMaterial({ color: 0xf4d6d2, roughness: 0.85, emissive: 0xffb88a, emissiveIntensity: GLOW_DAY }));
+  const lanternPaper = own(new MeshStandardMaterial({ color: 0xf5e9cc, roughness: 0.9, emissive: 0xffc680, emissiveIntensity: GLOW_DAY }));
+  const lotusLamp = own(new MeshStandardMaterial({ color: 0xf7dcd8, roughness: 0.85, emissive: 0xffbe92, emissiveIntensity: GLOW_DAY }));
   const batchMaterials = { ...materials, gravel, rock, lanternPaper, lotusLamp };
 
   const batches = new Map<GardenRegion | "gate", GeometryBatch<Key>>();
@@ -371,57 +424,58 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
     built.push(group);
   }
 
-  // Pines just outside the boundary (instanced per variant part), dark cone ring further out.
-  const variants = pineVariants(pineGltf.scene);
-  const placements: { x: number; z: number; yaw: number; h: number }[][] = variants.map(() => []);
-  // One slot per pine on the arc that skips the gate (+z, angle π/2), jittered inside its slot so none overlap.
-  const arc = Math.PI * 2 - 2 * GATE_GAP_RAD;
-  for (let k = 0; k < PINE_COUNT; k++) {
-    const a = Math.PI / 2 + GATE_GAP_RAD + ((k + 0.2 + rand() * 0.6) / PINE_COUNT) * arc;
-    const p = ringPoint(a, PINE_RING[0] + rand() * (PINE_RING[1] - PINE_RING[0]));
-    const h = PINE_HEIGHT[0] + rand() * (PINE_HEIGHT[1] - PINE_HEIGHT[0]);
-    placements[k % variants.length]?.push({ x: p.x, z: p.z, yaw: rand() * Math.PI * 2, h });
-  }
-  const forest: InstancedMesh[] = [];
-  variants.forEach((v, vi) => {
-    const list = placements[vi] ?? [];
-    if (list.length === 0) return;
-    for (const part of v.parts) {
-      const mesh = new InstancedMesh(part.geometry, part.material, list.length);
-      list.forEach((p, j) => {
-        const s = p.h / v.height;
-        mesh.setMatrixAt(j, place(p.x, 0, p.z, p.yaw, s, s, s));
-      });
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.computeBoundingSphere();
-      mesh.name = "pines";
-      forest.push(mesh);
-    }
-  });
+  // Wide-canopy ancient trees surrounding the courtyard boundary (2 instanced meshes: trunks + lush canopies).
+  const ancientGeo = createAncientTreeGeometries();
+  const trunkMat = own(new MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0.02 }));
+  const canopyMat = own(
+    new MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.68,
+      metalness: 0.0,
+      emissive: new Color(0x102e14),
+      emissiveIntensity: 0.22,
+    }),
+  );
 
-  // Three narrow tiers: a fir silhouette, unit height.
-  const tiers = [
-    new ConeGeometry(0.2, 0.45, 7, 1).translate(0, 0.38, 0),
-    new ConeGeometry(0.16, 0.38, 7, 1).translate(0, 0.62, 0),
-    new ConeGeometry(0.11, 0.3, 7, 1).translate(0, 0.85, 0),
-    new CylinderGeometry(0.02, 0.03, 0.16, 5).translate(0, 0.08, 0),
-  ];
-  const farGeo = mergeGeometries(tiers);
-  for (const g of tiers) g.dispose();
-  if (!farGeo) throw new Error("merge: far trees");
-  const farMat = own(new MeshLambertMaterial({ color: new Color(FAR_TREE_COLOR) }));
+  const trunks = new InstancedMesh(ancientGeo.trunk, trunkMat, ANCIENT_TREE_COUNT);
+  const canopies = new InstancedMesh(ancientGeo.canopy, canopyMat, ANCIENT_TREE_COUNT);
+
+  const arc = Math.PI * 2 - 2 * GATE_GAP_RAD;
+  for (let k = 0; k < ANCIENT_TREE_COUNT; k++) {
+    const a = Math.PI / 2 + GATE_GAP_RAD + ((k + 0.2 + rand() * 0.6) / ANCIENT_TREE_COUNT) * arc;
+    const p = ringPoint(a, ANCIENT_RING[0] + rand() * (ANCIENT_RING[1] - ANCIENT_RING[0]));
+    const sc = ANCIENT_SCALE[0] + rand() * (ANCIENT_SCALE[1] - ANCIENT_SCALE[0]);
+    const spread = sc * (1.02 + rand() * 0.22);
+    const yaw = rand() * Math.PI * 2;
+    const mat = place(p.x, 0, p.z, yaw, spread, sc, spread);
+    trunks.setMatrixAt(k, mat);
+    canopies.setMatrixAt(k, mat);
+  }
+  trunks.castShadow = true;
+  trunks.receiveShadow = true;
+  trunks.computeBoundingSphere();
+  trunks.name = "ancient-tree-trunks";
+
+  canopies.castShadow = true;
+  canopies.receiveShadow = true;
+  canopies.computeBoundingSphere();
+  canopies.name = "ancient-tree-canopies";
+
+  // Distant broad-canopy forest ring beyond the boundary.
+  const farGeo = createFarCanopyTreeGeometry();
+  const farMat = own(new MeshLambertMaterial({ vertexColors: true }));
   const far = new InstancedMesh(farGeo, farMat, FAR_TREE_COUNT);
   for (let i = 0; i < FAR_TREE_COUNT; i++) {
     const a = rand() * Math.PI * 2;
     const p = ringPoint(a, FAR_RING[0] + rand() * (FAR_RING[1] - FAR_RING[0]));
     const h = FAR_HEIGHT[0] + rand() * (FAR_HEIGHT[1] - FAR_HEIGHT[0]);
-    far.setMatrixAt(i, place(p.x, 0, p.z, rand() * Math.PI, h * (0.8 + rand() * 0.4), h, h * (0.8 + rand() * 0.4)));
+    const w = h * (0.9 + rand() * 0.35);
+    far.setMatrixAt(i, place(p.x, 0, p.z, rand() * Math.PI, w, h, w));
   }
   far.computeBoundingSphere();
   far.name = "far-trees";
-  forest.push(far);
 
+  const forest: InstancedMesh[] = [trunks, canopies, far];
   for (const o of forest) {
     o.matrixAutoUpdate = false;
     o.updateMatrix();
@@ -437,6 +491,7 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       const k = GLOW_DAY + (GLOW_NIGHT - GLOW_DAY) * (1 - daylight);
       lanternPaper.emissiveIntensity = k;
       lotusLamp.emissiveIntensity = k;
+      canopyMat.emissiveIntensity = 0.16 + 0.14 * daylight;
     },
     dispose() {
       for (const g of built) {
@@ -447,19 +502,10 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
         scene.remove(o);
         o.dispose();
       }
-      for (const v of variants) for (const p of v.parts) p.geometry.dispose();
+      ancientGeo.trunk.dispose();
+      ancientGeo.canopy.dispose();
       farGeo.dispose();
       for (const m of owned) m.dispose();
-      // The GLB's own materials/textures are only used by the pines.
-      pineGltf.scene.traverse((o) => {
-        if (!(o instanceof Mesh)) return;
-        o.geometry.dispose();
-        const m = o.material as MeshStandardMaterial;
-        m.map?.dispose();
-        m.normalMap?.dispose();
-        m.roughnessMap?.dispose();
-        m.dispose();
-      });
     },
   };
 }
