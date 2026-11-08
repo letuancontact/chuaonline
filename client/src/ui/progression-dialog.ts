@@ -8,6 +8,7 @@ import {
   type ShopCategory,
 } from "../game/progression.ts";
 import { vi } from "../i18n/vi.ts";
+import { closeOnBackdrop } from "./dialog.ts";
 import "./progression-dialog.css";
 
 type TabId = "checkin" | "quests" | "shop";
@@ -232,6 +233,7 @@ export class ProgressionDialog {
   private readonly tabButtons = new Map<TabId, HTMLButtonElement>();
   private activeTab: TabId = "checkin";
   private readonly offChange: () => void;
+  private readonly offBackdrop: () => void;
 
   constructor(
     private readonly prog: Progression,
@@ -360,6 +362,7 @@ export class ProgressionDialog {
     this.roomBtn.type = "button";
     this.roomBtn.className = "lotus-room-btn";
     this.roomBtn.title = "Đổi phòng / Chọn sân chùa";
+    this.roomBtn.setAttribute("aria-label", vi.hud.roomPill.replace("{n}", "1").replace("{room}", "Tĩnh Tâm"));
     this.roomDotEl = document.createElement("span");
     this.roomDotEl.className = "status-dot status-dot--connecting";
     const roomTempleIcon = document.createElement("span");
@@ -466,9 +469,7 @@ export class ProgressionDialog {
     // 3. MODAL DIALOG (Sổ Tu Tập & Pháp Bảo Các)
     this.dialog = document.createElement("dialog");
     this.dialog.className = "progression-dialog";
-    this.dialog.addEventListener("click", (e) => {
-      if (e.target === this.dialog) this.close();
-    });
+    this.offBackdrop = closeOnBackdrop(this.dialog);
 
     const shell = document.createElement("div");
     shell.className = "prog-shell";
@@ -586,6 +587,7 @@ export class ProgressionDialog {
     const label = `Phòng ${roomNum} · ${roomName}`;
     this.roomTextEl.textContent = label;
     this.roomBtn.title = `Đang ở ${label} (Bấm để đổi phòng)`;
+    this.roomBtn.setAttribute("aria-label", vi.hud.roomPill.replace("{n}", String(roomNum)).replace("{room}", roomName));
     if (status) {
       this.roomDotEl.className =
         status === "connected"
@@ -618,6 +620,7 @@ export class ProgressionDialog {
 
   dispose(): void {
     this.offChange();
+    this.offBackdrop();
     this.playerWrap.remove();
     this.topRightWrap.remove();
     this.dialog.remove();
