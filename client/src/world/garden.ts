@@ -540,9 +540,16 @@ export interface Garden {
 }
 
 export async function createGarden(scene: Scene, assets: Assets, materials: Materials, regions: Regions): Promise<Garden> {
+  // Load `models/cothu1.glb` with fault-tolerant catch so a corrupted/incomplete upload never crashes the scene.
   const [cothuGltf, wishTreeGltf] = await Promise.all([
     assets.model("models/cothu.glb"),
-    assets.model("models/cothu1.glb"),
+    assets.model("models/cothu1.glb").catch((err: unknown) => {
+      console.warn(
+        "[garden] models/cothu1.glb failed to parse or load; falling back to models/cothu.glb for Wishing Tree:",
+        err,
+      );
+      return null;
+    }),
   ]);
   const rand = seeded(0x5a7d);
 
@@ -615,10 +622,22 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
   const preparedTree = prepareAncientTreeModel(cothuGltf.scene, uTreeTime);
   for (const mat of preparedTree.materials) own(mat);
 
-  // 2. Prepare `models/cothu1.glb` specifically for the Wishing Tree outside the gate.
-  const preparedWishTree = prepareAncientTreeModel(wishTreeGltf.scene, uTreeTime);
-  for (const mat of preparedWishTree.materials) own(mat);
-  attachAncientTreeToWishingTree(preparedWishTree.geometry, preparedWishTree.materialOrArray);
+  // 2. Prepare `models/cothu1.glb` specifically for the Wishing Tree (with safe fallback to `preparedTree`).
+  let preparedWishTree: PreparedAncientTree | null = null;
+  if (wishTreeGltf) {
+    try {
+      preparedWishTree = prepareAncientTreeModel(wishTreeGltf.scene, uTreeTime);
+      for (const mat of preparedWishTree.materials) own(mat);
+    } catch (err) {
+      console.warn(
+        "[garden] models/cothu1.glb geometry failed normalization; falling back to models/cothu.glb:",
+        err,
+      );
+      preparedWishTree = null;
+    }
+  }
+  const activeWishTree = preparedWishTree ?? preparedTree;
+  attachAncientTreeToWishingTree(activeWishTree.geometry, activeWishTree.materialOrArray);
 
   const ancientTrees = new InstancedMesh(
     preparedTree.geometry,
@@ -701,8 +720,10 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       for (const mat of preparedTree.materials) {
         mat.emissiveIntensity = treeEmissive;
       }
-      for (const mat of preparedWishTree.materials) {
-        mat.emissiveIntensity = treeEmissive;
+      if (preparedWishTree) {
+        for (const mat of preparedWishTree.materials) {
+          mat.emissiveIntensity = treeEmissive;
+        }
       }
     },
     dispose() {
@@ -716,8 +737,10 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       }
       preparedTree.geometry.dispose();
       for (const tex of preparedTree.textures) tex.dispose();
-      preparedWishTree.geometry.dispose();
-      for (const tex of preparedWishTree.textures) tex.dispose();
+      if (preparedWishTree) {
+        preparedWishTree.geometry.dispose();
+        for (const tex of preparedWishTree.textures) tex.dispose();
+      }
       farGeo.dispose();
       for (const m of owned) m.dispose();
     },
