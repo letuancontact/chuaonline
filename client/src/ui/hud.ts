@@ -139,6 +139,7 @@ export class Hud {
   private readonly timers: ReturnType<typeof setTimeout>[] = [];
   private pulseTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly onDocPointerDown: (e: PointerEvent) => void;
+  private readonly onDocKeyDown: (e: KeyboardEvent) => void;
   private bowLocked = true;
   private action: ActionState = "idle";
   private bowing = false;
@@ -218,7 +219,13 @@ export class Hud {
         this.gestureMenu.hidden = true;
       }
     };
+    this.onDocKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !this.gestureMenu.hidden) {
+        this.gestureMenu.hidden = true;
+      }
+    };
     window.addEventListener("pointerdown", this.onDocPointerDown, { passive: true });
+    window.addEventListener("keydown", this.onDocKeyDown);
 
     bar.append(this.helloBtn, this.bowBtn, this.beadsBtn, this.woodblockBtn, this.gesturesBtn);
     bottom.append(this.gestureMenu, bar);
@@ -238,6 +245,11 @@ export class Hud {
     this.root.append(this.topRight, bottom, this.hint);
     parent.append(this.root);
     this.renderActions();
+  }
+
+  /** Closes the radial gesture menu if it is currently open. */
+  closeGestureMenu(): void {
+    this.gestureMenu.hidden = true;
   }
 
   setRoom(_n: number, _name: string): void {
@@ -310,6 +322,7 @@ export class Hud {
 
   dispose(): void {
     window.removeEventListener("pointerdown", this.onDocPointerDown);
+    window.removeEventListener("keydown", this.onDocKeyDown);
     for (const t of this.timers) clearTimeout(t);
     if (this.pulseTimer) clearTimeout(this.pulseTimer);
     this.root.remove();
