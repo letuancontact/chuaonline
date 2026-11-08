@@ -85,7 +85,7 @@ describe("poses", () => {
 describe("Avatar", () => {
   it("blends to a new pose over 0.25 s and returns from hello after 2 s", () => {
     // Rig only: the real factory draws the face on a canvas, which node has not got.
-    const avatar = new Avatar({ mesh: new SkinnedMesh(), rig: createRig(), dispose: () => {} });
+    const avatar = new Avatar({ mesh: new SkinnedMesh(), rig: createRig(), setColor: () => {}, dispose: () => {} });
     const hips = avatar.model.rig.bones.hips;
     avatar.update(1 / 60, 0);
     const standY = hips.position.y;
@@ -108,7 +108,7 @@ describe("Avatar", () => {
     const rig = createRig();
     const mesh = new SkinnedMesh();
     mesh.add(rig.root);
-    const avatar = new Avatar({ mesh, rig, dispose: () => {} });
+    const avatar = new Avatar({ mesh, rig, setColor: () => {}, dispose: () => {} });
     avatar.setPose("kneel", { bowAt: 0 });
     avatar.update(1, BOW_PERIOD_MS / 2);
     mesh.updateMatrixWorld(true);
