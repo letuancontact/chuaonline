@@ -50,9 +50,9 @@ const CANDLES = 8;
 const LANTERN_ROWS = [-9, -3, 3, 9] as const;
 const LANTERN_COLS = [-10, -6, -2, 2, 6, 10] as const;
 const LANTERN_Y = CEILING_Y - 2.6;
-/** Lantern glow and hall point lights: dim by day, warm at night. */
-const GLOW_DAY = 0.5;
-const GLOW_NIGHT = 2.4;
+/** Lantern glow and hall point lights: bright warm glow both day and night. */
+const GLOW_DAY = 0.85;
+const GLOW_NIGHT = 2.8;
 
 /** Incense burner sits at the centre of the offering table (between the 4 left and 4 right candles). */
 const INCENSE_Z = (TABLE.z0 + TABLE.z1) / 2;
@@ -185,7 +185,7 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
   // Seen from the cushions the face projects slightly higher on the wall behind it.
   const haloY = faceY + 0.35;
   const muralTex = drawMural(2048, 1024, { x: 0.5, y: 1 - (haloY - MURAL_BOTTOM) / MURAL_H, r: 0.27 });
-  const muralMat = own(new MeshStandardMaterial({ map: muralTex, roughness: 0.85, emissiveMap: muralTex, emissive: new Color(0x2a1408) }));
+  const muralMat = own(new MeshStandardMaterial({ map: muralTex, roughness: 0.85, emissiveMap: muralTex, emissive: new Color(0x3b1f0e) }));
   const muralGeo = new PlaneGeometry(MURAL_W, MURAL_H);
   const mural = new Mesh(muralGeo, muralMat);
   mural.position.set(0, MURAL_BOTTOM + MURAL_H / 2, MURAL_Z);
@@ -203,9 +203,9 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
       o.receiveShadow = true;
       const m = o.material as MeshStandardMaterial;
       // Gilt bronze: a little sheen and warmth so it reads gold under the spots.
-      m.roughness = 0.55;
-      m.metalness = 0.15;
-      m.emissive = new Color(0x1a0f04);
+      m.roughness = 0.5;
+      m.metalness = 0.18;
+      m.emissive = new Color(0x281808);
     }
   });
   statue.name = "buddha";
@@ -332,7 +332,7 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
   group.add(faceTarget);
   const spots: SpotLight[] = [];
   for (const x of [-4.5, 4.5]) {
-    const spot = new SpotLight(0xffc98a, 140, 0, 0.42, 0.65, 2);
+    const spot = new SpotLight(0xffd296, 210, 0, 0.45, 0.65, 2);
     spot.position.set(x, CEILING_Y - 0.6, BUDDHA_Z + 8);
     spot.target = faceTarget;
     spot.castShadow = false;
@@ -341,7 +341,7 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
   }
   const fills: PointLight[] = [];
   for (const z of [-11, -2, 7]) {
-    const p = new PointLight(0xffc27a, 4, 16, 2);
+    const p = new PointLight(0xffca85, 8, 20, 2);
     p.position.set(0, LANTERN_Y - 0.6, z);
     fills.push(p);
     group.add(p);
@@ -361,7 +361,7 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
       flameTime.value = t;
       const night = 1 - daylight;
       lanternMat.emissiveIntensity = GLOW_DAY + (GLOW_NIGHT - GLOW_DAY) * night;
-      for (const p of fills) p.intensity = 4 + 26 * night;
+      for (const p of fills) p.intensity = 8 + 30 * night;
 
       if (incenseBoost > 0) incenseBoost = Math.max(0, incenseBoost - dt);
       const boost = incenseBoost > 0 ? 1 : 0;
