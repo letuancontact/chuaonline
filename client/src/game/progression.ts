@@ -281,6 +281,7 @@ export class Progression {
 
   /** True when today's check-in has not been claimed yet. */
   canCheckIn(): boolean {
+    this.ensureToday();
     const today = vnMidnight(this.now());
     return this.data.lastCheckInDay !== today;
   }
@@ -292,6 +293,7 @@ export class Progression {
     streak: number;
     rewards: readonly number[];
   } {
+    this.ensureToday();
     const today = vnMidnight(this.now());
     const last = this.data.lastCheckInDay;
     const canClaim = last !== today;
