@@ -42,8 +42,7 @@ import { attachAncientTreeToWishingTree } from "./wishing-tree.ts";
 // ============================================================================
 export const TREE_VISUAL_CONFIG = {
   /**
-   * Hệ số độ rộng của từng chòm nhánh lá (đã giảm ~40% mật độ tán so với bản trước):
-   * - 0.84 = tán cây vừa vặn, có khoảng thở tự nhiên, nhìn rõ cành nhánh.
+   * Hệ số độ rộng của từng chòm nhánh lá (giữ mức thoáng -40%):
    */
   padSizeMultiplier: 0.84,
 
@@ -53,9 +52,9 @@ export const TREE_VISUAL_CONFIG = {
   leafDetailScale: 0.88,
 
   /**
-   * Hệ số tăng độ đậm/bão hòa màu sắc lá cây (+10% đậm hơn = 1.10):
+   * Hệ số tăng độ đậm/bão hòa màu sắc lá cây (+40% đậm hơn = 1.40):
    */
-  colorSaturationBoost: 1.1,
+  colorSaturationBoost: 1.4,
 
   /**
    * Hệ số chiều cao tổng thể của cây (1.0 = chuẩn theo 4 tầng từ cao xuống thấp).
@@ -63,26 +62,26 @@ export const TREE_VISUAL_CONFIG = {
   treeHeightMultiplier: 1.0,
 
   /**
-   * Màu lá của Cây Bồ Đề Ước Nguyện ngoài cổng tam quan (đậm hơn 10%).
+   * Màu lá của Cây Bồ Đề Ước Nguyện ngoài cổng tam quan (vàng hổ phách đậm).
    */
-  wishTreeColor: 0xe8961c,
+  wishTreeColor: 0xd97b08,
 
   /**
-   * BẢNG MÀU LÁ CÂY ĐAN XEN TRONG RỪNG (Đã tăng độ đậm & chiều sâu màu thêm ~10%):
+   * BẢNG MÀU LÁ CÂY ĐAN XEN TRONG RỪNG (Đã tăng độ đậm & bão hòa sắc tố thêm +40%):
    */
   foliagePalette: [
-    0xc81e14, // 1. Đỏ phong đậm (Deep Maple Crimson)
-    0xe85212, // 2. Đỏ cam / Cam lửa đậm (Rich Flame Orange)
-    0xebaa15, // 3. Vàng thu đậm (Rich Golden Yellow)
-    0x3b8f2e, // 4. Xanh lá cổ thụ đậm (Deep Foliage Green)
-    0xa31410, // 5. Đỏ rượu vang trầm (Deep Wine Red)
-    0xdf6e18, // 6. Vàng cam hổ phách đậm (Rich Apricot Orange)
-    0x96c429, // 7. Vàng nõn chuối / Xanh cốm đậm (Vivid Chartreuse)
-    0xcc2b18, // 8. Đỏ son đậm (Deep Scarlet Maple)
-    0xf0bb24, // 9. Vàng nghệ ấm (Warm Turmeric Gold)
-    0x307a28, // 10. Xanh rêu rừng trầm (Deep Temple Moss)
-    0xba3516, // 11. Cam cháy trầm (Deep Burnt Orange)
-    0xd98818, // 12. Vàng đồng mùa thu (Deep Amber Gold)
+    0xa30e0b, // 1. Đỏ phong hồng ngọc đậm (Deep Ruby Maple)
+    0xd43a06, // 2. Đỏ cam / Cam lửa đậm (Deep Flame Orange)
+    0xd98b06, // 3. Vàng thu nghệ đậm (Deep Golden Turmeric)
+    0x217018, // 4. Xanh lá cổ thụ đậm (Deep Temple Green)
+    0x820a08, // 5. Đỏ rượu vang thẫm (Rich Burgundy Red)
+    0xc95208, // 6. Cam cháy hổ phách đậm (Deep Burnt Amber)
+    0x6e9e11, // 7. Vàng nõn chuối / Xanh cốm đậm (Rich Chartreuse)
+    0xb5180e, // 8. Đỏ son trầm (Deep Scarlet Maple)
+    0xe09b08, // 9. Vàng hoàng kim đậm (Rich Imperial Gold)
+    0x1b5c14, // 10. Xanh rêu rừng sâu (Deep Forest Moss)
+    0xa8260a, // 11. Đỏ gạch mùa thu đậm (Deep Autumn Terracotta)
+    0xc46e06, // 12. Vàng đồng cổ điển (Deep Bronze Gold)
   ] as const,
 } as const;
 
@@ -141,27 +140,20 @@ function place(x: number, y: number, z: number, yaw = 0, sx = 1, sy = 1, sz = 1)
 function pickTreeFoliageColor(index: number, ringTier: number, out: Color): Color {
   const palette = TREE_VISUAL_CONFIG.foliagePalette;
   const step = (index * 5 + ringTier * 3) % palette.length;
-  const baseHex = palette[step] ?? 0xc81e14;
+  const baseHex = palette[step] ?? 0xa30e0b;
   out.setHex(baseHex);
 
-  // Boost color saturation by +10% and deepen lightness slightly so foliage looks richer and more vivid
+  // Boost saturation by +40% and deepen lightness so all trees across all 4 tiers have rich, deep colors
   const boost = TREE_VISUAL_CONFIG.colorSaturationBoost;
   out.getHSL(tmpHsl);
   tmpHsl.s = Math.min(1.0, tmpHsl.s * boost);
-  tmpHsl.l = Math.max(0.18, Math.min(0.85, tmpHsl.l * (2 - boost * 0.96)));
+  tmpHsl.l = Math.max(0.14, Math.min(0.68, tmpHsl.l * 0.78));
   out.setHSL(tmpHsl.h, tmpHsl.s, tmpHsl.l);
-
-  // Subtle warm atmospheric blend on the farthest horizon tiers
-  if (ringTier === 3) {
-    out.lerp(new Color(0xd47e48), 0.1);
-  } else if (ringTier >= 4) {
-    out.lerp(new Color(0xd98a56), 0.2);
-  }
   return out;
 }
 
 // ============================================================================
-// SHADERS: NATURAL BARK & +10% RICHER SUN-FILTERED FOLIAGE
+// SHADERS: NATURAL BARK & +40% DEEPER, SATURATED FOLIAGE
 // ============================================================================
 
 function attachMapleBarkShader(material: MeshStandardMaterial, uTime: { value: number }): void {
@@ -198,10 +190,10 @@ function attachMapleBarkShader(material: MeshStandardMaterial, uTime: { value: n
 }
 
 /**
- * Botanical Foliage Shader (tuned for +10% richer saturation & deeper contrast):
+ * Botanical Foliage Shader (+40% deeper color richness):
  * - Preserves outward-domed normals on both sides of `DoubleSide` leaf cards.
- * - Deepens color richness (`pow(diffuseColor.rgb, vec3(1.08))`) so reds, oranges, golds, and greens
- *   stay saturated and vibrant under sunlight without washing out.
+ * - Applies a strong gamma richness curve (`pow(diffuseColor.rgb, vec3(1.34)) * 0.82`)
+ *   so sunlight never washes out the deep reds, oranges, golds, or greens.
  */
 function attachMapleFoliageShader(material: MeshStandardMaterial, uTime: { value: number }): void {
   material.onBeforeCompile = (shader) => {
@@ -222,7 +214,7 @@ function attachMapleFoliageShader(material: MeshStandardMaterial, uTime: { value
         float heightNorm = clamp((transformed.y - 1.4) / 4.8, 0.0, 1.0);
         float sunSide = clamp(dot(normalize(objectNormal), vec3(0.45, 0.80, 0.38)), 0.0, 1.0);
         vCanopyGrad = clamp(heightNorm * 0.50 + sunSide * 0.50, 0.0, 1.0);
-        vRimLight = pow(sunSide, 1.5) * heightNorm;
+        vRimLight = pow(sunSide, 1.6) * heightNorm;
 
         float swayWeight = clamp((transformed.y - 1.2) * 0.18, 0.0, 1.0);
         float treePhase = treePos.x * 0.41 + treePos.y * 0.59;
@@ -246,29 +238,24 @@ function attachMapleFoliageShader(material: MeshStandardMaterial, uTime: { value
       .replace(
         "#include <color_fragment>",
         `#include <color_fragment>
-        // Deepen chroma saturation by ~10% so colors never look pale or washed out
-        diffuseColor.rgb = pow(max(diffuseColor.rgb, vec3(0.001)), vec3(1.09)) * 1.06;
-        vec3 lowerShade = diffuseColor.rgb * vec3(0.58, 0.53, 0.49);
-        vec3 upperSun = mix(diffuseColor.rgb * 1.15, vec3(1.0, 0.88, 0.50), 0.15);
+        // Deepen color richness & saturation by +40% so foliage stays bold and vivid under bright sun
+        diffuseColor.rgb = pow(max(diffuseColor.rgb, vec3(0.001)), vec3(1.34)) * 0.82;
+        vec3 lowerShade = diffuseColor.rgb * vec3(0.46, 0.40, 0.36);
+        vec3 upperSun = diffuseColor.rgb * 1.18;
         diffuseColor.rgb = mix(lowerShade, upperSun, vCanopyGrad);`,
       )
       .replace(
         "#include <opaque_fragment>",
-        `outgoingLight = mix(outgoingLight, diffuseColor.rgb * 0.96, 0.32) + vec3(1.0, 0.82, 0.44) * (vRimLight * 0.12);
+        `outgoingLight = mix(outgoingLight * 0.88, diffuseColor.rgb * 0.92, 0.42) + diffuseColor.rgb * (vRimLight * 0.14);
         #include <opaque_fragment>`,
       );
   };
 }
 
 // ============================================================================
-// REALISTIC 24-LEAF BOTANICAL MAPLE BRANCHLET TEXTURE (`1024x1024` — -40% DENSITY)
+// REALISTIC 24-LEAF BOTANICAL MAPLE BRANCHLET TEXTURE (`1024x1024`)
 // ============================================================================
 
-/**
- * Draws a high-resolution 1024x1024 botanical Japanese Maple branchlet with 24 sharply detailed
- * 7-lobed palmate maple leaves (~37% fewer leaves than the 38-leaf version so canopies are ~40% less dense
- * and have natural breathing gaps while never looking bare).
- */
 function drawBotanicalBranchletTexture(size = 1024): CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = size;
@@ -281,7 +268,7 @@ function drawBotanicalBranchletTexture(size = 1024): CanvasTexture {
   const leafScale = TREE_VISUAL_CONFIG.leafDetailScale;
 
   // 1. Draw the woody branchlet and secondary twigs
-  ctx.strokeStyle = "#452816";
+  ctx.strokeStyle = "#3d2212";
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   const branches: readonly [number, number, number, number, number, number, number][] = [
@@ -300,10 +287,7 @@ function drawBotanicalBranchletTexture(size = 1024): CanvasTexture {
   }
 
   /**
-   * Draws a single botanical 7-lobed Japanese Maple leaf (`Acer palmatum`) with:
-   * - Slender petiole stem connecting to the twig.
-   * - 7 deeply incised acuminate lobes (`sinus = 0.25 * radius`).
-   * - Double-serrated leaf margins & primary + secondary lateral veins.
+   * Draws a single botanical 7-lobed Japanese Maple leaf (`Acer palmatum`).
    */
   const drawRealisticMapleLeaf = (
     cx: number,
@@ -318,7 +302,7 @@ function drawBotanicalBranchletTexture(size = 1024): CanvasTexture {
     ctx.rotate(rot);
 
     // Petiole (leaf stalk)
-    ctx.strokeStyle = "#542f1a";
+    ctx.strokeStyle = "#4d2a16";
     ctx.lineWidth = Math.max(1.4, radius * 0.036);
     ctx.beginPath();
     ctx.moveTo(0, radius * 0.46);
@@ -343,7 +327,6 @@ function drawBotanicalBranchletTexture(size = 1024): CanvasTexture {
       const cp = Math.cos(perp);
       const sp = Math.sin(perp);
 
-      // Left serrated margin
       const pL1x = ca * (len * 0.34) - cp * (wid * 0.74);
       const pL1y = sa * (len * 0.34) - sp * (wid * 0.74);
       const pL1InX = ca * (len * 0.38) - cp * (wid * 0.6);
@@ -360,7 +343,6 @@ function drawBotanicalBranchletTexture(size = 1024): CanvasTexture {
       const tipX = ca * len;
       const tipY = sa * len;
 
-      // Right serrated margin
       const pR3x = ca * (len * 0.8) + cp * (wid * 0.52);
       const pR3y = sa * (len * 0.8) + sp * (wid * 0.52);
 
@@ -396,25 +378,25 @@ function drawBotanicalBranchletTexture(size = 1024): CanvasTexture {
 
     ctx.closePath();
 
-    // Slightly deeper tonal luminance (avoids pure 255 white wash-out so instance colors stay ~10% deeper)
-    const b0 = Math.round(198 * brightness);
-    const b1 = Math.round(230 * brightness);
-    const b2 = Math.min(246, Math.round(244 * brightness));
+    // Richer mid-tone luminance so multiplied instance colors retain deep, saturated pigments
+    const b0 = Math.round(176 * brightness);
+    const b1 = Math.round(212 * brightness);
+    const b2 = Math.min(232, Math.round(228 * brightness));
 
     const grad = ctx.createRadialGradient(0, 0, radius * 0.06, 0, -radius * 0.16, radius * 1.08);
-    grad.addColorStop(0, `rgb(${b0}, ${b0 - 5}, ${b0 - 12})`);
-    grad.addColorStop(0.62, `rgb(${b1}, ${b1 - 3}, ${b1 - 8})`);
-    grad.addColorStop(1, `rgb(${b2}, ${b2 - 2}, ${b2 - 5})`);
+    grad.addColorStop(0, `rgb(${b0}, ${b0 - 6}, ${b0 - 14})`);
+    grad.addColorStop(0.62, `rgb(${b1}, ${b1 - 4}, ${b1 - 10})`);
+    grad.addColorStop(1, `rgb(${b2}, ${b2 - 2}, ${b2 - 6})`);
     ctx.fillStyle = grad;
     ctx.fill();
 
     // Crisp botanical margin contour
-    ctx.lineWidth = Math.max(1.3, radius * 0.022);
-    ctx.strokeStyle = `rgba(${Math.round(132 * brightness)}, ${Math.round(118 * brightness)}, ${Math.round(104 * brightness)}, 0.58)`;
+    ctx.lineWidth = Math.max(1.4, radius * 0.024);
+    ctx.strokeStyle = `rgba(${Math.round(108 * brightness)}, ${Math.round(92 * brightness)}, ${Math.round(78 * brightness)}, 0.65)`;
     ctx.stroke();
 
     // Primary palmate midribs + secondary lateral veins on each lobe
-    ctx.strokeStyle = "rgba(255, 250, 232, 0.58)";
+    ctx.strokeStyle = "rgba(255, 244, 215, 0.52)";
     ctx.lineCap = "round";
     for (let i = 0; i < lobeAngles.length; i++) {
       const a = lobeAngles[i]! - Math.PI * 0.5;
@@ -453,32 +435,32 @@ function drawBotanicalBranchletTexture(size = 1024): CanvasTexture {
     ctx.restore();
   };
 
-  // Layer 1: 8 shaded under-leaves along the central forks
+  // Layer 1: 8 shaded under-leaves
   const underLeaves: readonly [number, number, number, number, number][] = [
-    [0.5, 0.5, 0.15, 0.0, 0.85],
-    [0.36, 0.45, 0.145, -0.48, 0.84],
-    [0.64, 0.45, 0.145, 0.48, 0.84],
-    [0.36, 0.64, 0.145, -0.82, 0.84],
-    [0.64, 0.64, 0.145, 0.82, 0.84],
-    [0.5, 0.32, 0.145, -0.1, 0.87],
-    [0.26, 0.38, 0.14, -0.72, 0.86],
-    [0.74, 0.36, 0.14, 0.72, 0.86],
+    [0.5, 0.5, 0.15, 0.0, 0.84],
+    [0.36, 0.45, 0.145, -0.48, 0.82],
+    [0.64, 0.45, 0.145, 0.48, 0.82],
+    [0.36, 0.64, 0.145, -0.82, 0.82],
+    [0.64, 0.64, 0.145, 0.82, 0.82],
+    [0.5, 0.32, 0.145, -0.1, 0.86],
+    [0.26, 0.38, 0.14, -0.72, 0.85],
+    [0.74, 0.36, 0.14, 0.72, 0.85],
   ];
   for (const [x, y, r, rot, br] of underLeaves) {
     drawRealisticMapleLeaf(x * size, y * size, r * size, rot + (rand() - 0.5) * 0.14, br);
   }
 
-  // Layer 2: 9 mid-branch leaves fanning along the 5 twigs (leaving clear breathing gaps between twigs)
+  // Layer 2: 9 mid-branch leaves fanning along the 5 twigs
   const midLeaves: readonly [number, number, number, number, number][] = [
-    [0.5, 0.16, 0.145, 0.0, 0.95],
-    [0.19, 0.25, 0.14, -0.7, 0.94],
-    [0.81, 0.23, 0.14, 0.7, 0.94],
-    [0.15, 0.42, 0.135, -1.08, 0.92],
-    [0.85, 0.4, 0.135, 1.08, 0.92],
-    [0.16, 0.57, 0.14, -1.18, 0.93],
-    [0.84, 0.54, 0.14, 1.18, 0.93],
-    [0.28, 0.7, 0.13, -1.55, 0.91],
-    [0.72, 0.68, 0.13, 1.55, 0.91],
+    [0.5, 0.16, 0.145, 0.0, 0.94],
+    [0.19, 0.25, 0.14, -0.7, 0.93],
+    [0.81, 0.23, 0.14, 0.7, 0.93],
+    [0.15, 0.42, 0.135, -1.08, 0.91],
+    [0.85, 0.4, 0.135, 1.08, 0.91],
+    [0.16, 0.57, 0.14, -1.18, 0.92],
+    [0.84, 0.54, 0.14, 1.18, 0.92],
+    [0.28, 0.7, 0.13, -1.55, 0.9],
+    [0.72, 0.68, 0.13, 1.55, 0.9],
   ];
   for (const [x, y, r, rot, br] of midLeaves) {
     drawRealisticMapleLeaf(x * size, y * size, r * size, rot + (rand() - 0.5) * 0.12, br);
@@ -490,8 +472,8 @@ function drawBotanicalBranchletTexture(size = 1024): CanvasTexture {
     [0.63, 0.22, 0.14, 0.42, 1.0],
     [0.31, 0.36, 0.135, -0.52, 0.98],
     [0.69, 0.34, 0.135, 0.52, 0.98],
-    [0.27, 0.53, 0.135, -0.78, 0.97],
-    [0.73, 0.51, 0.135, 0.78, 0.97],
+    [0.27, 0.53, 0.135, -0.78, 0.96],
+    [0.73, 0.51, 0.135, 0.78, 0.96],
     [0.5, 0.4, 0.14, 0.12, 1.0],
   ];
   for (const [x, y, r, rot, br] of topLeaves) {
@@ -505,7 +487,7 @@ function drawBotanicalBranchletTexture(size = 1024): CanvasTexture {
 }
 
 // ============================================================================
-// SMOOTH CATMULL-ROM TRUNKS & BALANCED BOTANICAL LEAF SPRAYS (-40% DENSITY)
+// SMOOTH CATMULL-ROM TRUNKS & BALANCED BOTANICAL LEAF SPRAYS
 // ============================================================================
 
 function sampleSmoothCurve(controlPts: readonly Vector3[], subdivisions: number): Vector3[] {
@@ -591,7 +573,7 @@ function buildSmoothBranchTube(
     normal.crossVectors(binormal, tangent).normalize();
 
     const tFrac = i / Math.max(1, rings - 1);
-    const flare = flareBase && tFrac < 0.22 ? 1 + 0.35 * Math.pow(1 - tFrac / 0.22, 2) : 1.0;
+    const flare = flareBase && tFrac < 0.25 ? 1 + 0.42 * Math.pow(1 - tFrac / 0.25, 2) : 1.0;
     const r = (rStart * Math.pow(1 - tFrac, 0.85) + rEnd * tFrac) * flare;
     cTmp.lerpColors(c0, c1, tFrac);
 
@@ -643,9 +625,6 @@ function buildSmoothBranchTube(
   return g;
 }
 
-/**
- * Builds one gracefully arched 2x2 botanical branchlet card (`nhánh lá uốn cong tự nhiên`).
- */
 function buildCurvedBranchletCard(
   ax: number,
   ay: number,
@@ -731,11 +710,6 @@ function buildCurvedBranchletCard(
   return g;
 }
 
-/**
- * Builds a balanced 3D Botanical Foliage Spray (~40% lighter than the previous 12-card version):
- * - Uses 2 inner cross-sprays + `frondCount` (4) outer radiating sprays + 1 top crown spray
- *   (= 7 cards total instead of 12), giving natural fullness while preserving airy gaps.
- */
 function buildAiryBotanicalSpray(
   cx: number,
   cy: number,
@@ -749,11 +723,11 @@ function buildAiryBotanicalSpray(
   const parts: BufferGeometry[] = [];
   const center = new Vector3(cx, cy, cz);
 
-  const shHex = 0xcfc7b8;
-  const mdHex = 0xede8dc;
+  const shHex = 0xc9c0b0;
+  const mdHex = 0xe8e2d5;
   const brHex = 0xffffff;
 
-  // 1. Two inner cross-sprays (down from 3) so the centre has body without becoming a solid block
+  // 1. Two inner cross-sprays
   for (let i = 0; i < 2; i++) {
     const a = i * 1.57 + rand() * 0.45;
     const w = radius * (0.94 + rand() * 0.12);
@@ -776,7 +750,7 @@ function buildAiryBotanicalSpray(
     );
   }
 
-  // 2. Radiating outer branchlet fronds (4 fronds fanning out around the branch tip)
+  // 2. Radiating outer branchlet fronds
   for (let i = 0; i < frondCount; i++) {
     const a = (i / frondCount) * Math.PI * 2 + (rand() - 0.5) * 0.25;
     const baseOffset = radius * 0.12;
@@ -803,7 +777,7 @@ function buildAiryBotanicalSpray(
     );
   }
 
-  // 3. Single upper crown spray (down from 3) for natural top curvature
+  // 3. Single upper crown spray
   parts.push(
     buildCurvedBranchletCard(
       cx,
@@ -862,6 +836,10 @@ interface ArchetypeSpec {
   }[];
 }
 
+/**
+ * Every archetype's `trunkCurve` starts at `[0, -0.25, 0]` (25 cm below ground level)
+ * so that even on tall 22 m horizon trees, the flared root base is deeply embedded in the ground!
+ */
 const ARCHETYPE_SPECS: readonly ArchetypeSpec[] = [
   // 1. Cổ thụ hậu cảnh (Base height 10.0m)
   {
@@ -871,7 +849,7 @@ const ARCHETYPE_SPECS: readonly ArchetypeSpec[] = [
     trunkTopR: 0.095,
     barkColors: [0x3d2518, 0x593926],
     trunkCurve: [
-      [0, 0, 0],
+      [0, -0.25, 0],
       [0.08, 1.3, -0.05],
       [-0.1, 2.7, 0.06],
       [-0.03, 4.1, 0.02],
@@ -899,7 +877,7 @@ const ARCHETYPE_SPECS: readonly ArchetypeSpec[] = [
     trunkTopR: 0.08,
     barkColors: [0x452a1c, 0x633e2b],
     trunkCurve: [
-      [0, 0, 0],
+      [0, -0.25, 0],
       [-0.07, 1.0, 0.05],
       [0.1, 2.1, -0.05],
       [0.05, 3.2, -0.02],
@@ -926,7 +904,7 @@ const ARCHETYPE_SPECS: readonly ArchetypeSpec[] = [
     trunkTopR: 0.07,
     barkColors: [0x402d20, 0x5c4230],
     trunkCurve: [
-      [0, 0, 0],
+      [0, -0.25, 0],
       [0.05, 0.9, 0.03],
       [-0.06, 1.9, -0.04],
       [0.02, 2.9, 0.02],
@@ -953,7 +931,7 @@ const ARCHETYPE_SPECS: readonly ArchetypeSpec[] = [
     trunkTopR: 0.068,
     barkColors: [0x452a1e, 0x5e3b2b],
     trunkCurve: [
-      [0, 0, 0],
+      [0, -0.25, 0],
       [0.08, 0.95, -0.04],
       [0.15, 2.0, -0.08],
       [0.06, 3.0, -0.03],
@@ -980,7 +958,7 @@ const ARCHETYPE_SPECS: readonly ArchetypeSpec[] = [
     trunkTopR: 0.062,
     barkColors: [0x473225, 0x634736],
     trunkCurve: [
-      [0, 0, 0],
+      [0, -0.25, 0],
       [-0.18, 0.85, 0.1],
       [-0.25, 1.8, 0.14],
       [0.1, 2.7, -0.06],
@@ -1005,7 +983,7 @@ const ARCHETYPE_SPECS: readonly ArchetypeSpec[] = [
     trunkTopR: 0.05,
     barkColors: [0x452e20, 0x61422e],
     trunkCurve: [
-      [0, 0, 0],
+      [0, -0.25, 0],
       [0.05, 0.7, -0.03],
       [-0.05, 1.5, 0.03],
       [0.02, 2.35, -0.02],
@@ -1026,14 +1004,14 @@ function buildArchetypeGeometry(spec: ArchetypeSpec, seed: number): BufferGeomet
   const barkParts: BufferGeometry[] = [];
   const leafParts: BufferGeometry[] = [];
 
-  // 1. Smooth Catmull-Rom curved trunk with natural base flare
+  // 1. Smooth Catmull-Rom curved trunk starting below ground (y = -0.25) with natural base flare
   const trunkPts = spec.trunkCurve.map(([x, y, z]) => new Vector3(x, y, z));
   const topPt = trunkPts[trunkPts.length - 1]!;
   barkParts.push(
     buildSmoothBranchTube(trunkPts, spec.trunkBaseR, spec.trunkTopR, 8, 7, spec.barkColors[0], spec.barkColors[1], true),
   );
 
-  // 2. Primary boughs + 1 secondary fork per bough (~40% less dense than the 4-pad-per-bough version)
+  // 2. Primary boughs + 1 secondary fork per bough
   spec.boughs.forEach((b, bIdx) => {
     const ca = Math.cos(b.angle);
     const sa = Math.sin(b.angle);
@@ -1045,19 +1023,16 @@ function buildArchetypeGeometry(spec: ArchetypeSpec, seed: number): BufferGeomet
       buildSmoothBranchTube([p0, p1, p2], b.radius, b.radius * 0.26, 5, 5, spec.barkColors[0], spec.barkColors[1]),
     );
 
-    // Primary bough tip foliage spray
     leafParts.push(
       buildAiryBotanicalSpray(p2.x, p2.y + 0.06, p2.z, b.padWidth, b.droop, 4, rand),
     );
 
-    // Every other bough gets a light mid-bough pad so the interior is balanced (neither hollow nor over-stuffed)
     if (bIdx % 2 === 0) {
       leafParts.push(
         buildAiryBotanicalSpray(p1.x * 1.05, p1.y + 0.12, p1.z * 1.05, b.padWidth * 0.76, b.droop, 3, rand),
       );
     }
 
-    // ONE secondary branch fork per bough (reduced from 2) for natural asymmetry & ~40% lighter canopy density
     const side = bIdx % 2 === 0 ? 1 : -1;
     const fAngle = b.angle + side * (0.54 + rand() * 0.12);
     const fReach = b.endR * (0.84 + rand() * 0.12);
@@ -1094,11 +1069,12 @@ function buildArchetypeGeometry(spec: ArchetypeSpec, seed: number): BufferGeomet
   mergedLeaves.dispose();
   if (!combined) throw new Error(`merge: combined archetype ${spec.id}`);
 
+  // Scale to `spec.baseHeight` while keeping `y = 0` anchored to the ground plane
+  // (the trunk extends down to `-0.22m` below `y = 0` so it is always buried in the ground!).
   combined.computeBoundingBox();
   const bbox = combined.boundingBox ?? new Box3();
-  const rawH = Math.max(0.01, bbox.max.y - bbox.min.y);
+  const rawH = Math.max(0.01, bbox.max.y);
   const scale = spec.baseHeight / rawH;
-  combined.translate(0, -bbox.min.y, 0);
   combined.scale(scale, scale, scale);
   combined.computeBoundingBox();
   combined.computeBoundingSphere();
@@ -1168,7 +1144,7 @@ function buildWishingTreeGeometry(): BufferGeometry {
 }
 
 // ============================================================================
-// 4-LAYER STEPPED HILLSIDE FOREST LAYOUT (BALANCED SPACING, -40% CANOPY DENSITY)
+// 4-LAYER STEPPED FOREST LAYOUT (ALL TRUNKS GROUNDED AT Y = -0.08m!)
 // ============================================================================
 
 interface TreeInstanceRecord {
@@ -1194,20 +1170,20 @@ interface SteppedRingConfig {
 }
 
 /**
- * 4-Layer Stepped Hillside Forest (~136 trees on PC / ~112 on Mobile):
- * - Tier 4 (Horizon Crest): 40 trees (15.0m – 20.0m tall, baseY = +2.8m)
- * - Tier 3 (Background Slope): 36 trees (11.2m – 14.8m tall, baseY = +1.0m)
- * - Tier 2 (Midground): 32 trees (8.0m – 10.8m tall, baseY = 0.0m)
- * - Tier 1 (Courtyard Edge): 28 trees (5.4m – 7.4m tall, baseY = 0.0m)
+ * 4-Layer Stepped Forest with ALL tree bases firmly grounded at `baseY = -0.08m` (planted into the earth):
+ * - Tier 4 (Horizon): 40 trees (17.5m – 23.5m tall, baseY = -0.08m) — tall trunks rooted in the ground!
+ * - Tier 3 (Background): 36 trees (12.5m – 16.5m tall, baseY = -0.08m)
+ * - Tier 2 (Midground): 32 trees (8.2m – 11.2m tall, baseY = -0.08m)
+ * - Tier 1 (Courtyard Edge): 28 trees (5.4m – 7.4m tall, baseY = -0.08m)
  */
 const STEPPED_RINGS: readonly SteppedRingConfig[] = [
   {
     tier: 4,
     count: IS_MOBILE ? 34 : 40,
     ring: [1.35, 1.54],
-    heightRange: [15.0, 20.0],
+    heightRange: [17.5, 23.5],
     spreadRange: [1.06, 1.2],
-    baseY: 2.8,
+    baseY: -0.08,
     phaseOffset: 0.5,
     gateGapFactor: 0.42,
     variants: [0, 1, 2],
@@ -1216,9 +1192,9 @@ const STEPPED_RINGS: readonly SteppedRingConfig[] = [
     tier: 3,
     count: IS_MOBILE ? 30 : 36,
     ring: [1.2, 1.33],
-    heightRange: [11.2, 14.8],
+    heightRange: [12.5, 16.5],
     spreadRange: [1.02, 1.16],
-    baseY: 1.0,
+    baseY: -0.08,
     phaseOffset: 0.0,
     gateGapFactor: 0.64,
     variants: [0, 1, 2, 3],
@@ -1227,9 +1203,9 @@ const STEPPED_RINGS: readonly SteppedRingConfig[] = [
     tier: 2,
     count: IS_MOBILE ? 26 : 32,
     ring: [1.08, 1.19],
-    heightRange: [8.0, 10.8],
+    heightRange: [8.2, 11.2],
     spreadRange: [1.0, 1.12],
-    baseY: 0.0,
+    baseY: -0.08,
     phaseOffset: 0.5,
     gateGapFactor: 0.84,
     variants: [1, 2, 3, 4],
@@ -1240,7 +1216,7 @@ const STEPPED_RINGS: readonly SteppedRingConfig[] = [
     ring: [0.99, 1.07],
     heightRange: [5.4, 7.4],
     spreadRange: [0.96, 1.08],
-    baseY: 0.0,
+    baseY: -0.08,
     phaseOffset: 0.25,
     gateGapFactor: 1.0,
     variants: [2, 3, 4, 5],
@@ -1611,7 +1587,7 @@ export async function createGarden(scene: Scene, _assets: Assets, materials: Mat
 
   const uTreeTime = { value: 0 };
 
-  // 1. Build shared PBR Bark & Balanced 24-Leaf Botanical Branchlet Foliage materials.
+  // 1. Build shared PBR Bark & +40% Deeper Botanical Branchlet Foliage materials.
   const mapleLeafTex = drawBotanicalBranchletTexture(1024);
   const mapleBarkMat = own(
     new MeshStandardMaterial({
@@ -1620,7 +1596,7 @@ export async function createGarden(scene: Scene, _assets: Assets, materials: Mat
       roughnessMap: materials.wood.roughnessMap,
       normalScale: new Vector2(1.25, 1.25),
       vertexColors: true,
-      color: new Color(0x96755c),
+      color: new Color(0x8c6b52),
       roughness: 0.88,
       metalness: 0.0,
     }),
@@ -1636,8 +1612,8 @@ export async function createGarden(scene: Scene, _assets: Assets, materials: Mat
       transparent: false,
       roughness: 0.72,
       metalness: 0.0,
-      emissive: new Color(0x1c0f06),
-      emissiveIntensity: 0.05,
+      emissive: new Color(0x1a0c04),
+      emissiveIntensity: 0.04,
       side: DoubleSide,
     }),
   );
@@ -1645,7 +1621,7 @@ export async function createGarden(scene: Scene, _assets: Assets, materials: Mat
 
   const mapleMats: Material[] = [mapleBarkMat, mapleFoliageMat];
 
-  // 2. Build the 6 Botanical Tree Archetypes (-40% canopy density) + the Wishing Tree geometry.
+  // 2. Build the 6 Botanical Tree Archetypes (grounded at y = 0) + the Wishing Tree geometry.
   const variantGeos = ARCHETYPE_SPECS.map((spec, idx) => buildArchetypeGeometry(spec, 0x800 + idx * 97));
   const wishTreeGeo = buildWishingTreeGeometry();
 
@@ -1655,7 +1631,7 @@ export async function createGarden(scene: Scene, _assets: Assets, materials: Mat
   attachMapleFoliageShader(wishTreeFoliageMat, uTreeTime);
   attachAncientTreeToWishingTree(wishTreeGeo, [mapleBarkMat, wishTreeFoliageMat]);
 
-  // 3. Populate the 4-Tier Stepped Hillside Forest.
+  // 3. Populate the 4-Tier Stepped Forest (all trunks grounded at baseY = -0.08m).
   const allRecords = buildSteppedForestLayout(rand);
   const byVariant: TreeInstanceRecord[][] = Array.from({ length: ARCHETYPE_SPECS.length }, () => []);
   for (const rec of allRecords) {
@@ -1701,7 +1677,7 @@ export async function createGarden(scene: Scene, _assets: Assets, materials: Mat
       const k = GLOW_DAY + (GLOW_NIGHT - GLOW_DAY) * (1 - daylight);
       lanternPaper.emissiveIntensity = k;
       lotusLamp.emissiveIntensity = k;
-      const leafEmissive = 0.04 + 0.06 * daylight;
+      const leafEmissive = 0.03 + 0.05 * daylight;
       mapleFoliageMat.emissiveIntensity = leafEmissive;
       wishTreeFoliageMat.emissiveIntensity = leafEmissive;
 
