@@ -9,6 +9,7 @@ import {
   SRGBColorSpace,
   type Object3D,
 } from "three";
+import { maxAnisotropy } from "../engine/renderer.ts";
 
 const RIPPLE_POOL_SIZE = 4;
 const RIPPLE_DURATION_S = 1.15;
@@ -26,7 +27,8 @@ interface RippleSlot {
 }
 
 function drawAuraTexture(kind: string): CanvasTexture {
-  const size = 256;
+  const size = 512;
+  const u = size / 256;
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -37,26 +39,26 @@ function drawAuraTexture(kind: string): CanvasTexture {
     ctx.clearRect(0, 0, size, size);
 
     if (kind === "aura_jade") {
-      const grad = ctx.createRadialGradient(cx, cy, 12, cx, cy, 118);
+      const grad = ctx.createRadialGradient(cx, cy, 12 * u, cx, cy, 118 * u);
       grad.addColorStop(0, "rgba(130, 255, 210, 0.35)");
       grad.addColorStop(0.55, "rgba(64, 210, 165, 0.22)");
       grad.addColorStop(0.85, "rgba(40, 165, 130, 0.45)");
       grad.addColorStop(1, "rgba(20, 120, 95, 0)");
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(cx, cy, 118, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 118 * u, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.strokeStyle = "rgba(165, 255, 225, 0.72)";
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2.2 * u;
       ctx.beginPath();
-      ctx.arc(cx, cy, 98, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 98 * u, 0, Math.PI * 2);
       ctx.stroke();
 
       ctx.strokeStyle = "rgba(120, 235, 195, 0.48)";
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.5 * u;
       ctx.beginPath();
-      ctx.arc(cx, cy, 74, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 74 * u, 0, Math.PI * 2);
       ctx.stroke();
 
       const petals = 8;
@@ -66,35 +68,35 @@ function drawAuraTexture(kind: string): CanvasTexture {
         ctx.translate(cx, cy);
         ctx.rotate(a);
         ctx.strokeStyle = "rgba(185, 255, 235, 0.65)";
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * u;
         ctx.beginPath();
-        ctx.moveTo(0, 56);
-        ctx.quadraticCurveTo(16, 80, 0, 102);
-        ctx.quadraticCurveTo(-16, 80, 0, 56);
+        ctx.moveTo(0, 56 * u);
+        ctx.quadraticCurveTo(16 * u, 80 * u, 0, 102 * u);
+        ctx.quadraticCurveTo(-16 * u, 80 * u, 0, 56 * u);
         ctx.stroke();
         ctx.restore();
       }
     } else if (kind === "aura_wheel") {
-      const grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, 120);
+      const grad = ctx.createRadialGradient(cx, cy, 10 * u, cx, cy, 120 * u);
       grad.addColorStop(0, "rgba(255, 230, 150, 0.42)");
       grad.addColorStop(0.5, "rgba(242, 195, 95, 0.25)");
       grad.addColorStop(0.88, "rgba(255, 215, 115, 0.55)");
       grad.addColorStop(1, "rgba(242, 185, 80, 0)");
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(cx, cy, 120, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 120 * u, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.strokeStyle = "rgba(255, 232, 165, 0.85)";
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3 * u;
       ctx.beginPath();
-      ctx.arc(cx, cy, 104, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 104 * u, 0, Math.PI * 2);
       ctx.stroke();
 
       ctx.strokeStyle = "rgba(255, 215, 130, 0.65)";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * u;
       ctx.beginPath();
-      ctx.arc(cx, cy, 42, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 42 * u, 0, Math.PI * 2);
       ctx.stroke();
 
       const spokes = 8;
@@ -104,34 +106,34 @@ function drawAuraTexture(kind: string): CanvasTexture {
         ctx.translate(cx, cy);
         ctx.rotate(a);
         ctx.strokeStyle = "rgba(255, 236, 178, 0.78)";
-        ctx.lineWidth = 2.4;
+        ctx.lineWidth = 2.4 * u;
         ctx.beginPath();
-        ctx.moveTo(0, 42);
-        ctx.lineTo(0, 104);
+        ctx.moveTo(0, 42 * u);
+        ctx.lineTo(0, 104 * u);
         ctx.stroke();
 
         ctx.fillStyle = "rgba(255, 244, 204, 0.85)";
         ctx.beginPath();
-        ctx.arc(0, 104, 4, 0, Math.PI * 2);
+        ctx.arc(0, 104 * u, 4 * u, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }
     } else {
       // Default: aura_lotus (Golden Lotus Mandala)
-      const grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, 118);
+      const grad = ctx.createRadialGradient(cx, cy, 10 * u, cx, cy, 118 * u);
       grad.addColorStop(0, "rgba(255, 228, 168, 0.38)");
       grad.addColorStop(0.6, "rgba(242, 198, 122, 0.22)");
       grad.addColorStop(0.88, "rgba(245, 208, 138, 0.45)");
       grad.addColorStop(1, "rgba(242, 198, 122, 0)");
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(cx, cy, 118, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 118 * u, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.strokeStyle = "rgba(255, 232, 178, 0.72)";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * u;
       ctx.beginPath();
-      ctx.arc(cx, cy, 98, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 98 * u, 0, Math.PI * 2);
       ctx.stroke();
 
       const petals = 12;
@@ -141,11 +143,11 @@ function drawAuraTexture(kind: string): CanvasTexture {
         ctx.translate(cx, cy);
         ctx.rotate(a);
         ctx.strokeStyle = "rgba(255, 236, 188, 0.68)";
-        ctx.lineWidth = 1.8;
+        ctx.lineWidth = 1.8 * u;
         ctx.beginPath();
-        ctx.moveTo(0, 52);
-        ctx.quadraticCurveTo(14, 78, 0, 98);
-        ctx.quadraticCurveTo(-14, 78, 0, 52);
+        ctx.moveTo(0, 52 * u);
+        ctx.quadraticCurveTo(14 * u, 78 * u, 0, 98 * u);
+        ctx.quadraticCurveTo(-14 * u, 78 * u, 0, 52 * u);
         ctx.stroke();
         ctx.restore();
       }
@@ -153,11 +155,13 @@ function drawAuraTexture(kind: string): CanvasTexture {
   }
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy();
   return tex;
 }
 
 function drawRippleTexture(): CanvasTexture {
-  const size = 128;
+  const size = 256;
+  const u = size / 128;
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -165,19 +169,20 @@ function drawRippleTexture(): CanvasTexture {
   if (ctx) {
     const c = size / 2;
     ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 4 * u;
     ctx.beginPath();
-    ctx.arc(c, c, 52, 0, Math.PI * 2);
+    ctx.arc(c, c, 52 * u, 0, Math.PI * 2);
     ctx.stroke();
 
     ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * u;
     ctx.beginPath();
-    ctx.arc(c, c, 38, 0, Math.PI * 2);
+    ctx.arc(c, c, 38 * u, 0, Math.PI * 2);
     ctx.stroke();
   }
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy();
   return tex;
 }
 
@@ -197,6 +202,7 @@ export class SpiritualEffects {
   private readonly ripples: RippleSlot[] = [];
   private currentAura: string | null = null;
   private currentArtifact: string | null = null;
+  private activeRippleCount = 0;
   private phase = 0;
 
   constructor(avatarRoot: Object3D) {
@@ -271,7 +277,10 @@ export class SpiritualEffects {
       slot = this.ripples[0];
     }
     if (!slot) return;
-    slot.active = true;
+    if (!slot.active) {
+      slot.active = true;
+      this.activeRippleCount++;
+    }
     slot.age = 0;
     slot.mesh.visible = true;
     slot.mesh.scale.setScalar(0.45);
@@ -280,6 +289,8 @@ export class SpiritualEffects {
   }
 
   update(dt: number): void {
+    if (!this.auraMesh.visible && this.activeRippleCount === 0) return;
+
     this.phase += dt;
     if (this.auraMesh.visible) {
       const speed = this.currentAura === "aura_wheel" ? 0.55 : 0.32;
@@ -289,18 +300,21 @@ export class SpiritualEffects {
       this.auraMat.opacity = 0.72 + Math.sin(this.phase * 2.2) * 0.14;
     }
 
-    for (const r of this.ripples) {
-      if (!r.active) continue;
-      r.age += dt;
-      const t = r.age / RIPPLE_DURATION_S;
-      if (t >= 1) {
-        r.active = false;
-        r.mesh.visible = false;
-        continue;
+    if (this.activeRippleCount > 0) {
+      for (const r of this.ripples) {
+        if (!r.active) continue;
+        r.age += dt;
+        const t = r.age / RIPPLE_DURATION_S;
+        if (t >= 1) {
+          r.active = false;
+          r.mesh.visible = false;
+          this.activeRippleCount = Math.max(0, this.activeRippleCount - 1);
+          continue;
+        }
+        const scale = 0.45 + t * 1.85;
+        r.mesh.scale.setScalar(scale);
+        r.mesh.material.opacity = (1 - t) * (1 - t) * 0.82;
       }
-      const scale = 0.45 + t * 1.85;
-      r.mesh.scale.setScalar(scale);
-      r.mesh.material.opacity = (1 - t) * (1 - t) * 0.82;
     }
   }
 
