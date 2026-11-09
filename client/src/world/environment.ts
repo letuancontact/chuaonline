@@ -34,13 +34,18 @@ interface Palette {
   sunDir: Vector3;
 }
 
+/**
+ * `fogNear = 110` sits past the farthest Tier 4 forest ring (~106m max view distance),
+ * keeping all trees crisp and fog-free, while `fogFar = 210` fades the outer edge of the
+ * 420x420 ground plane (`ground.ts`) seamlessly into the horizon.
+ */
 const DAY: Palette = {
   skyTint: new Color(0xffffff),
-  fog: new Color(0xcce2dc),
-  fogNear: 52,
-  fogFar: 190,
-  hemiSky: new Color(0xe8f4fa),
-  hemiGround: new Color(0x7a725e),
+  fog: new Color(0xd6e6e0),
+  fogNear: 110,
+  fogFar: 210,
+  hemiSky: new Color(0xebf5fa),
+  hemiGround: new Color(0x827864),
   hemiIntensity: 1.58,
   ambient: new Color(0xfffcf5),
   ambientIntensity: 0.44,
@@ -52,8 +57,8 @@ const DAY: Palette = {
 const NIGHT: Palette = {
   skyTint: new Color(0x6882ad),
   fog: new Color(0x3b4f6b),
-  fogNear: 36,
-  fogFar: 155,
+  fogNear: 85,
+  fogFar: 195,
   hemiSky: new Color(0x88a4d4),
   hemiGround: new Color(0x4c463c),
   hemiIntensity: 1.38,
@@ -65,9 +70,13 @@ const NIGHT: Palette = {
 };
 
 const SKY_RADIUS = 400;
-/** The panorama blends into the fog colour between these heights (sphere y / radius) so the ground meets haze, not tree trunks. */
-const HAZE_FROM = -0.02;
-const HAZE_TO = 0.22;
+/**
+ * Low horizon blend (-0.01 to 0.055 instead of 0.22):
+ * Matches the ground fog at y <= 0 so the ground edge never shows a seam,
+ * while keeping the sky behind the tree canopies clear and realistic.
+ */
+const HAZE_FROM = -0.01;
+const HAZE_TO = 0.055;
 const SUN_DISTANCE = 60;
 /** Half-size of the shadow camera box around the focus point (metres). */
 const SHADOW_EXTENT = 16;
@@ -107,7 +116,7 @@ export async function createEnvironment(
       .replace("#include <common>", "#include <common>\nuniform vec3 uHaze;\nvarying float vSkyY;")
       .replace(
         "#include <map_fragment>",
-        `#include <map_fragment>\ndiffuseColor.rgb = mix(uHaze, diffuseColor.rgb, smoothstep(${HAZE_FROM.toFixed(2)}, ${HAZE_TO.toFixed(2)}, vSkyY));`,
+        `#include <map_fragment>\ndiffuseColor.rgb = mix(uHaze, diffuseColor.rgb, smoothstep(${HAZE_FROM.toFixed(3)}, ${HAZE_TO.toFixed(3)}, vSkyY));`,
       );
   };
   const sky = new Mesh(skyGeo, skyMat);
