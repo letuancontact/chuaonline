@@ -23,11 +23,11 @@ import { IS_MOBILE, maxAnisotropy } from "../engine/renderer.ts";
 import { seeded } from "./random.ts";
 
 const FIREFLY_COUNT = IS_MOBILE ? 36 : 56;
-const LEAF_COUNT = IS_MOBILE ? 28 : 42;
+const LEAF_COUNT = IS_MOBILE ? 36 : 54;
 const BUTTERFLY_COUNT = IS_MOBILE ? 12 : 16;
 
 /** Bounding sphere covering the outdoor courtyard, west/east gardens, pond, and gate path. */
-const OUTDOOR_BOUNDS = new Sphere(new Vector3(3, 3, 12), 40);
+const OUTDOOR_BOUNDS = new Sphere(new Vector3(3, 3, 12), 42);
 
 const m4 = new Matrix4();
 const q = new Quaternion();
@@ -51,8 +51,8 @@ function keepOutsideHall(x: number, z: number, pad = 1.8): { x: number; z: numbe
 /** Picks an evenly distributed outdoor point across the entire courtyard, west/east gardens, gate path & pond. */
 function pickOutdoorPoint(rand: () => number): { x: number; z: number } {
   for (let attempt = 0; attempt < 24; attempt++) {
-    const x = -26 + rand() * 58;
-    const z = -14 + rand() * 48;
+    const x = -28 + rand() * 60;
+    const z = -14 + rand() * 50;
     if (!insideHall(x, z, 2.2)) return { x, z };
   }
   const side = rand() < 0.5 ? -1 : 1;
@@ -74,6 +74,8 @@ interface LeafData {
   oz: number;
   y: number;
   fallSpeed: number;
+  driftX: number;
+  driftZ: number;
   swayAmp: number;
   swayFreq: number;
   rx: number;
@@ -95,71 +97,105 @@ interface ButterflyData {
   phase: number;
 }
 
-/** Draws a detailed heart-shaped golden Bodhi leaf (Lá Bồ Đề) with stem, drip-tip tail, and leaf veins. */
-function drawBodhiLeafTexture(size = 256): CanvasTexture {
+const FALLING_MAPLE_PALETTE: readonly number[] = [
+  0xc92519, // Đỏ phong thẫm
+  0xe84d22, // Đỏ cam
+  0xf29b24, // Vàng nghệ
+  0xd9381e, // Cam cháy
+  0xf5b83d, // Vàng hổ phách
+  0xa81d15, // Đỏ rượu vang
+];
+
+/**
+ * Draws a detailed 7-lobed palmate Japanese Maple Leaf (`Lá Phong Mùa Thu`)
+ * in a bright neutral-warm tone so `instanceColor` tints each falling leaf into
+ * crimson, burnt orange, or golden amber.
+ */
+function drawMapleLeafTexture(size = 256): CanvasTexture {
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const ctx = c.getContext("2d");
   if (!ctx) throw new Error("2d canvas unavailable");
   ctx.clearRect(0, 0, size, size);
 
-  // 1. Petiole / leaf stem at the top.
-  ctx.strokeStyle = "#8a5318";
-  ctx.lineWidth = 6;
+  const cx = size * 0.5;
+  const cy = size * 0.58;
+  const radius = size * 0.42;
+
+  // Slender petiole stem at the bottom
+  ctx.strokeStyle = "#6e3b1e";
+  ctx.lineWidth = 4.5;
   ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.moveTo(128, 10);
-  ctx.quadraticCurveTo(125, 28, 128, 48);
+  ctx.moveTo(cx, size * 0.94);
+  ctx.quadraticCurveTo(cx - 4, size * 0.78, cx, cy + radius * 0.08);
   ctx.stroke();
 
-  // 2. Heart-shaped Bodhi leaf blade tapering to a long sacred drip-tip tail at the bottom.
+  const lobeAngles = [-1.95, -1.3, -0.63, 0, 0.63, 1.3, 1.95] as const;
+  const lobeLengths = [0.46, 0.76, 0.96, 1.1, 0.96, 0.76, 0.46] as const;
+  const lobeWidths = [0.12, 0.17, 0.2, 0.22, 0.2, 0.17, 0.12] as const;
+
+  ctx.save();
+  ctx.translate(cx, cy);
   ctx.beginPath();
-  ctx.moveTo(128, 46);
-  // Left lobe
-  ctx.bezierCurveTo(96, 26, 24, 54, 28, 118);
-  ctx.bezierCurveTo(32, 168, 112, 196, 128, 246);
-  // Right lobe
-  ctx.bezierCurveTo(144, 196, 224, 168, 228, 118);
-  ctx.bezierCurveTo(232, 54, 160, 26, 128, 46);
+  ctx.moveTo(0, radius * 0.1);
+
+  for (let i = 0; i < lobeAngles.length; i++) {
+    const a = lobeAngles[i]! - Math.PI * 0.5;
+    const len = radius * lobeLengths[i]!;
+    const wid = radius * lobeWidths[i]!;
+    const perp = a + Math.PI * 0.5;
+
+    const tipX = Math.cos(a) * len;
+    const tipY = Math.sin(a) * len;
+
+    const l1x = Math.cos(a) * (len * 0.4) - Math.cos(perp) * (wid * 0.82);
+    const l1y = Math.sin(a) * (len * 0.4) - Math.sin(perp) * (wid * 0.82);
+    const l2x = Math.cos(a) * (len * 0.74) - Math.cos(perp) * (wid * 0.48);
+    const l2y = Math.sin(a) * (len * 0.74) - Math.sin(perp) * (wid * 0.48);
+
+    const r2x = Math.cos(a) * (len * 0.74) + Math.cos(perp) * (wid * 0.48);
+    const r2y = Math.sin(a) * (len * 0.74) + Math.sin(perp) * (wid * 0.48);
+    const r1x = Math.cos(a) * (len * 0.4) + Math.cos(perp) * (wid * 0.82);
+    const r1y = Math.sin(a) * (len * 0.4) + Math.sin(perp) * (wid * 0.82);
+
+    ctx.lineTo(l1x, l1y);
+    ctx.lineTo(l2x, l2y);
+    ctx.lineTo(tipX, tipY);
+    ctx.lineTo(r2x, r2y);
+    ctx.lineTo(r1x, r1y);
+
+    if (i < lobeAngles.length - 1) {
+      const nextA = lobeAngles[i + 1]! - Math.PI * 0.5;
+      const midA = (a + nextA) * 0.5;
+      const notchR = radius * 0.24;
+      ctx.lineTo(Math.cos(midA) * notchR, Math.sin(midA) * notchR);
+    }
+  }
   ctx.closePath();
 
-  const grad = ctx.createLinearGradient(40, 36, 216, 236);
-  grad.addColorStop(0, "#ffe47a");
-  grad.addColorStop(0.5, "#e6a32e");
-  grad.addColorStop(1, "#b8611a");
+  const grad = ctx.createRadialGradient(0, 0, radius * 0.08, 0, -radius * 0.2, radius * 1.05);
+  grad.addColorStop(0, "#e6dccb");
+  grad.addColorStop(0.65, "#faf4e8");
+  grad.addColorStop(1, "#ffffff");
   ctx.fillStyle = grad;
   ctx.fill();
 
-  ctx.lineWidth = 3.5;
-  ctx.strokeStyle = "#7a3e10";
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(64, 32, 16, 0.72)";
   ctx.stroke();
 
-  // 3. Central midrib vein and curved lateral veins.
-  ctx.strokeStyle = "rgba(255, 244, 185, 0.78)";
-  ctx.lineWidth = 3.2;
-  ctx.beginPath();
-  ctx.moveTo(128, 46);
-  ctx.lineTo(128, 236);
-  ctx.stroke();
-
-  ctx.lineWidth = 2;
-  const veins: readonly (readonly [number, number, number, number, number])[] = [
-    [68, 92, 62, 52, 78],
-    [92, 82, 84, 38, 106],
-    [118, 86, 110, 42, 134],
-    [144, 94, 138, 58, 158],
-    [168, 106, 164, 82, 178],
-  ];
-  for (const [sy, cx, cy, ex, ey] of veins) {
+  ctx.strokeStyle = "rgba(255, 250, 230, 0.65)";
+  ctx.lineWidth = 2.2;
+  for (let i = 0; i < lobeAngles.length; i++) {
+    const a = lobeAngles[i]! - Math.PI * 0.5;
+    const len = radius * lobeLengths[i]! * 0.86;
     ctx.beginPath();
-    ctx.moveTo(128, sy);
-    ctx.quadraticCurveTo(cx, cy, ex, ey);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(128, sy);
-    ctx.quadraticCurveTo(256 - cx, cy, 256 - ex, ey);
+    ctx.moveTo(0, radius * 0.06);
+    ctx.lineTo(Math.cos(a) * len, Math.sin(a) * len);
     ctx.stroke();
   }
+  ctx.restore();
 
   const tex = new CanvasTexture(c);
   tex.colorSpace = SRGBColorSpace;
@@ -180,7 +216,6 @@ function drawButterflyTexture(size = 256): CanvasTexture {
     ctx.translate(128, 128);
     ctx.scale(dir, 1);
 
-    // Forewing (upper large wing)
     const foreGrad = ctx.createRadialGradient(12, -10, 8, 54, -28, 108);
     foreGrad.addColorStop(0, "#fff49c");
     foreGrad.addColorStop(0.55, "#ffba38");
@@ -199,7 +234,6 @@ function drawButterflyTexture(size = 256): CanvasTexture {
     ctx.strokeStyle = "#2b1608";
     ctx.stroke();
 
-    // Hindwing (lower scalloped swallowtail wing)
     const hindGrad = ctx.createRadialGradient(10, 12, 6, 42, 42, 86);
     hindGrad.addColorStop(0, "#ffe880");
     hindGrad.addColorStop(0.6, "#f59824");
@@ -219,7 +253,6 @@ function drawButterflyTexture(size = 256): CanvasTexture {
     ctx.strokeStyle = "#2b1608";
     ctx.stroke();
 
-    // Decorative wing veins
     ctx.strokeStyle = "rgba(43, 22, 8, 0.55)";
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -233,7 +266,6 @@ function drawButterflyTexture(size = 256): CanvasTexture {
     ctx.quadraticCurveTo(32, 52, 42, 96);
     ctx.stroke();
 
-    // Cream-white marginal spots along the wing edge
     ctx.fillStyle = "#fff8d6";
     for (const [sx, sy, r] of [
       [106, -58, 4.5],
@@ -253,7 +285,6 @@ function drawButterflyTexture(size = 256): CanvasTexture {
   drawWingSide(-1);
   drawWingSide(1);
 
-  // Butterfly antennae
   ctx.strokeStyle = "#241307";
   ctx.lineWidth = 2.6;
   ctx.lineCap = "round";
@@ -264,7 +295,6 @@ function drawButterflyTexture(size = 256): CanvasTexture {
   ctx.quadraticCurveTo(142, 42, 160, 34);
   ctx.stroke();
 
-  // Head, thorax, and abdomen
   ctx.fillStyle = "#241307";
   ctx.beginPath();
   ctx.arc(128, 78, 6.5, 0, Math.PI * 2);
@@ -282,16 +312,16 @@ function drawButterflyTexture(size = 256): CanvasTexture {
   return tex;
 }
 
-/** Gently curved 3D quad carrying the Bodhi leaf texture. */
+/** Gently curved 3D quad carrying the Maple leaf texture. */
 function buildLeafGeometry(): BufferGeometry {
   const g = new BufferGeometry();
   const positions = new Float32Array([
-    -0.11, 0.13, -0.012,
-    0, 0.13, 0.015,
-    0.11, 0.13, -0.012,
-    -0.11, -0.13, 0.012,
-    0, -0.13, -0.015,
-    0.11, -0.13, 0.012,
+    -0.12, 0.12, -0.012,
+    0, 0.12, 0.015,
+    0.12, 0.12, -0.012,
+    -0.12, -0.12, 0.012,
+    0, -0.12, -0.015,
+    0.12, -0.12, 0.012,
   ]);
   const uvs = new Float32Array([
     0, 1,
@@ -312,10 +342,7 @@ function buildLeafGeometry(): BufferGeometry {
   return g;
 }
 
-/**
- * V-hinged 3D butterfly geometry: spine lies along (x = 0, y = 0), wings rise to (x = ±0.14, y = +0.14).
- * Scaling instance matrix by (cos θ, sin θ, 1) rotates both wings around the central spine without distorting wing width.
- */
+/** V-hinged 3D butterfly geometry. */
 function buildButterflyGeometry(): BufferGeometry {
   const g = new BufferGeometry();
   const w = 0.14;
@@ -355,7 +382,7 @@ export interface Nature {
 export function createNature(scene: Scene): Nature {
   const rand = seeded(0x5a7);
 
-  // 1. Night fireflies evenly distributed across the entire outdoor temple grounds (1 Points draw call).
+  // 1. Night fireflies evenly distributed across the outdoor temple grounds.
   const fireflyGeo = new BufferGeometry();
   const fireflyPositions = new Float32Array(FIREFLY_COUNT * 3);
   const fireflyAttr = new Float32BufferAttribute(fireflyPositions, 3);
@@ -399,15 +426,15 @@ export function createNature(scene: Scene): Nature {
   fireflyPoints.updateMatrix();
   scene.add(fireflyPoints);
 
-  // 2. Daytime falling golden Bodhi leaves in the temple courtyard (1 InstancedMesh draw call).
+  // 2. Daytime falling & wind-drifting Autumn Maple Leaves (Crimson, Red-Orange, Gold, Amber).
   const leafGeo = buildLeafGeometry();
-  const leafTex = drawBodhiLeafTexture();
+  const leafTex = drawMapleLeafTexture();
   const leafMat = new MeshStandardMaterial({
     map: leafTex,
-    alphaTest: 0.2,
+    alphaTest: 0.22,
     transparent: false,
-    roughness: 0.68,
-    metalness: 0.04,
+    roughness: 0.65,
+    metalness: 0.02,
     side: DoubleSide,
   });
   const leafMesh = new InstancedMesh(leafGeo, leafMat, LEAF_COUNT);
@@ -417,26 +444,33 @@ export function createNature(scene: Scene): Nature {
   leafMesh.matrixAutoUpdate = false;
   leafMesh.updateMatrix();
   const leaves: LeafData[] = [];
+  const leafColor = new Color();
 
   for (let i = 0; i < LEAF_COUNT; i++) {
     const pt = pickOutdoorPoint(rand);
+    const hex = FALLING_MAPLE_PALETTE[i % FALLING_MAPLE_PALETTE.length] ?? 0xe84d22;
+    leafMesh.setColorAt(i, leafColor.setHex(hex));
     leaves.push({
       ox: pt.x,
       oz: pt.z,
-      y: 0.3 + rand() * 6.0,
-      fallSpeed: 0.4 + rand() * 0.36,
-      swayAmp: 0.45 + rand() * 0.55,
-      swayFreq: 0.75 + rand() * 0.85,
+      y: 0.3 + rand() * 6.8,
+      // Slow, meditative fall & horizontal breeze drift across the courtyard
+      fallSpeed: 0.28 + rand() * 0.24,
+      driftX: 0.22 + rand() * 0.25,
+      driftZ: -0.08 + (rand() - 0.5) * 0.16,
+      swayAmp: 0.55 + rand() * 0.65,
+      swayFreq: 0.55 + rand() * 0.55,
       rx: rand() * Math.PI * 2,
       ry: rand() * Math.PI * 2,
       rz: rand() * Math.PI * 2,
       phase: rand() * Math.PI * 2,
-      scale: 0.75 + rand() * 0.45,
+      scale: 0.72 + rand() * 0.48,
     });
   }
+  if (leafMesh.instanceColor) leafMesh.instanceColor.needsUpdate = true;
   scene.add(leafMesh);
 
-  // 3. Daytime butterflies fluttering around the garden and pond (1 InstancedMesh draw call).
+  // 3. Daytime butterflies fluttering around the garden and pond.
   const bflyGeo = buildButterflyGeometry();
   const bflyTex = drawButterflyTexture();
   const bflyMat = new MeshStandardMaterial({
@@ -479,7 +513,7 @@ export function createNature(scene: Scene): Nature {
     update(dt, t, daylight) {
       const night = Math.max(0, Math.min(1, 1 - daylight));
 
-      // 1. Update fireflies at night (evenly spread across all outdoor spaces).
+      // 1. Update fireflies at night.
       if (night > 0.08) {
         fireflyPoints.visible = true;
         fireflyMat.opacity = Math.min(0.92, night * 1.15);
@@ -499,18 +533,25 @@ export function createNature(scene: Scene): Nature {
         fireflyPoints.visible = false;
       }
 
-      // 2. Update falling golden Bodhi leaves (DAYTIME ONLY: hidden at night).
+      // 2. Update falling & wind-drifting Japanese Maple leaves (daytime).
       if (daylight > 0.25) {
         leafMesh.visible = true;
         for (let i = 0; i < LEAF_COUNT; i++) {
           const l = leaves[i];
           if (!l) continue;
           l.y -= l.fallSpeed * dt;
-          l.rx += dt * 0.95;
-          l.ry += dt * 0.75;
-          l.rz += dt * 0.55;
+          l.ox += l.driftX * dt;
+          l.oz += l.driftZ * dt;
+          if (l.ox > 32) l.ox -= 60;
+          if (l.oz < -16) l.oz += 52;
+          if (l.oz > 38) l.oz -= 52;
+
+          // Gentle, slow tumbling rotation as the maple leaf glides on the breeze
+          l.rx += dt * 0.55;
+          l.ry += dt * 0.48;
+          l.rz += dt * 0.38;
           if (l.y < 0.06) {
-            l.y = 5.4 + ((i * 0.37) % 1.8);
+            l.y = 6.2 + ((i * 0.43) % 2.2);
           }
           const swayX = Math.sin(t * l.swayFreq + l.phase) * l.swayAmp;
           const swayZ = Math.cos(t * (l.swayFreq * 0.8) + l.phase) * l.swayAmp;
@@ -524,7 +565,7 @@ export function createNature(scene: Scene): Nature {
         leafMesh.visible = false;
       }
 
-      // 3. Update daytime butterflies (DAYTIME ONLY).
+      // 3. Update daytime butterflies.
       if (daylight > 0.25) {
         bflyMesh.visible = true;
         for (let i = 0; i < BUTTERFLY_COUNT; i++) {
