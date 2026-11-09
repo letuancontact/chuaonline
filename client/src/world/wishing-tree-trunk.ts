@@ -637,13 +637,13 @@ function buildSacredCanopySpray(
 }
 
 // ============================================================================
-// 4. SACRED BASE SANCTUARY (INSIDE COURTYARD, PARALLEL TO WALL, ENTRANCE INWARD)
+// 4. SACRED BASE SANCTUARY (WALKABLE SLAB HEIGHTS MATCHING `SLAB_TOP = 0.05m`)
 // ============================================================================
 
+const PRAY_ANGLE = -1.22;
+
 /**
- * Since the tree stands inside the courtyard at `z = GATE_Z - 4.2`, the perimeter wall
- * runs parallel behind the tree at `localZ = +3.8m`. This clamp keeps all roots & earth
- * within `localZ <= 3.45m` so nothing ever pokes through the wall.
+ * Keeps all roots & earth within `localZ <= 3.45m` so nothing pokes through the gate wall.
  */
 function clampClearOfGateWall(g: BufferGeometry): BufferGeometry {
   const pos = g.getAttribute("position");
@@ -708,45 +708,47 @@ function buildSacredBaseSanctuary(): BufferGeometry {
   const solidParts: BufferGeometry[] = [];
   const glowParts: BufferGeometry[] = [];
 
-  // 1. Natural raised forest earth mound & velvet moss beds under the ancient roots
-  const earthMound = new CylinderGeometry(3.1, 3.7, 0.26, 20);
-  earthMound.translate(0, 0.08, 0);
+  // 1. Compact earth mound & velvet moss beds tightly hugging the trunk base (r <= 2.15m)
+  //    so they never spill onto the walkable prayer platform or stepping stones.
+  const earthMound = new CylinderGeometry(1.65, 2.2, 0.14, 20);
+  earthMound.translate(0, 0.03, 0);
   solidParts.push(paintGeom(clampClearOfGateWall(earthMound), 0x423122));
 
-  for (let m = 0; m < 9; m++) {
-    const a = (m / 9) * Math.PI * 2 + 0.2;
-    const rad = 1.15 + (m % 3) * 0.65;
-    const mossPad = new SphereGeometry(0.72 + (m % 2) * 0.26, 10, 6);
-    mossPad.scale(1.2, 0.16, 1.0);
-    mossPad.translate(Math.cos(a) * rad, 0.18, Math.sin(a) * rad);
+  for (let m = 0; m < 8; m++) {
+    const a = (m / 8) * Math.PI * 2 + 0.35;
+    const rad = 0.95 + (m % 2) * 0.48;
+    const mossPad = new SphereGeometry(0.52 + (m % 2) * 0.18, 10, 6);
+    mossPad.scale(1.15, 0.08, 1.0);
+    mossPad.translate(Math.cos(a) * rad, 0.06, Math.sin(a) * rad);
     solidParts.push(paintGeom(clampClearOfGateWall(mossPad), m % 2 === 0 ? 0x356b26 : 0x467a2c));
   }
 
-  // 2. Eight mossy stones nestled around and gripped by the twisting surface roots
-  const rockAngles = [0.18, 0.88, 1.65, 2.42, 3.12, 3.88, 4.55, 5.65] as const;
+  // 2. Seven mossy stones nestled right against the trunk collar (clear of the front prayer approach)
+  const rockAngles = [0.15, 0.85, 1.62, 2.38, 3.12, 3.85, 5.75] as const;
   rockAngles.forEach((a, idx) => {
-    const maxR = Math.sin(a) > 0.55 ? 2.15 : 1.85 + (idx % 3) * 0.5;
+    const r = 1.42 + (idx % 2) * 0.32;
     const boulder = buildMossyBoulder(
-      0.38 + (idx % 2) * 0.14,
-      0.26 + (idx % 3) * 0.07,
-      0.34 + (idx % 2) * 0.12,
+      0.34 + (idx % 2) * 0.1,
+      0.22 + (idx % 3) * 0.05,
+      0.3 + (idx % 2) * 0.08,
       idx * 3.1 + 1,
       idx % 2 === 0 ? 0x6e6a61 : 0x5e5a52,
     );
     boulder.rotateY(a + 0.4);
-    boulder.translate(Math.cos(a) * maxR, 0.2, Math.sin(a) * maxR);
+    boulder.translate(Math.cos(a) * r, 0.14, Math.sin(a) * r);
     solidParts.push(clampClearOfGateWall(boulder));
   });
 
-  // 3. Sacred Stone Prayer Platform & Stepping Stones facing INWARD into the courtyard garden (-1.22 rad)
-  const prayAngle = -1.22;
-  const prayDist = 3.15;
-  const px = Math.cos(prayAngle) * prayDist;
-  const pz = Math.sin(prayAngle) * prayDist;
+  // 3. Walkable Sacred Stone Prayer Platform & Stepping Stones
+  //    Top surfaces sit at y = 0.036m..0.052m (matching `SLAB_TOP = 0.05m` in `garden.ts`)
+  //    so chibi characters walk cleanly ON TOP of the stones and red mat without clipping!
+  const prayDist = 2.95;
+  const px = Math.cos(PRAY_ANGLE) * prayDist;
+  const pz = Math.sin(PRAY_ANGLE) * prayDist;
 
   const addTransformedBox = (w: number, h: number, d: number, lx: number, ly: number, lz: number, hex: number): void => {
     const g = new BoxGeometry(w, h, d);
-    tmpEuler.set(0, -prayAngle + Math.PI * 0.5, 0);
+    tmpEuler.set(0, -PRAY_ANGLE + Math.PI * 0.5, 0);
     q.setFromEuler(tmpEuler);
     v3.set(lx, 0, lz).applyQuaternion(q);
     v3.x += px;
@@ -757,73 +759,80 @@ function buildSacredBaseSanctuary(): BufferGeometry {
     solidParts.push(paintGeom(g, hex));
   };
 
-  addTransformedBox(1.56, 0.12, 1.18, 0, 0.06, 0, 0x78736a);
-  addTransformedBox(1.32, 0.12, 0.96, 0, 0.16, 0, 0x8c867b);
-  addTransformedBox(0.86, 0.04, 0.62, 0, 0.23, 0, 0xa33b2f);
+  // Outer carved stone border slab (top at y = 0.034m)
+  addTransformedBox(1.68, 0.068, 1.28, 0, 0.0, 0, 0x78736a);
+  // Inner raised stone dais slab (top at y = 0.044m)
+  addTransformedBox(1.42, 0.068, 1.04, 0, 0.01, 0, 0x8c867b);
+  // Gold border trim of prayer mat (top at y = 0.049m)
+  addTransformedBox(1.02, 0.068, 0.74, 0, 0.015, 0, 0xd4a438);
+  // Warm crimson temple prayer mat (top at y = 0.052m == SLAB_TOP)
+  addTransformedBox(0.92, 0.068, 0.64, 0, 0.018, 0, 0xa83226);
 
-  // 3 stepping stone slabs leading from the courtyard stone walkway up to the prayer platform
+  // 3 walkable stepping stone slabs leading from the courtyard walkway onto the prayer platform (top at y = 0.042m)
   for (let s = 1; s <= 3; s++) {
-    const stepR = prayDist + s * 0.66;
-    const slab = new CylinderGeometry(0.32, 0.35, 0.07, 7);
-    slab.scale(1.2, 1, 0.88);
-    slab.rotateY(prayAngle + s * 0.2);
-    slab.translate(Math.cos(prayAngle) * stepR, 0.035, Math.sin(prayAngle) * stepR);
+    const stepR = prayDist + s * 0.68;
+    const slab = new CylinderGeometry(0.34, 0.36, 0.064, 8);
+    slab.scale(1.22, 1, 0.9);
+    slab.rotateY(PRAY_ANGLE + s * 0.2);
+    slab.translate(Math.cos(PRAY_ANGLE) * stepR, 0.01, Math.sin(PRAY_ANGLE) * stepR);
     solidParts.push(paintGeom(slab, 0x857f74));
   }
 
-  // 4. Three low stone garden lanterns flanking the courtyard approach
-  const lowLanternAngles = [-2.15, -0.42, 2.75] as const;
+  // 4. Three low stone garden lanterns flanking the side of the sanctuary (clear of the walkway)
+  const lowLanternAngles = [-2.25, -0.35, 2.75] as const;
   for (const la of lowLanternAngles) {
-    const lr = 2.85;
+    const lr = 2.75;
     const lx = Math.cos(la) * lr;
     const lz = Math.sin(la) * lr;
 
     const lBase = new CylinderGeometry(0.22, 0.26, 0.1, 6);
-    lBase.translate(lx, 0.08, lz);
+    lBase.translate(lx, 0.05, lz);
     solidParts.push(paintGeom(lBase, 0x736e65));
 
     const lPost = new CylinderGeometry(0.09, 0.11, 0.26, 6);
-    lPost.translate(lx, 0.26, lz);
+    lPost.translate(lx, 0.23, lz);
     solidParts.push(paintGeom(lPost, 0x7d786e));
 
     const lBox = new BoxGeometry(0.2, 0.22, 0.2);
-    lBox.translate(lx, 0.48, lz);
+    lBox.translate(lx, 0.45, lz);
     glowParts.push(paintGeom(lBox, 0xffe4a8));
 
     const lRoof = new CylinderGeometry(0.04, 0.32, 0.18, 6);
-    lRoof.translate(lx, 0.66, lz);
+    lRoof.translate(lx, 0.63, lz);
     solidParts.push(paintGeom(lRoof, 0x635e56));
   }
 
-  // 5. Fallen dry autumn maple leaves & small grass tufts in the root hollows
+  // 5. Fallen dry autumn maple leaves & small grass tufts around the roots (kept clear of the prayer mat)
   const leafPalette = [0xc8321a, 0xe06818, 0xe8a824, 0x9e2414, 0x8a5229] as const;
-  for (let f = 0; f < 42; f++) {
+  for (let f = 0; f < 38; f++) {
     const fa = rand() * Math.PI * 2;
-    const maxLeafR = Math.sin(fa) > 0.5 ? 2.4 : 3.3;
+    if (Math.cos(fa - PRAY_ANGLE) > 0.78) continue;
+    const maxLeafR = Math.sin(fa) > 0.5 ? 2.2 : 2.9;
     const fr = 0.85 + rand() * (maxLeafR - 0.85);
     const fx = Math.cos(fa) * fr;
     const fz = Math.sin(fa) * fr;
-    const fy = 0.16 * Math.max(0, 1 - fr / 3.8) + 0.02;
+    const fy = 0.06 * Math.max(0, 1 - fr / 2.2) + 0.012;
 
     const leafGeo = new CylinderGeometry(0.065, 0.065, 0.008, 5);
-    leafGeo.rotateX((rand() - 0.5) * 0.25);
+    leafGeo.rotateX((rand() - 0.5) * 0.2);
     leafGeo.rotateY(rand() * Math.PI * 2);
     leafGeo.translate(fx, fy, fz);
     solidParts.push(paintGeom(leafGeo, leafPalette[f % leafPalette.length]!));
   }
 
-  for (let gr = 0; gr < 24; gr++) {
+  for (let gr = 0; gr < 20; gr++) {
     const ga = rand() * Math.PI * 2;
-    const maxGrassR = Math.sin(ga) > 0.5 ? 2.3 : 3.1;
+    if (Math.cos(ga - PRAY_ANGLE) > 0.72) continue;
+    const maxGrassR = Math.sin(ga) > 0.5 ? 2.0 : 2.35;
     const gRad = 1.05 + rand() * (maxGrassR - 1.05);
     const gx = Math.cos(ga) * gRad;
     const gz = Math.sin(ga) * gRad;
-    const gy = 0.14 * Math.max(0, 1 - gRad / 3.8);
+    const gy = 0.05 * Math.max(0, 1 - gRad / 2.2);
 
-    const blade = new CylinderGeometry(0.006, 0.028, 0.22 + rand() * 0.12, 4);
-    blade.rotateZ((rand() - 0.5) * 0.38);
+    const blade = new CylinderGeometry(0.006, 0.028, 0.2 + rand() * 0.1, 4);
+    blade.rotateZ((rand() - 0.5) * 0.35);
     blade.rotateY(rand() * Math.PI * 2);
-    blade.translate(gx, gy + 0.1, gz);
+    blade.translate(gx, gy + 0.09, gz);
     solidParts.push(paintGeom(blade, gr % 2 === 0 ? 0x457d2c : 0x5c8f32));
   }
 
@@ -890,32 +899,34 @@ export function createAncientWishingTreeAsset(): AncientWishingTreeAsset {
     barkParts.push(buildBurlGeometry(bx, by, bz, rx, ry, rz, idx * 5.7 + 1));
   });
 
-  // 2. Elaborate Surface & Buttress Root System (spreading wide parallel to the wall & into the courtyard)
+  // 2. Elaborate Surface & Buttress Root System (diving underground before reaching the prayer platform)
   for (let r = 0; r < 10; r++) {
     const a = (r / 10) * Math.PI * 2 + (rand() - 0.5) * 0.18;
     const ca = Math.cos(a);
     const sa = Math.sin(a);
     const twistA = a + (r % 2 === 0 ? 0.16 : -0.16);
+    const towardPrayer = Math.cos(twistA - PRAY_ANGLE) > 0.62;
     const towardWall = Math.sin(twistA) > 0.45;
-    const reach = towardWall ? 2.55 : 3.25 + (r % 3) * 0.45;
+    const reach = towardPrayer ? 1.95 : towardWall ? 2.45 : 2.85 + (r % 3) * 0.35;
 
     const rootPts = [
-      new Vector3(ca * 0.48, 1.05 + (r % 2) * 0.22, sa * 0.48),
-      new Vector3(ca * (reach * 0.42), 0.48 + (r % 3) * 0.08, sa * (reach * 0.42)),
-      new Vector3(Math.cos(twistA) * (reach * 0.74), 0.22, Math.sin(twistA) * (reach * 0.74)),
-      new Vector3(Math.cos(twistA) * reach, -0.12, Math.sin(twistA) * reach),
+      new Vector3(ca * 0.48, 1.02 + (r % 2) * 0.2, sa * 0.48),
+      new Vector3(ca * (reach * 0.42), 0.42 + (r % 3) * 0.06, sa * (reach * 0.42)),
+      new Vector3(Math.cos(twistA) * (reach * 0.74), 0.16, Math.sin(twistA) * (reach * 0.74)),
+      new Vector3(Math.cos(twistA) * reach, -0.14, Math.sin(twistA) * reach),
     ];
-    barkParts.push(clampClearOfGateWall(buildGnarledWoodTube(rootPts, 0.34, 0.06, 9, 8, 0x3b2618, 0x473628, 0.18, false)));
+    barkParts.push(clampClearOfGateWall(buildGnarledWoodTube(rootPts, 0.32, 0.05, 9, 8, 0x3b2618, 0x473628, 0.18, false)));
 
     const forkA = twistA + (r % 2 === 0 ? 0.28 : -0.28);
+    const forkTowardPrayer = Math.cos(forkA - PRAY_ANGLE) > 0.62;
     const forkTowardWall = Math.sin(forkA) > 0.45;
-    const forkReach = forkTowardWall ? 2.65 : reach + 0.32;
+    const forkReach = forkTowardPrayer ? 1.98 : forkTowardWall ? 2.5 : reach + 0.22;
     const forkPts = [
       rootPts[1]!,
-      new Vector3(Math.cos(forkA) * (forkReach * 0.68), 0.28, Math.sin(forkA) * (forkReach * 0.68)),
-      new Vector3(Math.cos(forkA) * forkReach, -0.14, Math.sin(forkA) * forkReach),
+      new Vector3(Math.cos(forkA) * (forkReach * 0.68), 0.2, Math.sin(forkA) * (forkReach * 0.68)),
+      new Vector3(Math.cos(forkA) * forkReach, -0.16, Math.sin(forkA) * forkReach),
     ];
-    barkParts.push(clampClearOfGateWall(buildGnarledWoodTube(forkPts, 0.19, 0.04, 7, 6, 0x3b2618, 0x453a2a, 0.16, false)));
+    barkParts.push(clampClearOfGateWall(buildGnarledWoodTube(forkPts, 0.18, 0.04, 7, 6, 0x3b2618, 0x453a2a, 0.16, false)));
   }
 
   // 3. Seven Major Spreading Boughs (widest boughs stretched parallel to the wall along X and forward into the courtyard -Z)
@@ -932,13 +943,13 @@ export function createAncientWishingTreeAsset(): AncientWishingTreeAsset {
   }
 
   const majorBoughs: readonly BoughSpec[] = [
-    { angle: 0.06, startY: 2.68, midR: 3.15, midY: 3.35, endR: 6.15, endY: 3.15, rStart: 0.33, rEnd: 0.08, zoneIdx: 0 },  // Right parallel to wall
-    { angle: -0.78, startY: 2.85, midR: 2.95, midY: 3.55, endR: 5.65, endY: 3.25, rStart: 0.31, rEnd: 0.075, zoneIdx: 1 }, // Front-right over prayer platform
-    { angle: -1.62, startY: 2.75, midR: 2.9, midY: 3.45, endR: 5.55, endY: 3.18, rStart: 0.32, rEnd: 0.08, zoneIdx: 2 },   // Front into courtyard
-    { angle: -2.42, startY: 3.1, midR: 3.0, midY: 3.85, endR: 5.75, endY: 3.5, rStart: 0.3, rEnd: 0.075, zoneIdx: 3 },    // Front-left courtyard
-    { angle: 3.08, startY: 2.78, midR: 3.15, midY: 3.48, endR: 6.1, endY: 3.22, rStart: 0.33, rEnd: 0.08, zoneIdx: 1 },   // Left parallel to wall
-    { angle: 2.25, startY: 3.45, midR: 2.75, midY: 4.35, endR: 5.15, endY: 4.15, rStart: 0.28, rEnd: 0.07, zoneIdx: 4 },   // Back-left above wall
-    { angle: 0.88, startY: 3.35, midR: 2.75, midY: 4.25, endR: 5.15, endY: 4.05, rStart: 0.29, rEnd: 0.075, zoneIdx: 3 },  // Back-right above wall
+    { angle: 0.06, startY: 2.68, midR: 3.15, midY: 3.35, endR: 6.15, endY: 3.15, rStart: 0.33, rEnd: 0.08, zoneIdx: 0 },
+    { angle: -0.78, startY: 2.85, midR: 2.95, midY: 3.55, endR: 5.65, endY: 3.25, rStart: 0.31, rEnd: 0.075, zoneIdx: 1 },
+    { angle: -1.62, startY: 2.75, midR: 2.9, midY: 3.45, endR: 5.55, endY: 3.18, rStart: 0.32, rEnd: 0.08, zoneIdx: 2 },
+    { angle: -2.42, startY: 3.1, midR: 3.0, midY: 3.85, endR: 5.75, endY: 3.5, rStart: 0.3, rEnd: 0.075, zoneIdx: 3 },
+    { angle: 3.08, startY: 2.78, midR: 3.15, midY: 3.48, endR: 6.1, endY: 3.22, rStart: 0.33, rEnd: 0.08, zoneIdx: 1 },
+    { angle: 2.25, startY: 3.45, midR: 2.75, midY: 4.35, endR: 5.15, endY: 4.15, rStart: 0.28, rEnd: 0.07, zoneIdx: 4 },
+    { angle: 0.88, startY: 3.35, midR: 2.75, midY: 4.25, endR: 5.15, endY: 4.05, rStart: 0.29, rEnd: 0.075, zoneIdx: 3 },
   ];
 
   majorBoughs.forEach((b, bIdx) => {
