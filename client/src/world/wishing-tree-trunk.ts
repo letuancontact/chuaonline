@@ -10,6 +10,7 @@ import {
   Matrix4,
   MeshStandardMaterial,
   Quaternion,
+  RepeatWrapping,
   SRGBColorSpace,
   SphereGeometry,
   Vector2,
@@ -55,7 +56,7 @@ export function paintGeom(g: BufferGeometry, hex: number): BufferGeometry {
 // ============================================================================
 
 /**
- * Draws a high-detail 1024x1024 ancient bark texture with deep vertical fissures,
+ * Draws a high-detail 1024x1024 seamless ancient bark texture with deep vertical fissures,
  * peeling bark plates, natural knot scars, and lush green moss in the crevices.
  */
 export function drawAncientBarkTexture(size = 1024): {
@@ -133,7 +134,6 @@ export function drawAncientBarkTexture(size = 1024): {
     ctx.fill();
     ctx.stroke();
 
-    // Concentric scar rings inside the knot
     ctx.strokeStyle = "rgba(32, 18, 10, 0.6)";
     ctx.lineWidth = 2.2;
     ctx.beginPath();
@@ -160,9 +160,11 @@ export function drawAncientBarkTexture(size = 1024): {
   const aniso = maxAnisotropy();
   const colorMap = new CanvasTexture(cCanvas);
   colorMap.colorSpace = SRGBColorSpace;
+  colorMap.wrapS = colorMap.wrapT = RepeatWrapping;
   colorMap.anisotropy = aniso;
 
   const bumpMap = new CanvasTexture(bCanvas);
+  bumpMap.wrapS = bumpMap.wrapT = RepeatWrapping;
   bumpMap.anisotropy = aniso;
 
   return { colorMap, bumpMap };
@@ -212,7 +214,6 @@ export function drawSacredCanopyTexture(size = 1024): CanvasTexture {
     ctx.translate(cx, cy);
     ctx.rotate(rot);
 
-    // Petiole stalk
     ctx.strokeStyle = "#54341e";
     ctx.lineWidth = Math.max(1.4, radius * 0.04);
     ctx.beginPath();
@@ -225,7 +226,6 @@ export function drawSacredCanopyTexture(size = 1024): CanvasTexture {
 
     ctx.beginPath();
     ctx.moveTo(0, radius * 0.18);
-    // Cordate (heart-shaped) base lobes tapering into an elegant sacred Bodhi drip-tip
     ctx.bezierCurveTo(-w * 0.55, radius * 0.32, -w * 1.08, -h * 0.05, -w * 0.85, -h * 0.46);
     ctx.bezierCurveTo(-w * 0.62, -h * 0.76, -w * 0.14, -h * 0.88, 0, -h * 1.14);
     ctx.bezierCurveTo(w * 0.14, -h * 0.88, w * 0.62, -h * 0.76, w * 0.85, -h * 0.46);
@@ -247,7 +247,6 @@ export function drawSacredCanopyTexture(size = 1024): CanvasTexture {
     ctx.strokeStyle = `rgba(${Math.round(125 * brightness)}, ${Math.round(118 * brightness)}, ${Math.round(98 * brightness)}, 0.55)`;
     ctx.stroke();
 
-    // Central midrib & 5 pairs of arched lateral veins
     ctx.strokeStyle = "rgba(255, 253, 236, 0.62)";
     ctx.lineWidth = Math.max(1.3, radius * 0.024);
     ctx.beginPath();
@@ -271,7 +270,6 @@ export function drawSacredCanopyTexture(size = 1024): CanvasTexture {
     ctx.restore();
   };
 
-  // Layer 1: 10 shaded inner leaves
   const underLeaves: readonly [number, number, number, number, number][] = [
     [0.5, 0.52, 0.145, 0.0, 0.86],
     [0.35, 0.46, 0.14, -0.48, 0.85],
@@ -288,7 +286,6 @@ export function drawSacredCanopyTexture(size = 1024): CanvasTexture {
     drawSacredBodhiLeaf(x * size, y * size, r * size, rot + (rand() - 0.5) * 0.12, br);
   }
 
-  // Layer 2: 16 sunlit outer & mid leaves with airy spacing between shoots
   const outerLeaves: readonly [number, number, number, number, number][] = [
     [0.5, 0.15, 0.145, 0.0, 1.0],
     [0.37, 0.21, 0.135, -0.42, 0.98],
@@ -362,10 +359,6 @@ export function sampleSpline(controlPts: readonly Vector3[], subdivisions: numbe
   return out;
 }
 
-/**
- * Builds a gnarled, fluted organic wood tube (never a smooth plastic cylinder!).
- * Supports deep longitudinal bark flutes, twisting ribs, and root base flare.
- */
 export function buildGnarledWoodTube(
   controlPts: readonly Vector3[],
   rStart: number,
@@ -419,7 +412,6 @@ export function buildGnarledWoodTube(
       const ca = Math.cos(theta);
       const sa = Math.sin(theta);
 
-      // Spiraling bark flutes & gnarled wood muscles along the trunk/root
       const flute5 = Math.sin(theta * 5 + tFrac * 3.8);
       const flute3 = Math.cos(theta * 3 - tFrac * 5.2);
       const gnarl = 1 + gnarlAmp * (0.65 * flute5 + 0.35 * flute3);
@@ -442,7 +434,6 @@ export function buildGnarledWoodTube(
       uv[idx * 2 + 1] = vDist * 0.55;
 
       cTmp.lerpColors(c0, c1, tFrac);
-      // Add subtle moss tint in the recessed bark furrows (`flute5 < -0.25`)
       if (flute5 < -0.25 && curr.y < 3.8) {
         cTmp.lerp(cMoss, Math.min(0.45, (-flute5 - 0.25) * 0.55));
       }
@@ -567,10 +558,6 @@ function buildSacredFoliageCard(
   return g;
 }
 
-/**
- * Builds an open, multi-layered botanical spray of curved leaf cards (no spheres!)
- * with smooth color transition between the 5 sacred autumn/jade tones.
- */
 function buildSacredCanopySpray(
   cx: number,
   cy: number,
@@ -591,7 +578,6 @@ function buildSacredCanopySpray(
   const midCol = new Color(baseHex).lerp(new Color(nextHex), 0.35);
   const outerCol = new Color(baseHex).lerp(new Color(nextHex), 0.65).multiplyScalar(1.12);
 
-  // 2 inner cross-sprays
   for (let i = 0; i < 2; i++) {
     const a = i * 1.57 + rand() * 0.45;
     const w = radius * (0.92 + rand() * 0.14);
@@ -601,7 +587,6 @@ function buildSacredCanopySpray(
     );
   }
 
-  // Radiating outer branchlet fronds
   for (let i = 0; i < frondCount; i++) {
     const a = (i / frondCount) * Math.PI * 2 + (rand() - 0.5) * 0.26;
     const baseOffset = radius * 0.12;
@@ -628,7 +613,6 @@ function buildSacredCanopySpray(
     );
   }
 
-  // Upper crown cap spray
   parts.push(
     buildSacredFoliageCard(
       cx,
@@ -655,6 +639,19 @@ function buildSacredCanopySpray(
 // ============================================================================
 // 4. SACRED BASE SANCTUARY (MOSSY ROCKS, PRAYING PLATFORM, FALLEN LEAVES, LOW LANTERNS)
 // ============================================================================
+
+/** Clamps any geometry vertex so it never intrudes into the temple perimeter wall at `localX > 0.25, localZ < -1.95`. */
+function clampClearOfGateWall(g: BufferGeometry): BufferGeometry {
+  const pos = g.getAttribute("position");
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    if (x > 0.25 && z < -1.95) {
+      pos.setZ(i, -1.95);
+    }
+  }
+  return g;
+}
 
 function buildMossyBoulder(rx: number, ry: number, rz: number, seed: number, hex: number): BufferGeometry {
   const g = new SphereGeometry(1, 10, 7);
@@ -695,12 +692,16 @@ function buildBurlGeometry(cx: number, cy: number, cz: number, rx: number, ry: n
     const ripple = 1 + 0.15 * Math.sin(x * 4 + seed) * Math.cos(y * 4 - seed);
     pos.setXYZ(i, cx + x * rx * ripple, cy + y * ry * ripple, cz + z * rz * ripple);
     cols[i * 3] = cKnot.r;
-    cols[i * 3 + 1] = cKnot.g;
+    cols[i * 3 + 1] = cTmpChannel(cKnot.g);
     cols[i * 3 + 2] = cKnot.b;
   }
   g.setAttribute("color", new Float32BufferAttribute(cols, 3));
   g.computeVertexNormals();
   return g;
+}
+
+function cTmpChannel(v: number): number {
+  return v;
 }
 
 function buildSacredBaseSanctuary(): BufferGeometry {
@@ -709,23 +710,23 @@ function buildSacredBaseSanctuary(): BufferGeometry {
   const glowParts: BufferGeometry[] = [];
 
   // 1. Natural raised forest earth mound & velvet moss beds under the ancient roots
-  const earthMound = new CylinderGeometry(3.4, 4.3, 0.26, 20);
+  const earthMound = new CylinderGeometry(3.2, 4.0, 0.26, 20);
   earthMound.translate(0, 0.08, 0);
-  solidParts.push(paintGeom(earthMound, 0x423122));
+  solidParts.push(paintGeom(clampClearOfGateWall(earthMound), 0x423122));
 
   for (let m = 0; m < 9; m++) {
     const a = (m / 9) * Math.PI * 2 + 0.2;
-    const rad = 1.15 + (m % 3) * 0.78;
-    const mossPad = new SphereGeometry(0.75 + (m % 2) * 0.32, 10, 6);
+    const rad = 1.15 + (m % 3) * 0.68;
+    const mossPad = new SphereGeometry(0.72 + (m % 2) * 0.28, 10, 6);
     mossPad.scale(1.2, 0.16, 1.0);
     mossPad.translate(Math.cos(a) * rad, 0.18, Math.sin(a) * rad);
-    solidParts.push(paintGeom(mossPad, m % 2 === 0 ? 0x356b26 : 0x467a2c));
+    solidParts.push(paintGeom(clampClearOfGateWall(mossPad), m % 2 === 0 ? 0x356b26 : 0x467a2c));
   }
 
   // 2. Eight mossy stones nestled around and gripped by the twisting surface roots
-  const rockAngles = [0.22, 0.95, 1.72, 2.48, 3.18, 3.95, 4.72, 5.52] as const;
+  const rockAngles = [0.22, 0.95, 1.72, 2.48, 3.18, 3.95, 4.62, 5.82] as const;
   rockAngles.forEach((a, idx) => {
-    const r = 1.85 + (idx % 3) * 0.58;
+    const maxR = Math.cos(a) > 0.2 && Math.sin(a) < -0.4 ? 1.55 : 1.85 + (idx % 3) * 0.52;
     const boulder = buildMossyBoulder(
       0.38 + (idx % 2) * 0.14,
       0.26 + (idx % 3) * 0.07,
@@ -734,13 +735,13 @@ function buildSacredBaseSanctuary(): BufferGeometry {
       idx % 2 === 0 ? 0x6e6a61 : 0x5e5a52,
     );
     boulder.rotateY(a + 0.4);
-    boulder.translate(Math.cos(a) * r, 0.2, Math.sin(a) * r);
-    solidParts.push(boulder);
+    boulder.translate(Math.cos(a) * maxR, 0.2, Math.sin(a) * maxR);
+    solidParts.push(clampClearOfGateWall(boulder));
   });
 
-  // 3. Sacred Stone Prayer Platform (Bệ đá nhỏ để người chơi đứng cầu nguyện ở góc 3/4 phía trước)
-  const prayAngle = -0.68; // Front-right 3/4 view facing the temple gate walkway
-  const prayDist = 3.25;
+  // 3. Sacred Stone Prayer Platform placed at front-right outside angle (+0.58 rad, completely clear of the gate wall)
+  const prayAngle = 0.58;
+  const prayDist = 3.15;
   const px = Math.cos(prayAngle) * prayDist;
   const pz = Math.sin(prayAngle) * prayDist;
 
@@ -748,20 +749,22 @@ function buildSacredBaseSanctuary(): BufferGeometry {
     const g = new BoxGeometry(w, h, d);
     tmpEuler.set(0, -prayAngle + Math.PI * 0.5, 0);
     q.setFromEuler(tmpEuler);
-    v3.set(lx, ly, lz).applyQuaternion(q);
-    m4.compose(v3.set(px + v3.x, ly, pz + v3.z), q, s3.set(1, 1, 1));
+    v3.set(lx, 0, lz).applyQuaternion(q);
+    v3.x += px;
+    v3.y = ly;
+    v3.z += pz;
+    m4.compose(v3, q, s3.set(1, 1, 1));
     g.applyMatrix4(m4);
     solidParts.push(paintGeom(g, hex));
   };
 
-  // Two-step stone prayer dais with lotus-carved border trim
   addTransformedBox(1.56, 0.12, 1.18, 0, 0.06, 0, 0x78736a);
   addTransformedBox(1.32, 0.12, 0.96, 0, 0.16, 0, 0x8c867b);
-  addTransformedBox(0.86, 0.04, 0.62, 0, 0.23, 0, 0xa33b2f); // Warm temple prayer mat on top
+  addTransformedBox(0.86, 0.04, 0.62, 0, 0.23, 0, 0xa33b2f);
 
-  // 3 stepping stone slabs leading from the prayer platform outward
+  // 3 stepping stone slabs leading from the prayer platform towards the temple gate approach
   for (let s = 1; s <= 3; s++) {
-    const stepR = prayDist + s * 0.68;
+    const stepR = prayDist + s * 0.66;
     const slab = new CylinderGeometry(0.32, 0.35, 0.07, 7);
     slab.scale(1.2, 1, 0.88);
     slab.rotateY(prayAngle + s * 0.2);
@@ -769,10 +772,10 @@ function buildSacredBaseSanctuary(): BufferGeometry {
     solidParts.push(paintGeom(slab, 0x857f74));
   }
 
-  // 4. Three low stone garden lanterns (Đèn đá đặt thấp quanh gốc cây)
-  const lowLanternAngles = [0.62, 2.75, 4.88] as const;
+  // 4. Three low stone garden lanterns placed at open angles around the base
+  const lowLanternAngles = [0.95, 2.55, 4.15] as const;
   for (const la of lowLanternAngles) {
-    const lr = 2.95;
+    const lr = 2.85;
     const lx = Math.cos(la) * lr;
     const lz = Math.sin(la) * lr;
 
@@ -797,7 +800,8 @@ function buildSacredBaseSanctuary(): BufferGeometry {
   const leafPalette = [0xc8321a, 0xe06818, 0xe8a824, 0x9e2414, 0x8a5229] as const;
   for (let f = 0; f < 42; f++) {
     const fa = rand() * Math.PI * 2;
-    const fr = 0.85 + rand() * 2.95;
+    const maxLeafR = Math.cos(fa) > 0.2 && Math.sin(fa) < -0.4 ? 1.75 : 3.4;
+    const fr = 0.85 + rand() * (maxLeafR - 0.85);
     const fx = Math.cos(fa) * fr;
     const fz = Math.sin(fa) * fr;
     const fy = 0.16 * Math.max(0, 1 - fr / 3.8) + 0.02;
@@ -811,7 +815,8 @@ function buildSacredBaseSanctuary(): BufferGeometry {
 
   for (let gr = 0; gr < 24; gr++) {
     const ga = rand() * Math.PI * 2;
-    const gRad = 1.05 + rand() * 2.4;
+    const maxGrassR = Math.cos(ga) > 0.2 && Math.sin(ga) < -0.4 ? 1.7 : 3.2;
+    const gRad = 1.05 + rand() * (maxGrassR - 1.05);
     const gx = Math.cos(ga) * gRad;
     const gz = Math.sin(ga) * gRad;
     const gy = 0.14 * Math.max(0, 1 - gRad / 3.8);
@@ -867,7 +872,6 @@ export function createAncientWishingTreeAsset(): AncientWishingTreeAsset {
   ];
   barkParts.push(buildGnarledWoodTube(mainTrunkPts, 0.84, 0.32, 14, 14, 0x3b2416, 0x543b2a, 0.15, true));
 
-  // Secondary intertwined companion trunk stem for ancient century-old character
   const twinTrunkPts = [
     new Vector3(-0.28, -0.2, 0.22),
     new Vector3(-0.34, 1.1, 0.26),
@@ -876,7 +880,6 @@ export function createAncientWishingTreeAsset(): AncientWishingTreeAsset {
   ];
   barkParts.push(buildGnarledWoodTube(twinTrunkPts, 0.48, 0.22, 10, 10, 0x382214, 0x4f3726, 0.16, true));
 
-  // 5 Natural tree burls / knots (vết sẹo tự nhiên trên thân cổ thụ)
   const burlSpecs: readonly [number, number, number, number, number, number][] = [
     [0.68, 1.15, 0.22, 0.26, 0.32, 0.24],
     [-0.64, 1.75, 0.34, 0.24, 0.28, 0.22],
@@ -888,30 +891,32 @@ export function createAncientWishingTreeAsset(): AncientWishingTreeAsset {
     barkParts.push(buildBurlGeometry(bx, by, bz, rx, ry, rz, idx * 5.7 + 1));
   });
 
-  // 2. Elaborate Surface & Buttress Root System (10 main roots + 10 rock-hugging roots)
+  // 2. Elaborate Surface & Buttress Root System (10 main roots + 10 rock-hugging roots, shortened on the wall quadrant)
   for (let r = 0; r < 10; r++) {
     const a = (r / 10) * Math.PI * 2 + (rand() - 0.5) * 0.18;
     const ca = Math.cos(a);
     const sa = Math.sin(a);
     const twistA = a + (r % 2 === 0 ? 0.16 : -0.16);
-    const reach = 3.15 + (r % 3) * 0.48;
+    const nearWall = Math.cos(twistA) > 0.15 && Math.sin(twistA) < -0.42;
+    const reach = nearWall ? 1.82 : 3.15 + (r % 3) * 0.48;
 
     const rootPts = [
       new Vector3(ca * 0.48, 1.05 + (r % 2) * 0.22, sa * 0.48),
-      new Vector3(ca * 1.35, 0.48 + (r % 3) * 0.08, sa * 1.35),
-      new Vector3(Math.cos(twistA) * 2.35, 0.24, Math.sin(twistA) * 2.35),
+      new Vector3(ca * (reach * 0.42), 0.48 + (r % 3) * 0.08, sa * (reach * 0.42)),
+      new Vector3(Math.cos(twistA) * (reach * 0.74), 0.22, Math.sin(twistA) * (reach * 0.74)),
       new Vector3(Math.cos(twistA) * reach, -0.12, Math.sin(twistA) * reach),
     ];
-    barkParts.push(buildGnarledWoodTube(rootPts, 0.34, 0.06, 9, 8, 0x3b2618, 0x473628, 0.18, false));
+    barkParts.push(clampClearOfGateWall(buildGnarledWoodTube(rootPts, 0.34, 0.06, 9, 8, 0x3b2618, 0x473628, 0.18, false)));
 
-    // Secondary root fork snaking over boulders and sinking into the earth
     const forkA = twistA + (r % 2 === 0 ? 0.28 : -0.28);
+    const forkNearWall = Math.cos(forkA) > 0.15 && Math.sin(forkA) < -0.42;
+    const forkReach = forkNearWall ? 1.85 : reach + 0.32;
     const forkPts = [
       rootPts[1]!,
-      new Vector3(Math.cos(forkA) * 2.15, 0.32, Math.sin(forkA) * 2.15),
-      new Vector3(Math.cos(forkA) * (reach + 0.35), -0.14, Math.sin(forkA) * (reach + 0.35)),
+      new Vector3(Math.cos(forkA) * (forkReach * 0.68), 0.28, Math.sin(forkA) * (forkReach * 0.68)),
+      new Vector3(Math.cos(forkA) * forkReach, -0.14, Math.sin(forkA) * forkReach),
     ];
-    barkParts.push(buildGnarledWoodTube(forkPts, 0.19, 0.04, 7, 6, 0x3b2618, 0x453a2a, 0.16, false));
+    barkParts.push(clampClearOfGateWall(buildGnarledWoodTube(forkPts, 0.19, 0.04, 7, 6, 0x3b2618, 0x453a2a, 0.16, false)));
   }
 
   // 3. Seven Major Spreading Boughs (branching at y = 2.6–4.1m, reaching out to 5.4–6.5m -> ~14m canopy span)
@@ -948,7 +953,6 @@ export function createAncientWishingTreeAsset(): AncientWishingTreeAsset {
 
     barkParts.push(buildGnarledWoodTube([p0, p1, p2], b.rStart, b.rEnd, 9, 8, 0x3d2618, 0x593e2c, 0.13));
 
-    // Sample exact points along the primary bough spline to hang wishing plaques & lanterns flush under the wood
     const boughSamples = sampleSpline([p0, p1, p2], 12);
     for (let s = 3; s <= 11; s++) {
       const pt = boughSamples[s]!;
@@ -964,13 +968,11 @@ export function createAncientWishingTreeAsset(): AncientWishingTreeAsset {
       });
     }
 
-    // Mid-bough & outer-tip foliage sprays (leaving inner bough structure partially visible!)
     leafParts.push(
       buildSacredCanopySpray(p1.x * 1.08, p1.y + 0.68, p1.z * 1.08, 2.25, 0.08, 4, b.zoneIdx, rand),
       buildSacredCanopySpray(p2.x, p2.y + 0.45, p2.z, 2.55, 0.14, 5, (b.zoneIdx + 1) % 5, rand),
     );
 
-    // Two asymmetric secondary sub-branches per major bough
     for (const side of [-1, 1] as const) {
       const subAngle = b.angle + side * (0.44 + (bIdx % 2) * 0.08);
       const subStart = boughSamples[side < 0 ? 5 : 7]!;
@@ -1028,7 +1030,6 @@ export function createAncientWishingTreeAsset(): AncientWishingTreeAsset {
     leafParts.push(buildSacredCanopySpray(cEnd.x, cEnd.y + 0.45, cEnd.z, 2.45, 0.06, 5, (c + 2) % 5, rand));
   }
 
-  // Apex central canopy dome spray (reaching ~10.6m height)
   leafParts.push(
     buildSacredCanopySpray(0.0, 8.85, 0.0, 2.75, 0.04, 5, 3, rand),
     buildSacredCanopySpray(-1.1, 8.2, 0.85, 2.35, 0.05, 4, 4, rand),
@@ -1105,6 +1106,11 @@ export function createAncientWishingTreeAsset(): AncientWishingTreeAsset {
         vec3 shade = diffuseColor.rgb * vec3(0.68, 0.65, 0.60);
         vec3 sunlit = mix(diffuseColor.rgb * 1.22, vec3(1.0, 0.94, 0.68), 0.16);
         diffuseColor.rgb = mix(shade, sunlit, vSunGrad);`,
+      )
+      .replace(
+        "#include <opaque_fragment>",
+        `outgoingLight = mix(outgoingLight, diffuseColor.rgb * 1.02, 0.34) + diffuseColor.rgb * (0.08 + vSunGrad * 0.14);
+        #include <opaque_fragment>`,
       );
   };
 
