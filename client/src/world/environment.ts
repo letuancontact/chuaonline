@@ -37,15 +37,15 @@ interface Palette {
 const DAY: Palette = {
   skyTint: new Color(0xffffff),
   fog: new Color(0xcce2dc),
-  fogNear: 48,
-  fogFar: 185,
+  fogNear: 52,
+  fogFar: 190,
   hemiSky: new Color(0xe8f4fa),
   hemiGround: new Color(0x7a725e),
-  hemiIntensity: 1.55,
+  hemiIntensity: 1.58,
   ambient: new Color(0xfffcf5),
-  ambientIntensity: 0.42,
+  ambientIntensity: 0.44,
   sun: new Color(0xfff5e0),
-  sunIntensity: 3.1,
+  sunIntensity: 2.88,
   sunDir: new Vector3(0.45, 0.82, 0.35).normalize(),
 };
 
@@ -70,7 +70,9 @@ const HAZE_FROM = -0.02;
 const HAZE_TO = 0.22;
 const SUN_DISTANCE = 60;
 /** Half-size of the shadow camera box around the focus point (metres). */
-const SHADOW_EXTENT = 18;
+const SHADOW_EXTENT = 16;
+/** World-space size of one shadow-map texel; snapping focus to this grid prevents shadow edge swimming when walking. */
+const SHADOW_TEXEL_SIZE = (SHADOW_EXTENT * 2) / SHADOW_MAP_SIZE;
 /** Light colours change slowly; no need to recompute every frame. */
 const REFRESH_S = 0.5;
 
@@ -130,14 +132,27 @@ export async function createEnvironment(
   sun.shadow.camera.far = SUN_DISTANCE * 2;
   // three does not refresh the shadow camera's projection itself; without this the box stays at the default ±5 m.
   sun.shadow.camera.updateProjectionMatrix();
-  sun.shadow.bias = -0.0005;
-  sun.shadow.normalBias = 0.03;
+  sun.shadow.bias = -0.00035;
+  sun.shadow.normalBias = 0.024;
   scene.add(hemi, ambient, sun, sun.target);
 
   const focus = new Vector3();
+  const snappedFocus = new Vector3();
   const dir = new Vector3();
   let daylight = 1;
   let sinceRefresh = REFRESH_S;
+
+  const placeSun = (): void => {
+    const step = SHADOW_TEXEL_SIZE;
+    snappedFocus.set(
+      Math.round(focus.x / step) * step,
+      Math.round(focus.y / step) * step,
+      Math.round(focus.z / step) * step,
+    );
+    sun.position.copy(snappedFocus).addScaledVector(dir, SUN_DISTANCE);
+    sun.target.position.copy(snappedFocus);
+    sun.target.updateMatrixWorld();
+  };
 
   const refresh = (): void => {
     const t = dayPhase(opts.now()).t;
@@ -155,12 +170,6 @@ export async function createEnvironment(
     sun.intensity = NIGHT.sunIntensity + (DAY.sunIntensity - NIGHT.sunIntensity) * t;
     dir.lerpVectors(NIGHT.sunDir, DAY.sunDir, t).normalize();
     placeSun();
-  };
-
-  const placeSun = (): void => {
-    sun.position.copy(focus).addScaledVector(dir, SUN_DISTANCE);
-    sun.target.position.copy(focus);
-    sun.target.updateMatrixWorld();
   };
 
   refresh();
