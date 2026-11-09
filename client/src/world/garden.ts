@@ -1,7 +1,6 @@
 import {
   Box3,
   BoxGeometry,
-  BufferAttribute,
   BufferGeometry,
   CanvasTexture,
   Color,
@@ -14,7 +13,6 @@ import {
   InstancedMesh,
   LatheGeometry,
   Matrix4,
-  Mesh,
   MeshStandardMaterial,
   Quaternion,
   SRGBColorSpace,
@@ -23,7 +21,6 @@ import {
   Vector3,
   type Material,
   type Scene,
-  type Texture,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { BOUNDARY, GATE, LANTERN_LOOP, PATH, PATH_LANTERNS, ROCKS, type Vec2 } from "@santinh/shared";
@@ -50,9 +47,14 @@ export const SLAB_TOP = 0.05;
 /** Loop ribbon height above the ground; polygonOffset keeps it from z-fighting. */
 const LOOP_Y = 0.02;
 
-/** Normalised base height (metres) for `cothu.glb`, `cothu1.glb`, and the procedural Maple trees. */
-const ANCIENT_BASE_HEIGHT = 7.6;
-const MAPLE_BASE_HEIGHT = 7.8;
+/**
+ * Low-forking, wide-canopy base height (metres) for the procedural multi-dome trees.
+ * Lowering the base height to 6.5 m while starting foliage domes at y = 1.1 m
+ * ensures the lower horizon line is completely covered.
+ */
+const MAPLE_BASE_HEIGHT = 6.5;
+/** Base height for the Wishing Tree outside the gate (matches wishing-tree.ts hang spots). */
+const WISH_TREE_BASE_HEIGHT = 7.6;
 
 /** Gate sector (around +z) stays open so the gate reads against the sky. */
 const GATE_GAP_RAD = 0.25;
@@ -60,63 +62,66 @@ const GATE_GAP_RAD = 0.25;
 /**
  * Number of evenly spaced angular slots around the courtyard perimeter.
  * Every ring uses this exact angular grid with locked phase offsets (0.0 -> 0.5 -> 0.25 -> 0.75)
- * so front tree trunks and canopies interlock and hide the bases of the back layers.
+ * so front tree trunks and low canopy domes interlock and hide the horizon completely.
  */
-const PERIMETER_SLOTS = IS_MOBILE ? 20 : 24;
+const PERIMETER_SLOTS = IS_MOBILE ? 24 : 28;
 
 interface MapleRingSpec {
   readonly slots: number;
   readonly ring: readonly [number, number];
   readonly scale: readonly [number, number];
+  readonly spread: readonly [number, number];
   readonly phaseOffset: number;
-  /** When true, only odd slots (`k % 2 === 1`) are placed because even slots hold `cothu.glb`. */
-  readonly oddSlotsOnly?: boolean;
 }
 
 /**
- * High-LOD staggered rings:
- * - Ring 1 (phase 0.00, odd slots): interleaved 1-to-1 between the `cothu.glb` trees on the front line.
- * - Ring 2 (phase 0.50, all slots): placed at the exact midpoint between every pair of Ring 1 trunks.
- * - Ring 3 (phase 0.25, all slots): placed at the exact quarter-step gap between Ring 1 and Ring 2.
+ * High-LOD staggered rings (100% procedural, zero GLB downloads):
+ * - Ring 1 (phase 0.00): Complete front perimeter ring framing the courtyard.
+ * - Ring 2 (phase 0.50): Placed at the exact midpoint gap between every pair of Ring 1 trunks.
+ * - Ring 3 (phase 0.25): Placed at the quarter-step gap between Ring 1 and Ring 2.
  */
 const MAPLE_HIGH_RINGS: readonly MapleRingSpec[] = [
   {
     slots: PERIMETER_SLOTS,
-    ring: [1.03, 1.08],
-    scale: [1.08, 1.28],
+    ring: [1.02, 1.07],
+    scale: [0.96, 1.16],
+    spread: [1.18, 1.32],
     phaseOffset: 0.0,
-    oddSlotsOnly: true,
   },
   {
     slots: PERIMETER_SLOTS,
-    ring: [1.13, 1.21],
-    scale: [1.16, 1.38],
+    ring: [1.1, 1.17],
+    scale: [1.08, 1.28],
+    spread: [1.22, 1.36],
     phaseOffset: 0.5,
   },
   {
     slots: PERIMETER_SLOTS,
-    ring: [1.25, 1.35],
-    scale: [1.26, 1.52],
+    ring: [1.2, 1.3],
+    scale: [1.18, 1.42],
+    spread: [1.25, 1.42],
     phaseOffset: 0.25,
   },
 ];
 
 /**
  * Far-LOD staggered rings:
- * - Ring 4 (phase 0.75): fills the remaining three-quarter-step gap behind Ring 2 & Ring 3.
- * - Ring 5 (double density): seals the deep woodland horizon.
+ * - Ring 4 (phase 0.75): Fills the remaining three-quarter-step gap behind Ring 2 & Ring 3.
+ * - Ring 5 (double density): Seals the deep woodland horizon from the ground up.
  */
 const MAPLE_FAR_RINGS: readonly MapleRingSpec[] = [
   {
     slots: PERIMETER_SLOTS,
-    ring: [1.39, 1.54],
-    scale: [1.38, 1.68],
+    ring: [1.33, 1.46],
+    scale: [1.28, 1.56],
+    spread: [1.28, 1.46],
     phaseOffset: 0.75,
   },
   {
     slots: PERIMETER_SLOTS * 2,
-    ring: [1.58, 1.95],
-    scale: [1.52, 1.95],
+    ring: [1.48, 1.82],
+    scale: [1.42, 1.85],
+    spread: [1.3, 1.52],
     phaseOffset: 0.5,
   },
 ];
@@ -128,7 +133,7 @@ const MAPLE_FAR_RINGS: readonly MapleRingSpec[] = [
  * 3. Vàng cam mùa thu (Warm Autumn Gold-Orange)
  * 4. Đỏ cam hổ phách (Warm Vermilion-Amber)
  * 5. Vàng lá thu sáng (Soft Golden Yellow)
- * 6. Xanh cốm non (Soft Spring Olive-Chartreuse)
+ * 6. Xanh cốm non nõn chuối (Soft Spring Olive-Chartreuse)
  */
 const FOREST_FOLIAGE_PALETTE: readonly number[] = [
   0xde3c24, // Đỏ phong trầm ấm
@@ -171,205 +176,11 @@ function place(x: number, y: number, z: number, yaw = 0, sx = 1, sy = 1, sz = 1)
   return m4.compose(v3.set(x, y, z), q.setFromAxisAngle(UP, yaw), s3.set(sx, sy, sz));
 }
 
-interface PreparedAncientTree {
-  geometry: BufferGeometry;
-  materials: MeshStandardMaterial[];
-  materialOrArray: Material | Material[];
-  textures: Texture[];
-}
-
-type Object3DLike = {
-  updateMatrixWorld(force?: boolean): void;
-  traverse(cb: (node: unknown) => void): void;
-};
-
 /**
- * Extracts a normalized BufferGeometry slice for a sub-mesh or geometry material group.
- * Preserves 100% of original triangles, `position`, `normal`, `uv`, and vertex `color` (`COLOR_0`),
- * while compacting only the vertices referenced by `indexStart..indexCount`.
- */
-function extractSingleGroupGeometry(
-  src: BufferGeometry,
-  worldMatrix: Matrix4,
-  indexStart?: number,
-  indexCount?: number,
-): BufferGeometry | null {
-  const posAttr = src.getAttribute("position");
-  if (!posAttr || posAttr.count === 0) return null;
-
-  const srcIndex = src.index;
-  const totalIndices = srcIndex ? srcIndex.count : posAttr.count;
-  const start = indexStart ?? 0;
-  const count =
-    indexCount !== undefined ? Math.min(indexCount, totalIndices - start) : totalIndices - start;
-  if (count <= 0) return null;
-
-  const vCount = posAttr.count;
-  const isFullMesh = start === 0 && count === totalIndices;
-
-  if (isFullMesh) {
-    const g = new BufferGeometry();
-    const posArr = new Float32Array(vCount * 3);
-    for (let i = 0; i < vCount; i++) {
-      posArr[i * 3] = posAttr.getX(i);
-      posArr[i * 3 + 1] = posAttr.getY(i);
-      posArr[i * 3 + 2] = posAttr.getZ(i);
-    }
-    g.setAttribute("position", new Float32BufferAttribute(posArr, 3));
-
-    const uvAttr = src.getAttribute("uv");
-    const uvArr = new Float32Array(vCount * 2);
-    if (uvAttr) {
-      for (let i = 0; i < vCount; i++) {
-        uvArr[i * 2] = uvAttr.getX(i);
-        uvArr[i * 2 + 1] = uvAttr.getY(i);
-      }
-    }
-    g.setAttribute("uv", new Float32BufferAttribute(uvArr, 2));
-
-    const colAttr = src.getAttribute("color");
-    const colArr = new Float32Array(vCount * 3);
-    if (colAttr) {
-      const tmpCol = new Color();
-      for (let i = 0; i < vCount; i++) {
-        tmpCol.fromBufferAttribute(colAttr, i);
-        colArr[i * 3] = tmpCol.r;
-        colArr[i * 3 + 1] = tmpCol.g;
-        colArr[i * 3 + 2] = tmpCol.b;
-      }
-    } else {
-      colArr.fill(1);
-    }
-    g.setAttribute("color", new Float32BufferAttribute(colArr, 3));
-
-    const idxArr = new Uint32Array(count);
-    if (srcIndex) {
-      for (let i = 0; i < count; i++) idxArr[i] = srcIndex.getX(i);
-    } else {
-      for (let i = 0; i < count; i++) idxArr[i] = i;
-    }
-    g.setIndex(new BufferAttribute(idxArr, 1));
-
-    const normAttr = src.getAttribute("normal");
-    if (normAttr) {
-      const normArr = new Float32Array(vCount * 3);
-      for (let i = 0; i < vCount; i++) {
-        normArr[i * 3] = normAttr.getX(i);
-        normArr[i * 3 + 1] = normAttr.getY(i);
-        normArr[i * 3 + 2] = normAttr.getZ(i);
-      }
-      g.setAttribute("normal", new Float32BufferAttribute(normArr, 3));
-    } else {
-      g.computeVertexNormals();
-    }
-
-    g.applyMatrix4(worldMatrix);
-    return g;
-  }
-
-  const remap = new Int32Array(vCount).fill(-1);
-  const usedVertices: number[] = [];
-  const idxArr = new Uint32Array(count);
-
-  for (let i = 0; i < count; i++) {
-    const origIdx = srcIndex ? srcIndex.getX(start + i) : start + i;
-    let mapped = remap[origIdx] ?? -1;
-    if (mapped === -1) {
-      mapped = usedVertices.length;
-      remap[origIdx] = mapped;
-      usedVertices.push(origIdx);
-    }
-    idxArr[i] = mapped;
-  }
-
-  const outVCount = usedVertices.length;
-  if (outVCount === 0) return null;
-
-  const g = new BufferGeometry();
-  const posArr = new Float32Array(outVCount * 3);
-  for (let i = 0; i < outVCount; i++) {
-    const srcIdx = usedVertices[i]!;
-    posArr[i * 3] = posAttr.getX(srcIdx);
-    posArr[i * 3 + 1] = posAttr.getY(srcIdx);
-    posArr[i * 3 + 2] = posAttr.getZ(srcIdx);
-  }
-  g.setAttribute("position", new Float32BufferAttribute(posArr, 3));
-
-  const uvAttr = src.getAttribute("uv");
-  const uvArr = new Float32Array(outVCount * 2);
-  if (uvAttr) {
-    for (let i = 0; i < outVCount; i++) {
-      const srcIdx = usedVertices[i]!;
-      uvArr[i * 2] = uvAttr.getX(srcIdx);
-      uvArr[i * 2 + 1] = uvAttr.getY(srcIdx);
-    }
-  }
-  g.setAttribute("uv", new Float32BufferAttribute(uvArr, 2));
-
-  const colAttr = src.getAttribute("color");
-  const colArr = new Float32Array(outVCount * 3);
-  if (colAttr) {
-    const tmpCol = new Color();
-    for (let i = 0; i < outVCount; i++) {
-      const srcIdx = usedVertices[i]!;
-      tmpCol.fromBufferAttribute(colAttr, srcIdx);
-      colArr[i * 3] = tmpCol.r;
-      colArr[i * 3 + 1] = tmpCol.g;
-      colArr[i * 3 + 2] = tmpCol.b;
-    }
-  } else {
-    colArr.fill(1);
-  }
-  g.setAttribute("color", new Float32BufferAttribute(colArr, 3));
-
-  g.setIndex(new BufferAttribute(idxArr, 1));
-
-  const normAttr = src.getAttribute("normal");
-  if (normAttr) {
-    const normArr = new Float32Array(outVCount * 3);
-    for (let i = 0; i < outVCount; i++) {
-      const srcIdx = usedVertices[i]!;
-      normArr[i * 3] = normAttr.getX(srcIdx);
-      normArr[i * 3 + 1] = normAttr.getY(srcIdx);
-      normArr[i * 3 + 2] = normAttr.getZ(srcIdx);
-    }
-    g.setAttribute("normal", new Float32BufferAttribute(normArr, 3));
-  } else {
-    g.computeVertexNormals();
-  }
-
-  g.applyMatrix4(worldMatrix);
-  return g;
-}
-
-function attachWindSwayShader(material: MeshStandardMaterial, uTime: { value: number }): void {
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms["uTime"] = uTime;
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nuniform float uTime;")
-      .replace(
-        "#include <begin_vertex>",
-        `#include <begin_vertex>
-        #ifdef USE_INSTANCING
-          vec2 treePos = vec2(instanceMatrix[3][0], instanceMatrix[3][2]);
-        #else
-          vec2 treePos = vec2(modelMatrix[3][0], modelMatrix[3][2]);
-        #endif
-        float swayWeight = clamp((transformed.y - 2.2) * 0.25, 0.0, 1.0);
-        float leafPhase = transformed.x * 0.85 + transformed.z * 0.75 + treePos.x * 0.18 + treePos.y * 0.14;
-        float leafSway = swayWeight * (0.042 * sin(uTime * 1.55 + leafPhase) + 0.018 * cos(uTime * 2.7 - leafPhase * 1.2));
-        transformed.x += leafSway;
-        transformed.y += leafSway * 0.2;
-        transformed.z += leafSway * 0.6;`,
-      );
-  };
-}
-
-/**
- * Dedicated shader for the multi-colored Maple foliage (`DoubleSide` alpha-cutout leaf sprays):
+ * Dedicated shader for the multi-colored Maple foliage (`DoubleSide` alpha-cutout leaf domes):
  * 1. Applies gentle wind sway in the vertex shader.
  * 2. Keeps outward-domed canopy normals on both sides of `DoubleSide` leaf cards so backfaces never turn black.
- * 3. Adds warm sunlight translucency in the upper canopy so chartreuse, golden-orange, and crimson leaves glow softly.
+ * 3. Adds warm sunlight translucency so chartreuse, golden-orange, and crimson domes glow naturally.
  */
 function attachMapleFoliageShader(material: MeshStandardMaterial, uTime: { value: number }): void {
   material.onBeforeCompile = (shader) => {
@@ -384,10 +195,10 @@ function attachMapleFoliageShader(material: MeshStandardMaterial, uTime: { value
         #else
           vec2 treePos = vec2(modelMatrix[3][0], modelMatrix[3][2]);
         #endif
-        vCanopyLift = clamp((transformed.y - 2.4) / 5.2, 0.0, 1.0);
-        float swayWeight = clamp((transformed.y - 2.2) * 0.25, 0.0, 1.0);
+        vCanopyLift = clamp((transformed.y - 1.2) / 5.0, 0.0, 1.0);
+        float swayWeight = clamp((transformed.y - 1.0) * 0.25, 0.0, 1.0);
         float leafPhase = transformed.x * 0.85 + transformed.z * 0.75 + treePos.x * 0.18 + treePos.y * 0.14;
-        float leafSway = swayWeight * (0.042 * sin(uTime * 1.55 + leafPhase) + 0.018 * cos(uTime * 2.7 - leafPhase * 1.2));
+        float leafSway = swayWeight * (0.04 * sin(uTime * 1.55 + leafPhase) + 0.016 * cos(uTime * 2.7 - leafPhase * 1.2));
         transformed.x += leafSway;
         transformed.y += leafSway * 0.2;
         transformed.z += leafSway * 0.6;`,
@@ -407,148 +218,14 @@ function attachMapleFoliageShader(material: MeshStandardMaterial, uTime: { value
   };
 }
 
-/**
- * Extracts all sub-meshes and multi-material primitive groups from `cothu.glb` / `cothu1.glb`
- * with 100% original geometry, textures, and vertex colors intact.
- */
-function prepareAncientTreeModel(
-  root: Object3DLike,
-  uTime: { value: number },
-  targetHeight = ANCIENT_BASE_HEIGHT,
-): PreparedAncientTree {
-  const parts: BufferGeometry[] = [];
-  const materials: MeshStandardMaterial[] = [];
-  const textures: Texture[] = [];
-  const sourceGeoms = new Set<BufferGeometry>();
-  const sourceMats = new Set<Material>();
-  const aniso = maxAnisotropy();
-
-  const trackTex = (tex: Texture | null | undefined, isColorMap = false): Texture | null => {
-    if (!tex) return null;
-    if (isColorMap) {
-      tex.colorSpace = SRGBColorSpace;
-    }
-    tex.anisotropy = aniso;
-    if (!textures.includes(tex)) textures.push(tex);
-    return tex;
-  };
-
-  const buildPartMaterial = (
-    rawMat: MeshStandardMaterial | undefined,
-    hasVertexColors: boolean,
-  ): MeshStandardMaterial => {
-    const map = trackTex(rawMat?.map ?? rawMat?.emissiveMap, true);
-    const normalMap = trackTex(rawMat?.normalMap, false);
-    const roughnessMap = trackTex(rawMat?.roughnessMap, false);
-    const alphaMap = trackTex(rawMat?.alphaMap, false);
-    trackTex(rawMat?.metalnessMap, false);
-
-    const color = rawMat?.color ? rawMat.color.clone() : new Color(0xffffff);
-    if (color.r + color.g + color.b < 0.02) {
-      if (rawMat?.emissive && rawMat.emissive.r + rawMat.emissive.g + rawMat.emissive.b > 0.02) {
-        color.copy(rawMat.emissive);
-      } else if (map) {
-        color.setHex(0xffffff);
-      }
-    }
-
-    const partMat = new MeshStandardMaterial({
-      map,
-      normalMap,
-      roughnessMap,
-      alphaMap,
-      color,
-      vertexColors: hasVertexColors,
-      transparent: Boolean(rawMat?.transparent && (!rawMat.alphaTest || rawMat.alphaTest === 0)),
-      opacity: rawMat?.opacity ?? 1,
-      alphaTest: rawMat && rawMat.alphaTest > 0 ? rawMat.alphaTest : 0,
-      roughness: rawMat?.roughness !== undefined ? Math.max(0.55, rawMat.roughness) : 0.84,
-      metalness: 0.0,
-      emissive: new Color(0x09170b),
-      emissiveIntensity: 0.05,
-      side: DoubleSide,
-    });
-    attachWindSwayShader(partMat, uTime);
-    return partMat;
-  };
-
-  root.updateMatrixWorld(true);
-  root.traverse((node) => {
-    if (!(node instanceof Mesh)) return;
-    const srcGeom = node.geometry as BufferGeometry;
-    sourceGeoms.add(srcGeom);
-    const hasVertexColors = Boolean(srcGeom.getAttribute("color"));
-
-    if (Array.isArray(node.material) && srcGeom.groups.length > 0) {
-      for (const grp of srcGeom.groups) {
-        const rawMat = (node.material[grp.materialIndex] ?? node.material[0]) as
-          | MeshStandardMaterial
-          | undefined;
-        if (rawMat) sourceMats.add(rawMat);
-        const cleanGeom = extractSingleGroupGeometry(srcGeom, node.matrixWorld, grp.start, grp.count);
-        if (cleanGeom) {
-          parts.push(cleanGeom);
-          materials.push(buildPartMaterial(rawMat, hasVertexColors));
-        }
-      }
-    } else {
-      const rawMat = (Array.isArray(node.material) ? node.material[0] : node.material) as
-        | MeshStandardMaterial
-        | undefined;
-      if (Array.isArray(node.material)) {
-        for (const m of node.material) if (m) sourceMats.add(m as Material);
-      } else if (rawMat) {
-        sourceMats.add(rawMat);
-      }
-      const cleanGeom = extractSingleGroupGeometry(srcGeom, node.matrixWorld);
-      if (cleanGeom) {
-        parts.push(cleanGeom);
-        materials.push(buildPartMaterial(rawMat, hasVertexColors));
-      }
-    }
-  });
-
-  for (const m of sourceMats) m.dispose();
-  for (const g of sourceGeoms) g.dispose();
-
-  if (parts.length === 0) {
-    throw new Error("GLB tree: no mesh geometry found");
-  }
-
-  const merged = parts.length === 1 ? parts[0]! : mergeGeometries(parts, true);
-  if (parts.length > 1) {
-    for (const p of parts) p.dispose();
-  }
-  if (!merged) throw new Error("GLB tree: failed to merge mesh geometries");
-
-  merged.computeBoundingBox();
-  const bbox = merged.boundingBox ?? new Box3();
-  const cx = (bbox.min.x + bbox.max.x) * 0.5;
-  const cz = (bbox.min.z + bbox.max.z) * 0.5;
-  const rawHeight = Math.max(0.01, bbox.max.y - bbox.min.y);
-  const normalizeScale = targetHeight / rawHeight;
-
-  merged.translate(-cx, -bbox.min.y, -cz);
-  merged.scale(normalizeScale, normalizeScale, normalizeScale);
-  merged.computeBoundingBox();
-  merged.computeBoundingSphere();
-
-  const materialOrArray: Material | Material[] =
-    materials.length === 1 ? materials[0]! : materials;
-
-  return { geometry: merged, materials, materialOrArray, textures };
-}
-
 // ============================================================================
-// SLENDER MULTI-TONE TEMPLE MAPLE TREE (CHARTREUSE / CRIMSON / GOLDEN-ORANGE)
+// LUSH MULTI-DOMED TEMPLE TREE (LOW TRUNK + DENSE HORIZON-COVERING CANOPY)
 // ============================================================================
 
 /**
- * Draws a high-resolution 512x512 botanical texture of a 7-lobed serrated Maple branchlet
- * in a clean, high-luminance neutral-warm value range.
- * Because the texture carries pure botanical shading & veins (without baking a dark red tint),
- * `instanceColor` can tint any tree into luminous Chartreuse (`vàng nõn chuối`),
- * Golden-Orange (`vàng cam`), or Temple Crimson (`đỏ phong`) without muddying the colors!
+ * Draws a dense 512x512 botanical texture of a 7-lobed serrated Maple/Bodhi branchlet
+ * in a high-luminance neutral-warm value range so `instanceColor` tints each tree cleanly
+ * into Chartreuse (`vàng nõn chuối`), Golden-Orange (`vàng cam`), or Temple Crimson (`đỏ phong`).
  */
 function drawMapleClusterTexture(size = 512): CanvasTexture {
   const canvas = document.createElement("canvas");
@@ -560,12 +237,12 @@ function drawMapleClusterTexture(size = 512): CanvasTexture {
 
   const rand = seeded(0xca71ad0);
 
-  // Delicate dark-wood twig stems radiating from the lower-centre petiole attachment.
+  // Delicate dark-wood twig stems radiating from the centre.
   ctx.strokeStyle = "#4a2c18";
   ctx.lineCap = "round";
   ctx.lineWidth = size * 0.009;
   ctx.beginPath();
-  ctx.moveTo(size * 0.5, size * 0.88);
+  ctx.moveTo(size * 0.5, size * 0.86);
   ctx.quadraticCurveTo(size * 0.49, size * 0.52, size * 0.5, size * 0.16);
   ctx.moveTo(size * 0.49, size * 0.66);
   ctx.quadraticCurveTo(size * 0.32, size * 0.56, size * 0.18, size * 0.44);
@@ -577,7 +254,7 @@ function drawMapleClusterTexture(size = 512): CanvasTexture {
   ctx.quadraticCurveTo(size * 0.66, size * 0.3, size * 0.76, size * 0.2);
   ctx.stroke();
 
-  /** Draws one 7-lobe serrated palmately-lobed maple leaf at (cx, cy). */
+  /** Draws one 7-lobe serrated palmately-lobed leaf at (cx, cy). */
   const drawPalmateMapleLeaf = (
     cx: number,
     cy: number,
@@ -592,11 +269,11 @@ function drawMapleClusterTexture(size = 512): CanvasTexture {
     ctx.rotate(rot);
 
     const lobeAngles = [-1.88, -1.25, -0.6, 0, 0.6, 1.25, 1.88] as const;
-    const lobeLengths = [0.45, 0.75, 0.94, 1.05, 0.94, 0.75, 0.45] as const;
-    const lobeWidths = [0.15, 0.21, 0.24, 0.26, 0.24, 0.21, 0.15] as const;
+    const lobeLengths = [0.48, 0.78, 0.96, 1.06, 0.96, 0.78, 0.48] as const;
+    const lobeWidths = [0.17, 0.23, 0.26, 0.28, 0.26, 0.23, 0.17] as const;
 
     ctx.beginPath();
-    ctx.moveTo(0, radius * 0.15);
+    ctx.moveTo(0, radius * 0.16);
 
     for (let i = 0; i < lobeAngles.length; i++) {
       const a = lobeAngles[i]! - Math.PI * 0.5;
@@ -626,7 +303,7 @@ function drawMapleClusterTexture(size = 512): CanvasTexture {
       if (i < lobeAngles.length - 1) {
         const nextA = lobeAngles[i + 1]! - Math.PI * 0.5;
         const midA = (a + nextA) * 0.5;
-        const notchR = radius * 0.27;
+        const notchR = radius * 0.32;
         ctx.lineTo(Math.cos(midA) * notchR, Math.sin(midA) * notchR);
       }
     }
@@ -641,11 +318,11 @@ function drawMapleClusterTexture(size = 512): CanvasTexture {
     ctx.fill();
 
     ctx.lineWidth = Math.max(1.3, radius * 0.03);
-    ctx.strokeStyle = "rgba(64, 42, 24, 0.65)";
+    ctx.strokeStyle = "rgba(64, 42, 24, 0.62)";
     ctx.stroke();
 
     // Palmate primary veins.
-    ctx.strokeStyle = "rgba(255, 252, 235, 0.52)";
+    ctx.strokeStyle = "rgba(255, 252, 235, 0.5)";
     ctx.lineWidth = Math.max(1.0, radius * 0.022);
     for (let i = 0; i < lobeAngles.length; i++) {
       const a = lobeAngles[i]! - Math.PI * 0.5;
@@ -659,39 +336,39 @@ function drawMapleClusterTexture(size = 512): CanvasTexture {
     ctx.restore();
   };
 
-  // Layer 1: Shaded background leaves in the spray.
+  // Dense background layer filling the cluster core so domes are opaque and block the horizon.
   const backShades: readonly [string, string, string][] = [
     ["#b8ae9e", "#d4cbb8", "#aba08e"],
     ["#c2b8a7", "#ded5c3", "#b5aa98"],
   ];
-  for (let i = 0; i < 18; i++) {
-    const angle = (i / 18) * Math.PI * 2 + (rand() - 0.5) * 0.26;
-    const dist = (0.12 + rand() * 0.2) * size;
+  for (let i = 0; i < 24; i++) {
+    const angle = (i / 24) * Math.PI * 2 + (rand() - 0.5) * 0.24;
+    const dist = (0.08 + rand() * 0.24) * size;
     const lx = size * 0.5 + Math.cos(angle) * dist;
     const ly = size * 0.49 + Math.sin(angle) * dist;
-    const r = (0.11 + rand() * 0.04) * size;
+    const r = (0.125 + rand() * 0.045) * size;
     const pal = backShades[i % backShades.length]!;
     drawPalmateMapleLeaf(lx, ly, r, angle + Math.PI * 0.5 + (rand() - 0.5) * 0.65, pal[0], pal[1], pal[2]);
   }
 
-  // Layer 2: Sunlit foreground leaves in the spray.
+  // Sunlit foreground leaves in the spray.
   const frontShades: readonly [string, string, string][] = [
     ["#ded6c6", "#f5efe2", "#ffffff"],
     ["#d6cebe", "#ede6d8", "#faf6ed"],
     ["#e6dfd1", "#faf5ea", "#ffffff"],
   ];
-  for (let i = 0; i < 16; i++) {
-    const angle = (i / 16) * Math.PI * 2 + 0.17 + (rand() - 0.5) * 0.24;
-    const dist = (0.05 + rand() * 0.19) * size;
+  for (let i = 0; i < 20; i++) {
+    const angle = (i / 20) * Math.PI * 2 + 0.15 + (rand() - 0.5) * 0.22;
+    const dist = (0.04 + rand() * 0.21) * size;
     const lx = size * 0.5 + Math.cos(angle) * dist;
     const ly = size * 0.48 + Math.sin(angle) * dist;
-    const r = (0.115 + rand() * 0.044) * size;
+    const r = (0.13 + rand() * 0.045) * size;
     const pal = frontShades[i % frontShades.length]!;
     drawPalmateMapleLeaf(lx, ly, r, angle + Math.PI * 0.5 + (rand() - 0.5) * 0.55, pal[0], pal[1], pal[2]);
   }
 
-  drawPalmateMapleLeaf(size * 0.48, size * 0.46, size * 0.135, -0.32, "#e3dcd0", "#f7f2e6", "#ffffff");
-  drawPalmateMapleLeaf(size * 0.53, size * 0.51, size * 0.128, 0.38, "#dbd3c5", "#f2ece0", "#fcfaf5");
+  drawPalmateMapleLeaf(size * 0.48, size * 0.46, size * 0.15, -0.32, "#e3dcd0", "#f7f2e6", "#ffffff");
+  drawPalmateMapleLeaf(size * 0.53, size * 0.51, size * 0.145, 0.38, "#dbd3c5", "#f2ece0", "#fcfaf5");
 
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
@@ -795,7 +472,7 @@ function buildCurvedBranchSegment(
 }
 
 /**
- * Builds one curved, umbrella-arched maple leaf spray card ("nhánh lá nhỏ uốn vòm").
+ * Builds one curved, umbrella-arched leaf spray card ("phiến vòm lá").
  */
 function buildArchedLeafSpray(
   cx: number,
@@ -815,10 +492,10 @@ function buildArchedLeafSpray(
   const cOut = new Color(outerHex);
 
   const localPos = new Float32Array([
-    -0.5, -0.04, -0.5,
-    0.5, -0.04, -0.5,
-    0.5, -0.04, 0.5,
-    -0.5, -0.04, 0.5,
+    -0.54, -0.06, -0.54,
+    0.54, -0.06, -0.54,
+    0.54, -0.06, 0.54,
+    -0.54, -0.06, 0.54,
     0.0, archHeight, 0.0,
   ]);
   const uvs = new Float32Array([
@@ -869,9 +546,10 @@ function buildArchedLeafSpray(
 }
 
 /**
- * Builds a multi-layered Maple Foliage Cloud Pad ("chòm tán lá đa tầng").
- * Uses neutral-warm vertex shading (`shadowHex -> midHex -> brightHex`) so `instanceColor`
- * tints each tree cleanly into Chartreuse, Golden-Orange, or Crimson while keeping rich internal depth.
+ * Builds a full, volumetric, rounded Canopy Dome ("vòm tán cây") with:
+ * - Steeply angled perimeter skirt sprays (`pitch = 0.55..0.72 rad`) so looking horizontally from the courtyard
+ *   hits solid, lush foliage domes that block 100% of the horizon line.
+ * - Shingled mid-dome sprays and a rounded top crown cap.
  */
 function buildMapleCloudPad(
   cx: number,
@@ -887,24 +565,27 @@ function buildMapleCloudPad(
   const parts: BufferGeometry[] = [];
   const center = new Vector3(cx, cy, cz);
 
-  // 1. Lower/inner shaded layer for canopy depth.
-  const innerCount = highDetail ? 2 : 1;
-  for (let i = 0; i < innerCount; i++) {
-    const a = (i / innerCount) * Math.PI * 2 + rand() * 0.8;
-    const d = radius * (0.16 + rand() * 0.14);
-    const sx = radius * (0.96 + rand() * 0.22);
-    const sz = radius * (0.94 + rand() * 0.22);
+  // 1. Steeply pitched perimeter skirt ring ("vòm rủ che chân trời") facing outward in all directions.
+  const skirtCount = highDetail ? 5 : 3;
+  for (let i = 0; i < skirtCount; i++) {
+    const a = (i / skirtCount) * Math.PI * 2 + rand() * 0.35;
+    const d = radius * (0.36 + rand() * 0.16);
+    const sx = radius * (0.98 + rand() * 0.22);
+    const sz = radius * (0.96 + rand() * 0.22);
+    // Steep pitch (0.55..0.72 rad ≈ 32°..41°) gives the dome vertical thickness to block the horizon.
+    const pitch = 0.55 + rand() * 0.17;
+    const roll = (rand() - 0.5) * 0.24;
     parts.push(
       buildArchedLeafSpray(
         cx + Math.cos(a) * d,
-        cy - 0.1 + (rand() - 0.5) * 0.06,
+        cy - 0.08 + (rand() - 0.5) * 0.08,
         cz + Math.sin(a) * d,
         sx,
         sz,
-        0.16,
-        a + rand() * 0.5,
-        0.35 + (rand() - 0.5) * 0.22,
-        (rand() - 0.5) * 0.3,
+        0.22,
+        a,
+        pitch,
+        roll,
         shadowHex,
         midHex,
         center,
@@ -912,26 +593,24 @@ function buildMapleCloudPad(
     );
   }
 
-  // 2. Mid-ring shingled leaf sprays fanning outward.
+  // 2. Mid-dome overlapping sprays fanning outward.
   const midCount = highDetail ? 4 : 2;
   for (let i = 0; i < midCount; i++) {
-    const a = (i / midCount) * Math.PI * 2 + 0.35 + (rand() - 0.5) * 0.28;
-    const d = radius * (0.34 + rand() * 0.24);
-    const sx = radius * (0.85 + rand() * 0.24);
-    const sz = radius * (0.85 + rand() * 0.24);
-    const pitch = 0.26 + rand() * 0.22;
-    const roll = (rand() - 0.5) * 0.28;
+    const a = (i / midCount) * Math.PI * 2 + 0.4 + (rand() - 0.5) * 0.25;
+    const d = radius * (0.24 + rand() * 0.18);
+    const sx = radius * (0.95 + rand() * 0.22);
+    const sz = radius * (0.95 + rand() * 0.22);
     parts.push(
       buildArchedLeafSpray(
         cx + Math.cos(a) * d,
-        cy + 0.04 + (rand() - 0.5) * 0.08,
+        cy + 0.14 + (rand() - 0.5) * 0.06,
         cz + Math.sin(a) * d,
         sx,
         sz,
-        0.18,
+        0.24,
         a,
-        pitch,
-        roll,
+        0.3 + rand() * 0.18,
+        (rand() - 0.5) * 0.25,
         midHex,
         brightHex,
         center,
@@ -939,22 +618,23 @@ function buildMapleCloudPad(
     );
   }
 
-  // 3. Upper sunlit crown spray.
-  if (highDetail) {
-    const a = rand() * Math.PI * 2;
-    const sx = radius * (0.82 + rand() * 0.2);
-    const sz = radius * (0.82 + rand() * 0.2);
+  // 3. Upper sunlit dome cap.
+  const capCount = highDetail ? 2 : 1;
+  for (let i = 0; i < capCount; i++) {
+    const a = i * 1.57 + rand() * 0.8;
+    const sx = radius * (0.92 + rand() * 0.2);
+    const sz = radius * (0.92 + rand() * 0.2);
     parts.push(
       buildArchedLeafSpray(
         cx,
-        cy + 0.22,
+        cy + 0.28 + i * 0.08,
         cz,
         sx,
         sz,
-        0.2,
+        0.24,
         a,
-        (rand() - 0.5) * 0.25,
-        (rand() - 0.5) * 0.25,
+        (rand() - 0.5) * 0.2,
+        (rand() - 0.5) * 0.2,
         midHex,
         brightHex,
         center,
@@ -969,84 +649,119 @@ function buildMapleCloudPad(
 }
 
 interface MapleTreeGeometries {
-  /** High-LOD merged 2-group geometry (group 0 = slender bark trunk/branches, group 1 = foliage clouds). */
+  /** High-LOD merged 2-group geometry for inner & mid rings. */
   highGeo: BufferGeometry;
-  /** Far-LOD merged 2-group geometry for distant forest rings. */
+  /** Far-LOD merged 2-group geometry for outer horizon rings. */
   farGeo: BufferGeometry;
+  /** Dedicated Golden-Crimson Bodhi/Maple geometry for the Wishing Tree outside the gate. */
+  wishTreeGeo: BufferGeometry;
 }
 
 /**
- * Generates the slender, lightweight Temple Maple Tree in High-LOD (~820 tris) and Far-LOD (~240 tris),
- * grounded at `(0, 0, 0)` with Y-up and normalized to `MAPLE_BASE_HEIGHT` (7.8 m).
+ * Generates the low-trunk, multi-domed Temple Trees:
+ * - Short trunk (`0.85 m .. 1.45 m` before the first boughs split) so there is NO tall empty gap underneath.
+ * - 3 full tiers of dense canopy domes (`Low Skirt y = 1.15..2.1 m`, `Mid Crown y = 2.2..4.1 m`, `Upper Crown y = 4.2..6.2 m`)
+ *   that completely hide the lower horizon line.
  */
 function createAncientRedMapleGeometries(): MapleTreeGeometries {
   const rand = seeded(0x7e4a91e);
 
-  const buildLOD = (highDetail: boolean): BufferGeometry => {
+  const buildForestLOD = (highDetail: boolean): BufferGeometry => {
     const barkParts: BufferGeometry[] = [];
     const leafParts: BufferGeometry[] = [];
     const radialSegs = highDetail ? 5 : 4;
     const subSegs = highDetail ? 4 : 3;
 
-    // 1. Slender, graceful S-curved main trunk (radius 0.22 m at base tapering to 0.085 m).
+    // 1. Short, slender lower trunk: forks early at y = 0.9 m .. 2.4 m so foliage sits low to the ground.
     const trunkPts = [
       new Vector3(0.0, 0.0, 0.0),
-      new Vector3(0.05, 0.85, -0.04),
-      new Vector3(-0.06, 1.75, 0.04),
-      new Vector3(-0.02, 2.55, 0.02),
-      new Vector3(0.02, 3.35, -0.02),
+      new Vector3(0.04, 0.65, -0.03),
+      new Vector3(-0.05, 1.35, 0.03),
+      new Vector3(-0.02, 2.05, 0.02),
+      new Vector3(0.02, 2.75, -0.02),
     ];
-    const trunkRadii = [0.22, 0.17, 0.14, 0.11, 0.085];
+    const trunkRadii = [0.21, 0.165, 0.13, 0.1, 0.075];
     barkParts.push(buildCurvedBranchSegment(trunkPts, trunkRadii, radialSegs, 0x3b281b, 0x5c402c));
 
-    // 2. Five graceful spreading boughs + secondary forks + wide layered foliage clouds.
-    const boughSpecs = [
-      { angle: 0.15, startY: 2.4, reach: 2.85, topY: 4.5, r0: 0.095, sway: 0.22 },
-      { angle: 1.4, startY: 2.6, reach: 2.7, topY: 4.8, r0: 0.09, sway: -0.2 },
-      { angle: 2.66, startY: 2.5, reach: 2.9, topY: 4.6, r0: 0.095, sway: 0.2 },
-      { angle: 3.92, startY: 2.75, reach: 2.65, topY: 5.05, r0: 0.085, sway: -0.22 },
-      { angle: 5.18, startY: 2.95, reach: 2.5, topY: 5.4, r0: 0.08, sway: 0.18 },
-    ] as const;
-
-    // Neutral-warm vertex shading levels so `instanceColor` controls the hue (Chartreuse / Orange-Gold / Red) cleanly.
-    const shHex = 0x6e6256;
+    const shHex = 0x695d52;
     const mdHex = 0xcfc6b8;
     const brHex = 0xfffdf5;
     const warmAccentHex = 0xffe8b8;
 
-    for (let b = 0; b < boughSpecs.length; b++) {
-      const spec = boughSpecs[b]!;
+    // 2. TIER A — 6 Low-sweeping Skirt Boughs & Horizon-Blocking Domes (y = 1.15 m .. 2.15 m).
+    const lowSkirtSpecs = [
+      { angle: 0.0, startY: 0.88, reach: 2.35, topY: 1.35 },
+      { angle: 1.05, startY: 0.96, reach: 2.25, topY: 1.55 },
+      { angle: 2.09, startY: 0.92, reach: 2.4, topY: 1.4 },
+      { angle: 3.14, startY: 1.02, reach: 2.3, topY: 1.6 },
+      { angle: 4.19, startY: 0.9, reach: 2.45, topY: 1.38 },
+      { angle: 5.24, startY: 1.05, reach: 2.25, topY: 1.65 },
+    ] as const;
+
+    for (let s = 0; s < lowSkirtSpecs.length; s++) {
+      const sp = lowSkirtSpecs[s]!;
+      const ca = Math.cos(sp.angle);
+      const sa = Math.sin(sp.angle);
+      const p0 = new Vector3(ca * 0.08, sp.startY, sa * 0.08);
+      const p1 = new Vector3(ca * (sp.reach * 0.55), sp.startY + 0.25, sa * (sp.reach * 0.55));
+      const p2 = new Vector3(ca * sp.reach, sp.topY, sa * sp.reach);
+
+      if (highDetail || s % 2 === 0) {
+        barkParts.push(buildCurvedBranchSegment([p0, p1, p2], [0.085, 0.055, 0.028], 3, 0x4d3524, 0x5c402c));
+      }
+
+      // Large low-hanging foliage dome right at 1.25 m .. 1.75 m height to seal the bottom horizon.
+      leafParts.push(
+        buildMapleCloudPad(
+          p2.x,
+          p2.y + 0.08,
+          p2.z,
+          1.48 + rand() * 0.22,
+          shHex,
+          mdHex,
+          s % 2 === 0 ? brHex : warmAccentHex,
+          rand,
+          highDetail,
+        ),
+      );
+    }
+
+    // 3. TIER B — 5 Main Mid-Canopy Spreading Boughs + Secondary Forks (y = 2.3 m .. 4.2 m).
+    const midBoughSpecs = [
+      { angle: 0.42, startY: 1.45, reach: 2.95, topY: 3.15, r0: 0.095, sway: 0.2 },
+      { angle: 1.68, startY: 1.65, reach: 2.8, topY: 3.45, r0: 0.09, sway: -0.18 },
+      { angle: 2.94, startY: 1.55, reach: 3.0, topY: 3.25, r0: 0.095, sway: 0.18 },
+      { angle: 4.2, startY: 1.75, reach: 2.75, topY: 3.6, r0: 0.085, sway: -0.2 },
+      { angle: 5.46, startY: 1.9, reach: 2.65, topY: 3.85, r0: 0.08, sway: 0.16 },
+    ] as const;
+
+    for (let b = 0; b < midBoughSpecs.length; b++) {
+      const spec = midBoughSpecs[b]!;
       const ca = Math.cos(spec.angle);
       const sa = Math.sin(spec.angle);
       const pa = spec.angle + Math.PI * 0.5;
-      const cpa = Math.cos(pa);
-      const spa = Math.sin(pa);
 
       const p0 = new Vector3(ca * 0.06, spec.startY, sa * 0.06);
       const p1 = new Vector3(
-        ca * (spec.reach * 0.48) + cpa * spec.sway,
+        ca * (spec.reach * 0.5) + Math.cos(pa) * spec.sway,
         spec.startY + (spec.topY - spec.startY) * 0.54,
-        sa * (spec.reach * 0.48) + spa * spec.sway,
+        sa * (spec.reach * 0.5) + Math.sin(pa) * spec.sway,
       );
       const p2 = new Vector3(ca * spec.reach, spec.topY, sa * spec.reach);
 
       barkParts.push(buildCurvedBranchSegment([p0, p1, p2], [spec.r0, spec.r0 * 0.65, spec.r0 * 0.34], subSegs, 0x543a28, 0x694934));
 
-      const forkSides = [-0.46, 0.46] as const;
+      const forkSides = [-0.48, 0.48] as const;
       for (let f = 0; f < forkSides.length; f++) {
         const side = forkSides[f]!;
         const fAngle = spec.angle + side;
         const fca = Math.cos(fAngle);
         const fsa = Math.sin(fAngle);
-        const fReach = spec.reach * (0.98 + (f % 2) * 0.2);
-        const fTopY = spec.topY + 0.45 + f * 0.26;
+        const fReach = spec.reach * (0.96 + (f % 2) * 0.18);
+        const fTopY = spec.topY + 0.35 + f * 0.24;
 
         const fp0 = p1.clone();
-        const fp1 = new Vector3(
-          (fp0.x + fca * fReach) * 0.52,
-          (fp0.y + fTopY) * 0.54,
-          (fp0.z + fsa * fReach) * 0.52,
-        );
+        const fp1 = new Vector3((fp0.x + fca * fReach) * 0.52, (fp0.y + fTopY) * 0.54, (fp0.z + fsa * fReach) * 0.52);
         const fp2 = new Vector3(fca * fReach, fTopY, fsa * fReach);
 
         if (highDetail) {
@@ -1056,9 +771,9 @@ function createAncientRedMapleGeometries(): MapleTreeGeometries {
         leafParts.push(
           buildMapleCloudPad(
             fp2.x,
-            fp2.y + 0.14,
+            fp2.y + 0.1,
             fp2.z,
-            1.28 + rand() * 0.24,
+            1.45 + rand() * 0.25,
             shHex,
             mdHex,
             (b + f) % 2 === 0 ? brHex : warmAccentHex,
@@ -1068,13 +783,13 @@ function createAncientRedMapleGeometries(): MapleTreeGeometries {
         );
       }
 
-      // Interior cloud pad nestled along the primary bough.
+      // Interior dome filling the heart of the bough.
       leafParts.push(
         buildMapleCloudPad(
-          p2.x * 0.8,
-          p2.y + 0.2,
-          p2.z * 0.8,
-          1.18,
+          p2.x * 0.72,
+          p2.y - 0.15,
+          p2.z * 0.72,
+          1.42,
           0x594e43,
           0xb8afa2,
           mdHex,
@@ -1084,25 +799,25 @@ function createAncientRedMapleGeometries(): MapleTreeGeometries {
       );
     }
 
-    // 3. Slender upper crown apex branch & top canopy clouds (y = 5.4 m .. 7.6 m).
+    // 4. TIER C — Upper Crown Apex & 6 Top Canopy Domes (y = 4.2 m .. 6.2 m).
     const crownPts = [
-      new Vector3(0.02, 3.25, -0.02),
-      new Vector3(-0.08, 4.65, 0.05),
-      new Vector3(0.0, 6.55, 0.0),
+      new Vector3(0.02, 2.65, -0.02),
+      new Vector3(-0.07, 3.85, 0.04),
+      new Vector3(0.0, 5.35, 0.0),
     ];
-    barkParts.push(buildCurvedBranchSegment(crownPts, [0.085, 0.055, 0.025], subSegs, 0x543a28, 0x452e1e));
+    barkParts.push(buildCurvedBranchSegment(crownPts, [0.075, 0.05, 0.025], subSegs, 0x543a28, 0x452e1e));
 
-    const crownPads = highDetail ? 5 : 3;
+    const crownPads = highDetail ? 6 : 4;
     for (let c = 0; c < crownPads; c++) {
-      const ca = (c / crownPads) * Math.PI * 2 + 0.4;
-      const rad = c === 0 ? 0.1 : 0.95 + (c % 2) * 0.52;
-      const cy = 5.8 + (1 - rad / 2.2) * 1.1 + (rand() - 0.5) * 0.18;
+      const ca = (c / crownPads) * Math.PI * 2 + 0.35;
+      const rad = c === 0 ? 0.08 : 1.05 + (c % 2) * 0.58;
+      const cy = 4.65 + (1 - rad / 2.2) * 0.95 + (rand() - 0.5) * 0.16;
       leafParts.push(
         buildMapleCloudPad(
           Math.cos(ca) * rad,
           cy,
           Math.sin(ca) * rad,
-          1.25 + rand() * 0.2,
+          1.42 + rand() * 0.22,
           shHex,
           mdHex,
           c % 2 === 0 ? brHex : warmAccentHex,
@@ -1134,9 +849,82 @@ function createAncientRedMapleGeometries(): MapleTreeGeometries {
     return combined;
   };
 
+  /**
+   * Builds the dedicated Golden-Crimson Wishing Bodhi/Maple Tree for `wishing-tree.ts`
+   * (normalized to 7.6 m so the hanging red wishing plaques at y = 2.95..3.35 m sit right under its boughs).
+   */
+  const buildWishingTreeGeometry = (): BufferGeometry => {
+    const barkParts: BufferGeometry[] = [];
+    const leafParts: BufferGeometry[] = [];
+
+    const trunkPts = [
+      new Vector3(0.0, 0.0, 0.0),
+      new Vector3(0.06, 0.85, -0.04),
+      new Vector3(-0.07, 1.75, 0.05),
+      new Vector3(-0.02, 2.65, 0.02),
+      new Vector3(0.0, 3.65, 0.0),
+    ];
+    barkParts.push(buildCurvedBranchSegment(trunkPts, [0.34, 0.26, 0.21, 0.16, 0.11], 6, 0x3b281b, 0x5c402c));
+
+    // 6 main boughs matching `buildHangSpots()` in `wishing-tree.ts` (angles `(i / 6) * 2π + 0.28`).
+    const wishGold = 0xf5b82e;
+    const wishOrange = 0xeb6825;
+    const wishCrimson = 0xd9381e;
+    const wishChartreuse = 0xb5e349;
+    const domeTints = [wishGold, wishCrimson, wishOrange, wishChartreuse, wishGold, wishCrimson] as const;
+
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.28;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const p0 = new Vector3(ca * 0.1, 2.35, sa * 0.1);
+      const p1 = new Vector3(ca * 1.55, 3.25 + (i % 3) * 0.16, sa * 1.55);
+      const p2 = new Vector3(ca * 2.65, 3.85 + (i % 2) * 0.18, sa * 2.65);
+      barkParts.push(buildCurvedBranchSegment([p0, p1, p2], [0.14, 0.095, 0.045], 5, 0x543a28, 0x694934));
+
+      const tint = domeTints[i % domeTints.length]!;
+      leafParts.push(
+        buildMapleCloudPad(p1.x, p1.y + 0.55, p1.z, 1.35, 0x6e2214, tint, 0xffe89e, rand, true),
+        buildMapleCloudPad(p2.x, p2.y + 0.35, p2.z, 1.48, 0x6e2214, tint, 0xffe89e, rand, true),
+      );
+    }
+
+    for (let c = 0; c < 5; c++) {
+      const a = (c / 5) * Math.PI * 2 + 0.5;
+      const rad = c === 0 ? 0.0 : 1.25;
+      const cy = c === 0 ? 6.15 : 5.25;
+      const tint = domeTints[c % domeTints.length]!;
+      leafParts.push(
+        buildMapleCloudPad(Math.cos(a) * rad, cy, Math.sin(a) * rad, 1.55, 0x6e2214, tint, 0xfff0b8, rand, true),
+      );
+    }
+
+    const mergedBark = mergeGeometries(barkParts, false);
+    const mergedLeaves = mergeGeometries(leafParts, false);
+    for (const g of barkParts) g.dispose();
+    for (const g of leafParts) g.dispose();
+    if (!mergedBark || !mergedLeaves) throw new Error("merge: wishing tree maple");
+
+    const combined = mergeGeometries([mergedBark, mergedLeaves], true);
+    mergedBark.dispose();
+    mergedLeaves.dispose();
+    if (!combined) throw new Error("merge: wishing tree combined");
+
+    combined.computeBoundingBox();
+    const bbox = combined.boundingBox ?? new Box3();
+    const rawH = Math.max(0.01, bbox.max.y - bbox.min.y);
+    const scale = WISH_TREE_BASE_HEIGHT / rawH;
+    combined.translate(0, -bbox.min.y, 0);
+    combined.scale(scale, scale, scale);
+    combined.computeBoundingBox();
+    combined.computeBoundingSphere();
+    return combined;
+  };
+
   return {
-    highGeo: buildLOD(true),
-    farGeo: buildLOD(false),
+    highGeo: buildForestLOD(true),
+    farGeo: buildForestLOD(false),
+    wishTreeGeo: buildWishingTreeGeometry(),
   };
 }
 
@@ -1370,20 +1158,18 @@ function generateStaggeredMapleItems(
   rings.forEach((spec, rIdx) => {
     const tierNumber = ringIndexOffset + rIdx;
     for (let k = 0; k < spec.slots; k++) {
-      if (spec.oddSlotsOnly && k % 2 === 0) continue;
-
-      // Tight angular jitter (±0.035 of a slot) keeps the quincunx interlocking alignment exact.
-      const slotPos = k + 0.5 + spec.phaseOffset + (rand() - 0.5) * 0.07;
+      // Tight angular jitter (±0.03 of a slot) keeps the quincunx interlocking alignment exact.
+      const slotPos = k + 0.5 + spec.phaseOffset + (rand() - 0.5) * 0.06;
       const u = (((slotPos % spec.slots) + spec.slots) % spec.slots) / spec.slots;
       const a = Math.PI / 2 + GATE_GAP_RAD + u * arc;
 
-      const r = spec.ring[0] + (0.25 + 0.5 * rand()) * (spec.ring[1] - spec.ring[0]);
+      const r = spec.ring[0] + (0.2 + 0.6 * rand()) * (spec.ring[1] - spec.ring[0]);
       const p = ringPoint(a, r);
 
       const sc = spec.scale[0] + rand() * (spec.scale[1] - spec.scale[0]);
-      // Keep horizontal scale close to `sc` so the tree trunk stays slender and never bloats.
-      const sx = sc * (0.98 + rand() * 0.08);
-      const sz = sc * (0.98 + rand() * 0.08);
+      const spread = spec.spread[0] + rand() * (spec.spread[1] - spec.spread[0]);
+      const sx = sc * spread;
+      const sz = sc * spread * (0.95 + rand() * 0.1);
       const yaw = (k * 1.6180339 + tierNumber * 0.75 + rand() * 0.35) * Math.PI * 2;
 
       // Deterministic interleaving of Chartreuse, Maple Red, and Golden-Orange across slots and rings.
@@ -1413,14 +1199,7 @@ export interface Garden {
   dispose(): void;
 }
 
-export async function createGarden(scene: Scene, assets: Assets, materials: Materials, regions: Regions): Promise<Garden> {
-  const [cothuGltf, wishTreeGltf] = await Promise.all([
-    assets.model("models/cothu.glb"),
-    assets.model("models/cothu1.glb").catch((err: unknown) => {
-      console.warn("[garden] Fallback to models/cothu.glb for Wishing Tree:", err);
-      return null;
-    }),
-  ]);
+export async function createGarden(scene: Scene, _assets: Assets, materials: Materials, regions: Regions): Promise<Garden> {
   const rand = seeded(0x5a7d);
 
   const owned: Material[] = [];
@@ -1489,57 +1268,7 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
 
   const uTreeTime = { value: 0 };
 
-  // 1. Prepare `models/cothu.glb` with 100% original geometry, textures, and materials intact.
-  const preparedTree = prepareAncientTreeModel(cothuGltf.scene, uTreeTime);
-  for (const mat of preparedTree.materials) own(mat);
-
-  // 2. Prepare `models/cothu1.glb` with 100% original geometry for the Wishing Tree outside the gate.
-  let preparedWishTree: PreparedAncientTree | null = null;
-  if (wishTreeGltf) {
-    try {
-      preparedWishTree = prepareAncientTreeModel(wishTreeGltf.scene, uTreeTime);
-      for (const mat of preparedWishTree.materials) own(mat);
-    } catch (err) {
-      console.warn("[garden] Fallback to models/cothu.glb for Wishing Tree:", err);
-      preparedWishTree = null;
-    }
-  }
-  const activeWishTree = preparedWishTree ?? preparedTree;
-  attachAncientTreeToWishingTree(
-    activeWishTree.geometry,
-    activeWishTree.materialOrArray,
-  );
-
-  // Place `cothu.glb` on the EVEN slots (`k % 2 === 0`) of Ring 1 so they alternate 1-to-1 with the Maple trees.
-  const ancientTreeMeshes: Mesh[] = [];
-  const arc = Math.PI * 2 - 2 * GATE_GAP_RAD;
-  for (let k = 0; k < PERIMETER_SLOTS; k += 2) {
-    const slotPos = k + 0.5 + (rand() - 0.5) * 0.06;
-    const u = (((slotPos % PERIMETER_SLOTS) + PERIMETER_SLOTS) % PERIMETER_SLOTS) / PERIMETER_SLOTS;
-    const a = Math.PI / 2 + GATE_GAP_RAD + u * arc;
-    const r = 1.03 + rand() * 0.05;
-    const p = ringPoint(a, r);
-    const sc = 1.12 + rand() * 0.25;
-    const sx = sc * (1.06 + rand() * 0.12);
-    const sz = sc * (1.06 + rand() * 0.12);
-    const yaw = (k * 1.6180339 + rand() * 0.35) * Math.PI * 2;
-
-    const treeMesh = new Mesh(preparedTree.geometry, preparedTree.materialOrArray);
-    treeMesh.position.set(p.x, 0, p.z);
-    treeMesh.rotation.y = yaw;
-    treeMesh.scale.set(sx, sc, sz);
-    treeMesh.castShadow = false;
-    treeMesh.receiveShadow = true;
-    treeMesh.frustumCulled = true;
-    treeMesh.matrixAutoUpdate = false;
-    treeMesh.updateMatrix();
-    treeMesh.updateMatrixWorld(true);
-    treeMesh.name = `ancient-tree:${k}`;
-    scene.add(treeMesh);
-    ancientTreeMeshes.push(treeMesh);
-  }
-
-  // 3. Build the slender, multi-tone Temple Maple trees (Chartreuse / Maple Red / Golden-Orange).
+  // Build 100% procedural multi-domed Temple Trees (no `cothu.glb` or `cothu1.glb` network downloads!).
   const mapleLeafTex = drawMapleClusterTexture(512);
   const mapleBarkMat = own(
     new MeshStandardMaterial({
@@ -1577,9 +1306,9 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
         #else
           vec2 treePos = vec2(modelMatrix[3][0], modelMatrix[3][2]);
         #endif
-        float swayWeight = clamp((transformed.y - 2.2) * 0.25, 0.0, 1.0);
+        float swayWeight = clamp((transformed.y - 1.0) * 0.25, 0.0, 1.0);
         float leafPhase = transformed.x * 0.85 + transformed.z * 0.75 + treePos.x * 0.18 + treePos.y * 0.14;
-        float leafSway = swayWeight * (0.042 * sin(uTime * 1.55 + leafPhase) + 0.018 * cos(uTime * 2.7 - leafPhase * 1.2));
+        float leafSway = swayWeight * (0.04 * sin(uTime * 1.55 + leafPhase) + 0.016 * cos(uTime * 2.7 - leafPhase * 1.2));
         transformed.x += leafSway;
         transformed.y += leafSway * 0.2;
         transformed.z += leafSway * 0.6;`,
@@ -1591,7 +1320,7 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       map: mapleLeafTex,
       vertexColors: true,
       color: new Color(0xffffff),
-      alphaTest: 0.32,
+      alphaTest: 0.3,
       transparent: false,
       roughness: 0.74,
       metalness: 0.0,
@@ -1604,6 +1333,9 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
 
   const generatedMaple = createAncientRedMapleGeometries();
   const mapleMats: Material[] = [mapleBarkMat, mapleFoliageMat];
+
+  // Mount the procedural Wishing Bodhi/Maple Tree onto the planter outside the gate.
+  attachAncientTreeToWishingTree(generatedMaple.wishTreeGeo, mapleMats);
 
   const highMapleItems = generateStaggeredMapleItems(MAPLE_HIGH_RINGS, rand, 0);
   const farMapleItems = generateStaggeredMapleItems(MAPLE_FAR_RINGS, rand, MAPLE_HIGH_RINGS.length);
@@ -1627,15 +1359,6 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       const k = GLOW_DAY + (GLOW_NIGHT - GLOW_DAY) * (1 - daylight);
       lanternPaper.emissiveIntensity = k;
       lotusLamp.emissiveIntensity = k;
-      const treeEmissive = 0.04 + 0.05 * daylight;
-      for (const mat of preparedTree.materials) {
-        mat.emissiveIntensity = treeEmissive;
-      }
-      if (preparedWishTree) {
-        for (const mat of preparedWishTree.materials) {
-          mat.emissiveIntensity = treeEmissive;
-        }
-      }
       mapleFoliageMat.emissiveIntensity = 0.04 + 0.06 * daylight;
     },
     dispose() {
@@ -1643,21 +1366,13 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
         g.removeFromParent();
         disposeGroupGeometry(g);
       }
-      for (const m of ancientTreeMeshes) {
-        scene.remove(m);
-      }
       for (const o of forest) {
         scene.remove(o);
         o.dispose();
       }
-      preparedTree.geometry.dispose();
-      for (const tex of preparedTree.textures) tex.dispose();
-      if (preparedWishTree) {
-        preparedWishTree.geometry.dispose();
-        for (const tex of preparedWishTree.textures) tex.dispose();
-      }
       generatedMaple.highGeo.dispose();
       generatedMaple.farGeo.dispose();
+      generatedMaple.wishTreeGeo.dispose();
       mapleLeafTex.dispose();
       for (const m of owned) m.dispose();
     },
