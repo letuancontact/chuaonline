@@ -2,12 +2,21 @@ import type { WebGLRenderer } from "three";
 import { basePixelRatio } from "./renderer.ts";
 import type { FrameStats } from "./frame-stats.ts";
 
-/** Pixel-ratio caps, stepped down one at a time while frames stay slow, and stepped back up when smooth. */
-const CAPS = [Number.POSITIVE_INFINITY, 1.5, 1.25, 1.0] as const;
-const WARMUP_S = 5.0;
-const WINDOW_S = 3.5;
-const SLOW_P95_MS = 28;
-const FAST_P95_MS = 15.5;
+/**
+ * Pixel-ratio caps: never drops below 1.5 on High-DPI screens so the 3D scene
+ * never becomes blurry even if a background tab or network spike causes a slow frame.
+ */
+const CAPS = [Number.POSITIVE_INFINITY, 1.75, 1.5] as const;
+const WARMUP_S = 6.0;
+const WINDOW_S = 4.0;
+const SLOW_P95_MS = 35;
+const FAST_P95_MS = 18;
+
+function isInteractiveVisualRun(): boolean {
+  if (typeof location === "undefined") return false;
+  const q = new URLSearchParams(location.search);
+  return q.get("debug") === "1" || q.get("shadows") === "1";
+}
 
 export class Quality {
   private level = 0;
@@ -15,18 +24,20 @@ export class Quality {
   private elapsed = 0;
   private frames = 0;
   private fastStreak = 0;
+  private readonly effectiveFixedRatio: number | null;
 
   constructor(
     private readonly renderer: WebGLRenderer,
     private readonly stats: FrameStats,
-    /** e2e runs pin the ratio to 1 so screenshots and timings are stable. */
-    private readonly fixedRatio: number | null,
+    /** e2e runs pin the ratio to 1 for headless screenshot tests, unless `?debug=1` or `?shadows=1` is used interactively. */
+    fixedRatio: number | null,
   ) {
+    this.effectiveFixedRatio = isInteractiveVisualRun() ? null : fixedRatio;
     this.apply();
   }
 
   get pixelRatio(): number {
-    return this.fixedRatio ?? Math.min(basePixelRatio(), CAPS[this.level] ?? 1);
+    return this.effectiveFixedRatio ?? Math.min(basePixelRatio(), CAPS[this.level] ?? 1.5);
   }
 
   /** Re-apply size + ratio (window resize, quality change). */
@@ -36,7 +47,7 @@ export class Quality {
   }
 
   readonly update = (dt: number): void => {
-    if (this.fixedRatio !== null) return;
+    if (this.effectiveFixedRatio !== null) return;
     if (this.warmup < WARMUP_S) {
       this.warmup += dt;
       return;
