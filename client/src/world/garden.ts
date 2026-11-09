@@ -50,91 +50,94 @@ export const SLAB_TOP = 0.05;
 /** Loop ribbon height above the ground; polygonOffset keeps it from z-fighting. */
 const LOOP_Y = 0.02;
 
-/** Normalised base height (metres) for `cothu.glb`, `cothu1.glb`, and the procedural Ancient Red Maple. */
+/** Normalised base height (metres) for `cothu.glb`, `cothu1.glb`, and the procedural Maple trees. */
 const ANCIENT_BASE_HEIGHT = 7.6;
 const MAPLE_BASE_HEIGHT = 7.8;
 
-interface TierPlacementConfig {
-  readonly count: number;
+/** Gate sector (around +z) stays open so the gate reads against the sky. */
+const GATE_GAP_RAD = 0.25;
+
+/**
+ * Number of evenly spaced angular slots around the courtyard perimeter.
+ * Every ring uses this exact angular grid with locked phase offsets (0.0 -> 0.5 -> 0.25 -> 0.75)
+ * so front tree trunks and canopies interlock and hide the bases of the back layers.
+ */
+const PERIMETER_SLOTS = IS_MOBILE ? 20 : 24;
+
+interface MapleRingSpec {
+  readonly slots: number;
   readonly ring: readonly [number, number];
   readonly scale: readonly [number, number];
-  readonly spread: readonly [number, number];
   readonly phaseOffset: number;
-  readonly gateGapFactor: number;
+  /** When true, only odd slots (`k % 2 === 1`) are placed because even slots hold `cothu.glb`. */
+  readonly oddSlotsOnly?: boolean;
 }
 
 /**
- * Tier 1A: Inner courtyard ring of 100% full-detail `models/cothu.glb` ancient trees,
- * individually frustum-culled so only the 2–3 trees in front of the camera are drawn.
+ * High-LOD staggered rings:
+ * - Ring 1 (phase 0.00, odd slots): interleaved 1-to-1 between the `cothu.glb` trees on the front line.
+ * - Ring 2 (phase 0.50, all slots): placed at the exact midpoint between every pair of Ring 1 trunks.
+ * - Ring 3 (phase 0.25, all slots): placed at the exact quarter-step gap between Ring 1 and Ring 2.
  */
-const ANCIENT_TIERS: readonly TierPlacementConfig[] = [
+const MAPLE_HIGH_RINGS: readonly MapleRingSpec[] = [
   {
-    count: IS_MOBILE ? 10 : 12,
-    ring: [1.03, 1.12],
-    scale: [1.15, 1.42],
-    spread: [1.15, 1.32],
+    slots: PERIMETER_SLOTS,
+    ring: [1.03, 1.08],
+    scale: [1.08, 1.28],
     phaseOffset: 0.0,
-    gateGapFactor: 1.0,
+    oddSlotsOnly: true,
   },
-];
-
-/**
- * Tiers 1B, 2 & 3: High-detail Ancient Red Maple (`Cây Lá Đỏ Cổ Thụ` High-LOD) rings.
- * Tier 1B (`phaseOffset: 0.5`) slots directly between the Tier 1A `cothu.glb` trees so the courtyard
- * perimeter is lush and continuous, backed by Tiers 2 and 3.
- */
-const RED_MAPLE_HIGH_TIERS: readonly TierPlacementConfig[] = [
   {
-    count: IS_MOBILE ? 16 : 18,
-    ring: [1.04, 1.16],
-    scale: [1.08, 1.38],
-    spread: [1.14, 1.32],
+    slots: PERIMETER_SLOTS,
+    ring: [1.13, 1.21],
+    scale: [1.16, 1.38],
     phaseOffset: 0.5,
-    gateGapFactor: 0.95,
   },
   {
-    count: IS_MOBILE ? 20 : 24,
-    ring: [1.16, 1.36],
-    scale: [1.22, 1.56],
-    spread: [1.18, 1.38],
+    slots: PERIMETER_SLOTS,
+    ring: [1.25, 1.35],
+    scale: [1.26, 1.52],
     phaseOffset: 0.25,
-    gateGapFactor: 0.82,
-  },
-  {
-    count: IS_MOBILE ? 22 : 28,
-    ring: [1.36, 1.66],
-    scale: [1.38, 1.82],
-    spread: [1.22, 1.44],
-    phaseOffset: 0.75,
-    gateGapFactor: 0.64,
   },
 ];
 
 /**
- * Tiers 4 & 5: Distant multi-layered Red Maple woodland canopy rings (`Far-LOD`)
- * eliminating horizon gaps with natural branching silhouettes and layered leaf clouds.
+ * Far-LOD staggered rings:
+ * - Ring 4 (phase 0.75): fills the remaining three-quarter-step gap behind Ring 2 & Ring 3.
+ * - Ring 5 (double density): seals the deep woodland horizon.
  */
-const RED_MAPLE_FAR_TIERS: readonly TierPlacementConfig[] = [
+const MAPLE_FAR_RINGS: readonly MapleRingSpec[] = [
   {
-    count: IS_MOBILE ? 36 : 48,
-    ring: [1.62, 2.08],
-    scale: [1.55, 2.08],
-    spread: [1.25, 1.48],
-    phaseOffset: 0.15,
-    gateGapFactor: 0.46,
+    slots: PERIMETER_SLOTS,
+    ring: [1.39, 1.54],
+    scale: [1.38, 1.68],
+    phaseOffset: 0.75,
   },
   {
-    count: IS_MOBILE ? 48 : 64,
-    ring: [2.02, 2.68],
-    scale: [1.75, 2.42],
-    spread: [1.28, 1.54],
-    phaseOffset: 0.65,
-    gateGapFactor: 0.32,
+    slots: PERIMETER_SLOTS * 2,
+    ring: [1.58, 1.95],
+    scale: [1.52, 1.95],
+    phaseOffset: 0.5,
   },
 ];
 
-/** Gate sector (around +z) stays open so the gate reads against the sky. */
-const GATE_GAP_RAD = 0.26;
+/**
+ * Interleaved foliage palette cycling smoothly across adjacent trees:
+ * 1. Đỏ phong trầm ấm (Classic Temple Maple Red)
+ * 2. Vàng nõn chuối tươi dịu (Fresh Chartreuse / Young Leaf Yellow-Green)
+ * 3. Vàng cam mùa thu (Warm Autumn Gold-Orange)
+ * 4. Đỏ cam hổ phách (Warm Vermilion-Amber)
+ * 5. Vàng lá thu sáng (Soft Golden Yellow)
+ * 6. Xanh cốm non (Soft Spring Olive-Chartreuse)
+ */
+const FOREST_FOLIAGE_PALETTE: readonly number[] = [
+  0xde3c24, // Đỏ phong trầm ấm
+  0xb5e349, // Vàng nõn chuối tươi dịu
+  0xf5a12c, // Vàng cam mùa thu
+  0xeb5e26, // Đỏ cam hổ phách
+  0xf7bd38, // Vàng lá thu sáng
+  0x9ed642, // Xanh cốm non nõn chuối
+];
 
 const GATE_Z = (GATE.zMin + GATE.zMax) / 2;
 const GATE_PILLAR_X = 3.4;
@@ -354,7 +357,7 @@ function attachWindSwayShader(material: MeshStandardMaterial, uTime: { value: nu
         #endif
         float swayWeight = clamp((transformed.y - 2.2) * 0.25, 0.0, 1.0);
         float leafPhase = transformed.x * 0.85 + transformed.z * 0.75 + treePos.x * 0.18 + treePos.y * 0.14;
-        float leafSway = swayWeight * (0.045 * sin(uTime * 1.55 + leafPhase) + 0.02 * cos(uTime * 2.7 - leafPhase * 1.2));
+        float leafSway = swayWeight * (0.042 * sin(uTime * 1.55 + leafPhase) + 0.018 * cos(uTime * 2.7 - leafPhase * 1.2));
         transformed.x += leafSway;
         transformed.y += leafSway * 0.2;
         transformed.z += leafSway * 0.6;`,
@@ -363,10 +366,10 @@ function attachWindSwayShader(material: MeshStandardMaterial, uTime: { value: nu
 }
 
 /**
- * Dedicated shader for the Ancient Red Maple foliage (`DoubleSide` alpha-cutout leaf sprays):
+ * Dedicated shader for the multi-colored Maple foliage (`DoubleSide` alpha-cutout leaf sprays):
  * 1. Applies gentle wind sway in the vertex shader.
- * 2. Prevents Three.js's default `DoubleSide` backface normal flip from turning the back side of angled
- *    leaf cards black, keeping hemisphere lighting smooth and adding warm sunlight translucency.
+ * 2. Keeps outward-domed canopy normals on both sides of `DoubleSide` leaf cards so backfaces never turn black.
+ * 3. Adds warm sunlight translucency in the upper canopy so chartreuse, golden-orange, and crimson leaves glow softly.
  */
 function attachMapleFoliageShader(material: MeshStandardMaterial, uTime: { value: number }): void {
   material.onBeforeCompile = (shader) => {
@@ -384,7 +387,7 @@ function attachMapleFoliageShader(material: MeshStandardMaterial, uTime: { value
         vCanopyLift = clamp((transformed.y - 2.4) / 5.2, 0.0, 1.0);
         float swayWeight = clamp((transformed.y - 2.2) * 0.25, 0.0, 1.0);
         float leafPhase = transformed.x * 0.85 + transformed.z * 0.75 + treePos.x * 0.18 + treePos.y * 0.14;
-        float leafSway = swayWeight * (0.045 * sin(uTime * 1.55 + leafPhase) + 0.02 * cos(uTime * 2.7 - leafPhase * 1.2));
+        float leafSway = swayWeight * (0.042 * sin(uTime * 1.55 + leafPhase) + 0.018 * cos(uTime * 2.7 - leafPhase * 1.2));
         transformed.x += leafSway;
         transformed.y += leafSway * 0.2;
         transformed.z += leafSway * 0.6;`,
@@ -394,13 +397,11 @@ function attachMapleFoliageShader(material: MeshStandardMaterial, uTime: { value
       .replace(
         "#include <normal_fragment_begin>",
         `#include <normal_fragment_begin>
-        // Preserve the outward-domed canopy normal on both sides of DoubleSide leaf cards
         normal = normalize(vNormal);`,
       )
       .replace(
         "#include <opaque_fragment>",
-        `// Warm autumn sunlight translucency through upper-canopy maple leaves
-        outgoingLight += diffuseColor.rgb * (0.08 + 0.14 * vCanopyLift);
+        `outgoingLight += diffuseColor.rgb * (0.10 + 0.16 * vCanopyLift);
         #include <opaque_fragment>`,
       );
   };
@@ -539,13 +540,15 @@ function prepareAncientTreeModel(
 }
 
 // ============================================================================
-// ANCIENT RED MAPLE TREE ("CÂY LÁ ĐỎ CỔ THỤ" — PROCEDURAL 3D BOTANICAL MODEL)
+// SLENDER MULTI-TONE TEMPLE MAPLE TREE (CHARTREUSE / CRIMSON / GOLDEN-ORANGE)
 // ============================================================================
 
 /**
- * Draws a high-resolution 512x512 botanical texture of a Japanese/East-Asian Red Maple
- * branchlet (`Acer palmatum`) with 5-lobed and 7-lobed serrated leaves, fine palmate veins,
- * woody twig stems, and a clean transparent border so card edges never clip.
+ * Draws a high-resolution 512x512 botanical texture of a 7-lobed serrated Maple branchlet
+ * in a clean, high-luminance neutral-warm value range.
+ * Because the texture carries pure botanical shading & veins (without baking a dark red tint),
+ * `instanceColor` can tint any tree into luminous Chartreuse (`vàng nõn chuối`),
+ * Golden-Orange (`vàng cam`), or Temple Crimson (`đỏ phong`) without muddying the colors!
  */
 function drawMapleClusterTexture(size = 512): CanvasTexture {
   const canvas = document.createElement("canvas");
@@ -558,9 +561,9 @@ function drawMapleClusterTexture(size = 512): CanvasTexture {
   const rand = seeded(0xca71ad0);
 
   // Delicate dark-wood twig stems radiating from the lower-centre petiole attachment.
-  ctx.strokeStyle = "#3b2012";
+  ctx.strokeStyle = "#4a2c18";
   ctx.lineCap = "round";
-  ctx.lineWidth = size * 0.01;
+  ctx.lineWidth = size * 0.009;
   ctx.beginPath();
   ctx.moveTo(size * 0.5, size * 0.88);
   ctx.quadraticCurveTo(size * 0.49, size * 0.52, size * 0.5, size * 0.16);
@@ -574,15 +577,15 @@ function drawMapleClusterTexture(size = 512): CanvasTexture {
   ctx.quadraticCurveTo(size * 0.66, size * 0.3, size * 0.76, size * 0.2);
   ctx.stroke();
 
-  /** Draws one 7-lobe serrated palmately-lobed maple leaf at (cx, cy), kept safely inside the canvas bounds. */
+  /** Draws one 7-lobe serrated palmately-lobed maple leaf at (cx, cy). */
   const drawPalmateMapleLeaf = (
     cx: number,
     cy: number,
     radius: number,
     rot: number,
-    innerHex: string,
-    outerHex: string,
-    tipHex: string,
+    innerLum: string,
+    outerLum: string,
+    tipLum: string,
   ): void => {
     ctx.save();
     ctx.translate(cx, cy);
@@ -631,18 +634,18 @@ function drawMapleClusterTexture(size = 512): CanvasTexture {
     ctx.closePath();
 
     const grad = ctx.createRadialGradient(0, 0, radius * 0.08, 0, -radius * 0.14, radius * 1.04);
-    grad.addColorStop(0, innerHex);
-    grad.addColorStop(0.66, outerHex);
-    grad.addColorStop(1, tipHex);
+    grad.addColorStop(0, innerLum);
+    grad.addColorStop(0.66, outerLum);
+    grad.addColorStop(1, tipLum);
     ctx.fillStyle = grad;
     ctx.fill();
 
-    ctx.lineWidth = Math.max(1.4, radius * 0.032);
-    ctx.strokeStyle = "rgba(52, 10, 6, 0.76)";
+    ctx.lineWidth = Math.max(1.3, radius * 0.03);
+    ctx.strokeStyle = "rgba(64, 42, 24, 0.65)";
     ctx.stroke();
 
     // Palmate primary veins.
-    ctx.strokeStyle = "rgba(255, 208, 150, 0.44)";
+    ctx.strokeStyle = "rgba(255, 252, 235, 0.52)";
     ctx.lineWidth = Math.max(1.0, radius * 0.022);
     for (let i = 0; i < lobeAngles.length; i++) {
       const a = lobeAngles[i]! - Math.PI * 0.5;
@@ -656,42 +659,39 @@ function drawMapleClusterTexture(size = 512): CanvasTexture {
     ctx.restore();
   };
 
-  // Layer 1: Deeper shadow crimson & burgundy maple leaves in the background of the spray.
-  const backPalette: readonly [string, string, string][] = [
-    ["#851a12", "#ab2518", "#6e120c"],
-    ["#941f15", "#ba2c1b", "#7a160f"],
-    ["#781510", "#9e2116", "#610f0a"],
+  // Layer 1: Shaded background leaves in the spray.
+  const backShades: readonly [string, string, string][] = [
+    ["#b8ae9e", "#d4cbb8", "#aba08e"],
+    ["#c2b8a7", "#ded5c3", "#b5aa98"],
   ];
-  for (let i = 0; i < 20; i++) {
-    const angle = (i / 20) * Math.PI * 2 + (rand() - 0.5) * 0.26;
+  for (let i = 0; i < 18; i++) {
+    const angle = (i / 18) * Math.PI * 2 + (rand() - 0.5) * 0.26;
     const dist = (0.12 + rand() * 0.2) * size;
     const lx = size * 0.5 + Math.cos(angle) * dist;
     const ly = size * 0.49 + Math.sin(angle) * dist;
-    const r = (0.11 + rand() * 0.042) * size;
-    const pal = backPalette[i % backPalette.length]!;
+    const r = (0.11 + rand() * 0.04) * size;
+    const pal = backShades[i % backShades.length]!;
     drawPalmateMapleLeaf(lx, ly, r, angle + Math.PI * 0.5 + (rand() - 0.5) * 0.65, pal[0], pal[1], pal[2]);
   }
 
-  // Layer 2: Foreground bright scarlet, vermilion, red-orange & subtle amber-gold maple leaves.
-  const frontPalette: readonly [string, string, string][] = [
-    ["#bf281a", "#e03f20", "#f27228"],
-    ["#b32117", "#d4341d", "#e85b22"],
-    ["#cc311c", "#eb5023", "#f7922b"],
-    ["#a31d14", "#c72a1a", "#de4920"],
+  // Layer 2: Sunlit foreground leaves in the spray.
+  const frontShades: readonly [string, string, string][] = [
+    ["#ded6c6", "#f5efe2", "#ffffff"],
+    ["#d6cebe", "#ede6d8", "#faf6ed"],
+    ["#e6dfd1", "#faf5ea", "#ffffff"],
   ];
-  for (let i = 0; i < 18; i++) {
-    const angle = (i / 18) * Math.PI * 2 + 0.17 + (rand() - 0.5) * 0.24;
+  for (let i = 0; i < 16; i++) {
+    const angle = (i / 16) * Math.PI * 2 + 0.17 + (rand() - 0.5) * 0.24;
     const dist = (0.05 + rand() * 0.19) * size;
     const lx = size * 0.5 + Math.cos(angle) * dist;
     const ly = size * 0.48 + Math.sin(angle) * dist;
-    const r = (0.115 + rand() * 0.045) * size;
-    const pal = frontPalette[i % frontPalette.length]!;
+    const r = (0.115 + rand() * 0.044) * size;
+    const pal = frontShades[i % frontShades.length]!;
     drawPalmateMapleLeaf(lx, ly, r, angle + Math.PI * 0.5 + (rand() - 0.5) * 0.55, pal[0], pal[1], pal[2]);
   }
 
-  // Central crown leaves so the spray centre is dense and lush.
-  drawPalmateMapleLeaf(size * 0.48, size * 0.46, size * 0.135, -0.32, "#c92c1b", "#e84922", "#f5842a");
-  drawPalmateMapleLeaf(size * 0.53, size * 0.51, size * 0.128, 0.38, "#b52317", "#db391e", "#ed6724");
+  drawPalmateMapleLeaf(size * 0.48, size * 0.46, size * 0.135, -0.32, "#e3dcd0", "#f7f2e6", "#ffffff");
+  drawPalmateMapleLeaf(size * 0.53, size * 0.51, size * 0.128, 0.38, "#dbd3c5", "#f2ece0", "#fcfaf5");
 
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
@@ -700,8 +700,7 @@ function drawMapleClusterTexture(size = 512): CanvasTexture {
 }
 
 /**
- * Builds a curved, multi-segment tubular branch or trunk spline with longitudinal bark flutes
- * and natural vertex color shading (mossy dark base → aged temple bark).
+ * Builds a slender, lightweight curved tubular branch or trunk spline.
  */
 function buildCurvedBranchSegment(
   points: readonly Vector3[],
@@ -741,7 +740,7 @@ function buildCurvedBranchSegment(
     binormal.crossVectors(tangent, ref).normalize();
     normal.crossVectors(binormal, tangent).normalize();
 
-    const rBase = radii[i]!;
+    const r = radii[i]!;
     const tFrac = i / Math.max(1, rings - 1);
     cTmp.lerpColors(c0, c1, tFrac);
 
@@ -750,10 +749,6 @@ function buildCurvedBranchSegment(
       const theta = uFrac * Math.PI * 2;
       const ca = Math.cos(theta);
       const sa = Math.sin(theta);
-
-      // Bark flutes/crevices on the trunk and main boughs.
-      const flute = 1 + 0.085 * (1 - tFrac * 0.6) * Math.sin(theta * 5 + tFrac * 3.4);
-      const r = rBase * flute;
 
       const nx = normal.x * ca + binormal.x * sa;
       const ny = normal.y * ca + binormal.y * sa;
@@ -770,7 +765,7 @@ function buildCurvedBranchSegment(
       nrm[idx * 3 + 1] = ny;
       nrm[idx * 3 + 2] = nz;
 
-      uv[idx * 2] = uFrac * 2.5;
+      uv[idx * 2] = uFrac * 2.0;
       uv[idx * 2 + 1] = vDist * 0.85;
 
       col[idx * 3] = cTmp.r;
@@ -801,7 +796,6 @@ function buildCurvedBranchSegment(
 
 /**
  * Builds one curved, umbrella-arched maple leaf spray card ("nhánh lá nhỏ uốn vòm").
- * Multiple small/medium sprays are layered together by `buildMapleCloudPad` to form organic foliage clouds.
  */
 function buildArchedLeafSpray(
   cx: number,
@@ -820,7 +814,6 @@ function buildArchedLeafSpray(
   const cIn = new Color(innerHex);
   const cOut = new Color(outerHex);
 
-  // 5-vertex arched dome quad lying mostly horizontal/tilted like real Japanese maple leaf layers.
   const localPos = new Float32Array([
     -0.5, -0.04, -0.5,
     0.5, -0.04, -0.5,
@@ -860,7 +853,6 @@ function buildArchedLeafSpray(
   m4.compose(v3.set(cx, cy, cz), q, s3.set(scaleX, 1, scaleZ));
   g.applyMatrix4(m4);
 
-  // Smooth hemisphere normals radiating from `cloudCenter` so the entire foliage pad shades as a cohesive botanical volume.
   const posAttr = g.getAttribute("position");
   const nrmArr = new Float32Array(posAttr.count * 3);
   for (let i = 0; i < posAttr.count; i++) {
@@ -877,10 +869,9 @@ function buildArchedLeafSpray(
 }
 
 /**
- * Builds a multi-layered East-Asian Maple Foliage Cloud Pad ("chòm tán lá đỏ đa tầng"):
- * - Shaded inner/lower leaf sprays (`shadowHex`) for canopy depth.
- * - Dense mid-layer sprays (`midHex`) fanned out organically.
- * - Sunlit upper & outward-reaching sprays (`brightHex`) with varied angles and sizes.
+ * Builds a multi-layered Maple Foliage Cloud Pad ("chòm tán lá đa tầng").
+ * Uses neutral-warm vertex shading (`shadowHex -> midHex -> brightHex`) so `instanceColor`
+ * tints each tree cleanly into Chartreuse, Golden-Orange, or Crimson while keeping rich internal depth.
  */
 function buildMapleCloudPad(
   cx: number,
@@ -896,24 +887,24 @@ function buildMapleCloudPad(
   const parts: BufferGeometry[] = [];
   const center = new Vector3(cx, cy, cz);
 
-  // 1. Lower/inner shadow layer (gives deep crimson/burgundy interior depth).
-  const innerCount = highDetail ? 3 : 2;
+  // 1. Lower/inner shaded layer for canopy depth.
+  const innerCount = highDetail ? 2 : 1;
   for (let i = 0; i < innerCount; i++) {
     const a = (i / innerCount) * Math.PI * 2 + rand() * 0.8;
-    const d = radius * (0.18 + rand() * 0.16);
-    const sx = radius * (0.95 + rand() * 0.25);
-    const sz = radius * (0.92 + rand() * 0.25);
+    const d = radius * (0.16 + rand() * 0.14);
+    const sx = radius * (0.96 + rand() * 0.22);
+    const sz = radius * (0.94 + rand() * 0.22);
     parts.push(
       buildArchedLeafSpray(
         cx + Math.cos(a) * d,
-        cy - 0.12 + (rand() - 0.5) * 0.08,
+        cy - 0.1 + (rand() - 0.5) * 0.06,
         cz + Math.sin(a) * d,
         sx,
         sz,
         0.16,
         a + rand() * 0.5,
-        0.38 + (rand() - 0.5) * 0.25,
-        (rand() - 0.5) * 0.35,
+        0.35 + (rand() - 0.5) * 0.22,
+        (rand() - 0.5) * 0.3,
         shadowHex,
         midHex,
         center,
@@ -921,20 +912,19 @@ function buildMapleCloudPad(
     );
   }
 
-  // 2. Mid-ring shingled leaf sprays fanning outward like real maple branchlets.
-  const midCount = highDetail ? 5 : 2;
+  // 2. Mid-ring shingled leaf sprays fanning outward.
+  const midCount = highDetail ? 4 : 2;
   for (let i = 0; i < midCount; i++) {
-    const a = (i / midCount) * Math.PI * 2 + 0.35 + (rand() - 0.5) * 0.3;
-    const d = radius * (0.35 + rand() * 0.28);
-    const sx = radius * (0.82 + rand() * 0.28);
-    const sz = radius * (0.82 + rand() * 0.28);
-    // Pitch outward along `a` so sprays cascade naturally like umbrella shingles.
-    const pitch = 0.28 + rand() * 0.24;
-    const roll = (rand() - 0.5) * 0.32;
+    const a = (i / midCount) * Math.PI * 2 + 0.35 + (rand() - 0.5) * 0.28;
+    const d = radius * (0.34 + rand() * 0.24);
+    const sx = radius * (0.85 + rand() * 0.24);
+    const sz = radius * (0.85 + rand() * 0.24);
+    const pitch = 0.26 + rand() * 0.22;
+    const roll = (rand() - 0.5) * 0.28;
     parts.push(
       buildArchedLeafSpray(
         cx + Math.cos(a) * d,
-        cy + 0.04 + (rand() - 0.5) * 0.1,
+        cy + 0.04 + (rand() - 0.5) * 0.08,
         cz + Math.sin(a) * d,
         sx,
         sz,
@@ -949,30 +939,27 @@ function buildMapleCloudPad(
     );
   }
 
-  // 3. Upper sunlit crown & outward-reaching accent sprays (highDetail).
+  // 3. Upper sunlit crown spray.
   if (highDetail) {
-    for (let i = 0; i < 2; i++) {
-      const a = i * Math.PI + rand() * 1.1;
-      const d = radius * (0.12 + rand() * 0.22);
-      const sx = radius * (0.78 + rand() * 0.22);
-      const sz = radius * (0.78 + rand() * 0.22);
-      parts.push(
-        buildArchedLeafSpray(
-          cx + Math.cos(a) * d,
-          cy + 0.22 + i * 0.08,
-          cz + Math.sin(a) * d,
-          sx,
-          sz,
-          0.2,
-          a + 0.7,
-          (rand() - 0.5) * 0.3,
-          (rand() - 0.5) * 0.3,
-          midHex,
-          brightHex,
-          center,
-        ),
-      );
-    }
+    const a = rand() * Math.PI * 2;
+    const sx = radius * (0.82 + rand() * 0.2);
+    const sz = radius * (0.82 + rand() * 0.2);
+    parts.push(
+      buildArchedLeafSpray(
+        cx,
+        cy + 0.22,
+        cz,
+        sx,
+        sz,
+        0.2,
+        a,
+        (rand() - 0.5) * 0.25,
+        (rand() - 0.5) * 0.25,
+        midHex,
+        brightHex,
+        center,
+      ),
+    );
   }
 
   const merged = mergeGeometries(parts, false);
@@ -982,14 +969,14 @@ function buildMapleCloudPad(
 }
 
 interface MapleTreeGeometries {
-  /** High-LOD merged 2-group geometry (group 0 = bark trunk/branches, group 1 = maple leaf clusters). */
+  /** High-LOD merged 2-group geometry (group 0 = slender bark trunk/branches, group 1 = foliage clouds). */
   highGeo: BufferGeometry;
   /** Far-LOD merged 2-group geometry for distant forest rings. */
   farGeo: BufferGeometry;
 }
 
 /**
- * Generates the complete Ancient Red Maple Tree (`Cây Lá Đỏ Cổ Thụ`) in High-LOD and Far-LOD,
+ * Generates the slender, lightweight Temple Maple Tree in High-LOD (~820 tris) and Far-LOD (~240 tris),
  * grounded at `(0, 0, 0)` with Y-up and normalized to `MAPLE_BASE_HEIGHT` (7.8 m).
  */
 function createAncientRedMapleGeometries(): MapleTreeGeometries {
@@ -998,47 +985,34 @@ function createAncientRedMapleGeometries(): MapleTreeGeometries {
   const buildLOD = (highDetail: boolean): BufferGeometry => {
     const barkParts: BufferGeometry[] = [];
     const leafParts: BufferGeometry[] = [];
-    const radialSegs = highDetail ? 7 : 4;
-    const subSegs = highDetail ? 5 : 3;
+    const radialSegs = highDetail ? 5 : 4;
+    const subSegs = highDetail ? 4 : 3;
 
-    // 1. Gnarled S-curved main trunk from y = 0.0 m to y = 3.25 m.
+    // 1. Slender, graceful S-curved main trunk (radius 0.22 m at base tapering to 0.085 m).
     const trunkPts = [
       new Vector3(0.0, 0.0, 0.0),
-      new Vector3(0.07, 0.78, -0.05),
-      new Vector3(-0.09, 1.58, 0.06),
-      new Vector3(-0.04, 2.38, 0.02),
-      new Vector3(0.04, 3.22, -0.03),
+      new Vector3(0.05, 0.85, -0.04),
+      new Vector3(-0.06, 1.75, 0.04),
+      new Vector3(-0.02, 2.55, 0.02),
+      new Vector3(0.02, 3.35, -0.02),
     ];
-    const trunkRadii = [0.58, 0.44, 0.36, 0.3, 0.22];
-    barkParts.push(buildCurvedBranchSegment(trunkPts, trunkRadii, radialSegs, 0x382518, 0x5c402c));
+    const trunkRadii = [0.22, 0.17, 0.14, 0.11, 0.085];
+    barkParts.push(buildCurvedBranchSegment(trunkPts, trunkRadii, radialSegs, 0x3b281b, 0x5c402c));
 
-    // 2. Flared buttress roots ("rễ bạnh cổ thụ") anchoring the base into the temple soil.
-    const rootCount = highDetail ? 6 : 3;
-    for (let r = 0; r < rootCount; r++) {
-      const a = (r / rootCount) * Math.PI * 2 + 0.32;
-      const ca = Math.cos(a);
-      const sa = Math.sin(a);
-      const rPts = [
-        new Vector3(ca * 0.24, 0.82, sa * 0.24),
-        new Vector3(ca * 0.58, 0.34, sa * 0.58),
-        new Vector3(ca * 0.96, 0.0, sa * 0.96),
-      ];
-      barkParts.push(buildCurvedBranchSegment(rPts, [0.19, 0.14, 0.065], subSegs, 0x453020, 0x2b1c12));
-    }
-
-    // 3. Six primary spreading boughs + secondary & tertiary forks + layered foliage clouds.
+    // 2. Five graceful spreading boughs + secondary forks + wide layered foliage clouds.
     const boughSpecs = [
-      { angle: 0.12, startY: 2.3, reach: 3.05, topY: 4.45, r0: 0.21, sway: 0.3 },
-      { angle: 1.18, startY: 2.5, reach: 2.85, topY: 4.75, r0: 0.19, sway: -0.25 },
-      { angle: 2.24, startY: 2.4, reach: 3.1, topY: 4.55, r0: 0.21, sway: 0.24 },
-      { angle: 3.32, startY: 2.65, reach: 2.75, topY: 4.95, r0: 0.19, sway: -0.28 },
-      { angle: 4.38, startY: 2.5, reach: 2.95, topY: 4.7, r0: 0.2, sway: 0.22 },
-      { angle: 5.42, startY: 2.85, reach: 2.55, topY: 5.35, r0: 0.18, sway: -0.2 },
+      { angle: 0.15, startY: 2.4, reach: 2.85, topY: 4.5, r0: 0.095, sway: 0.22 },
+      { angle: 1.4, startY: 2.6, reach: 2.7, topY: 4.8, r0: 0.09, sway: -0.2 },
+      { angle: 2.66, startY: 2.5, reach: 2.9, topY: 4.6, r0: 0.095, sway: 0.2 },
+      { angle: 3.92, startY: 2.75, reach: 2.65, topY: 5.05, r0: 0.085, sway: -0.22 },
+      { angle: 5.18, startY: 2.95, reach: 2.5, topY: 5.4, r0: 0.08, sway: 0.18 },
     ] as const;
 
-    const shadowColors = [0x4d100c, 0x5c130e, 0x691610, 0x54120d] as const;
-    const midColors = [0xa82116, 0xb82619, 0xc42d1c, 0x9e1e14] as const;
-    const brightColors = [0xd9381e, 0xe64d22, 0xf06826, 0xde4120, 0xe37b26] as const;
+    // Neutral-warm vertex shading levels so `instanceColor` controls the hue (Chartreuse / Orange-Gold / Red) cleanly.
+    const shHex = 0x6e6256;
+    const mdHex = 0xcfc6b8;
+    const brHex = 0xfffdf5;
+    const warmAccentHex = 0xffe8b8;
 
     for (let b = 0; b < boughSpecs.length; b++) {
       const spec = boughSpecs[b]!;
@@ -1048,7 +1022,7 @@ function createAncientRedMapleGeometries(): MapleTreeGeometries {
       const cpa = Math.cos(pa);
       const spa = Math.sin(pa);
 
-      const p0 = new Vector3(ca * 0.12, spec.startY, sa * 0.12);
+      const p0 = new Vector3(ca * 0.06, spec.startY, sa * 0.06);
       const p1 = new Vector3(
         ca * (spec.reach * 0.48) + cpa * spec.sway,
         spec.startY + (spec.topY - spec.startY) * 0.54,
@@ -1056,19 +1030,18 @@ function createAncientRedMapleGeometries(): MapleTreeGeometries {
       );
       const p2 = new Vector3(ca * spec.reach, spec.topY, sa * spec.reach);
 
-      barkParts.push(buildCurvedBranchSegment([p0, p1, p2], [spec.r0, spec.r0 * 0.68, spec.r0 * 0.36], subSegs, 0x543a28, 0x694934));
+      barkParts.push(buildCurvedBranchSegment([p0, p1, p2], [spec.r0, spec.r0 * 0.65, spec.r0 * 0.34], subSegs, 0x543a28, 0x694934));
 
-      // Secondary branch forks off each main bough.
-      const forkSides = highDetail ? ([-0.52, 0.52, 0.08] as const) : ([-0.48, 0.48] as const);
+      const forkSides = [-0.46, 0.46] as const;
       for (let f = 0; f < forkSides.length; f++) {
         const side = forkSides[f]!;
         const fAngle = spec.angle + side;
         const fca = Math.cos(fAngle);
         const fsa = Math.sin(fAngle);
-        const fReach = spec.reach * (0.96 + (f % 2) * 0.24);
-        const fTopY = spec.topY + 0.48 + f * 0.28;
+        const fReach = spec.reach * (0.98 + (f % 2) * 0.2);
+        const fTopY = spec.topY + 0.45 + f * 0.26;
 
-        const fp0 = f === 2 ? p2.clone() : p1.clone();
+        const fp0 = p1.clone();
         const fp1 = new Vector3(
           (fp0.x + fca * fReach) * 0.52,
           (fp0.y + fTopY) * 0.54,
@@ -1076,88 +1049,63 @@ function createAncientRedMapleGeometries(): MapleTreeGeometries {
         );
         const fp2 = new Vector3(fca * fReach, fTopY, fsa * fReach);
 
-        if (highDetail || f < 2) {
-          barkParts.push(buildCurvedBranchSegment([fp0, fp1, fp2], [spec.r0 * 0.52, spec.r0 * 0.3, 0.045], Math.max(3, subSegs - 1), 0x5c402c, 0x473020));
+        if (highDetail) {
+          barkParts.push(buildCurvedBranchSegment([fp0, fp1, fp2], [spec.r0 * 0.5, spec.r0 * 0.28, 0.025], 3, 0x5c402c, 0x473020));
         }
 
-        const shCol = shadowColors[(b + f) % shadowColors.length]!;
-        const mdCol = midColors[(b + f) % midColors.length]!;
-        const brCol = brightColors[(b * 2 + f) % brightColors.length]!;
-
-        // Main cloud pad at the secondary branch tip.
         leafParts.push(
           buildMapleCloudPad(
             fp2.x,
             fp2.y + 0.14,
             fp2.z,
-            1.15 + rand() * 0.25,
-            shCol,
-            mdCol,
-            brCol,
+            1.28 + rand() * 0.24,
+            shHex,
+            mdHex,
+            (b + f) % 2 === 0 ? brHex : warmAccentHex,
             rand,
             highDetail,
           ),
         );
-
-        // Outward-reaching lateral spray pad ("nhánh lá vươn ra ngoài tạo độ rộng cho tán").
-        if (highDetail && f < 2) {
-          const extReach = fReach + 0.78 + rand() * 0.32;
-          const extAngle = fAngle + (f === 0 ? -0.18 : 0.18);
-          leafParts.push(
-            buildMapleCloudPad(
-              Math.cos(extAngle) * extReach,
-              fTopY - 0.18 + (rand() - 0.5) * 0.22,
-              Math.sin(extAngle) * extReach,
-              0.92 + rand() * 0.2,
-              shCol,
-              mdCol,
-              brightColors[(b + f + 2) % brightColors.length]!,
-              rand,
-              false,
-            ),
-          );
-        }
       }
 
-      // Interior shaded cloud pad nestled along the primary bough (creates depth while leaving gaps to see branches).
+      // Interior cloud pad nestled along the primary bough.
       leafParts.push(
         buildMapleCloudPad(
-          p2.x * 0.78,
-          p2.y + 0.22,
-          p2.z * 0.78,
-          1.08,
-          0x420c09,
-          0x991d14,
-          0xc92e1c,
+          p2.x * 0.8,
+          p2.y + 0.2,
+          p2.z * 0.8,
+          1.18,
+          0x594e43,
+          0xb8afa2,
+          mdHex,
           rand,
-           false,
+          false,
         ),
       );
     }
 
-    // 4. Upper crown apex branch & multi-layered top canopy clouds (y = 5.5 m .. 7.6 m).
+    // 3. Slender upper crown apex branch & top canopy clouds (y = 5.4 m .. 7.6 m).
     const crownPts = [
-      new Vector3(0.04, 3.1, -0.03),
-      new Vector3(-0.14, 4.5, 0.09),
-      new Vector3(0.09, 5.85, -0.06),
-      new Vector3(0.0, 6.8, 0.0),
+      new Vector3(0.02, 3.25, -0.02),
+      new Vector3(-0.08, 4.65, 0.05),
+      new Vector3(0.0, 6.55, 0.0),
     ];
-    barkParts.push(buildCurvedBranchSegment(crownPts, [0.21, 0.15, 0.1, 0.045], subSegs, 0x543a28, 0x452e1e));
+    barkParts.push(buildCurvedBranchSegment(crownPts, [0.085, 0.055, 0.025], subSegs, 0x543a28, 0x452e1e));
 
-    const crownPads = highDetail ? 7 : 4;
+    const crownPads = highDetail ? 5 : 3;
     for (let c = 0; c < crownPads; c++) {
-      const ca = (c / crownPads) * Math.PI * 2 + 0.38;
-      const rad = c === 0 ? 0.12 : 0.92 + (c % 2) * 0.62;
-      const cy = 5.85 + (1 - rad / 2.2) * 1.15 + (rand() - 0.5) * 0.2;
+      const ca = (c / crownPads) * Math.PI * 2 + 0.4;
+      const rad = c === 0 ? 0.1 : 0.95 + (c % 2) * 0.52;
+      const cy = 5.8 + (1 - rad / 2.2) * 1.1 + (rand() - 0.5) * 0.18;
       leafParts.push(
         buildMapleCloudPad(
           Math.cos(ca) * rad,
           cy,
           Math.sin(ca) * rad,
-          1.18 + rand() * 0.22,
-          shadowColors[c % shadowColors.length]!,
-          midColors[c % midColors.length]!,
-          brightColors[c % brightColors.length]!,
+          1.25 + rand() * 0.2,
+          shHex,
+          mdHex,
+          c % 2 === 0 ? brHex : warmAccentHex,
           rand,
           highDetail,
         ),
@@ -1168,13 +1116,12 @@ function createAncientRedMapleGeometries(): MapleTreeGeometries {
     const mergedLeaves = mergeGeometries(leafParts, false);
     for (const g of barkParts) g.dispose();
     for (const g of leafParts) g.dispose();
-    if (!mergedBark || !mergedLeaves) throw new Error("merge: ancient red maple");
+    if (!mergedBark || !mergedLeaves) throw new Error("merge: temple maple");
 
-    // Combine into a single 2-group BufferGeometry: group 0 = Bark, group 1 = Maple Foliage.
     const combined = mergeGeometries([mergedBark, mergedLeaves], true);
     mergedBark.dispose();
     mergedLeaves.dispose();
-    if (!combined) throw new Error("merge: ancient red maple combined");
+    if (!combined) throw new Error("merge: temple maple combined");
 
     combined.computeBoundingBox();
     const bbox = combined.boundingBox ?? new Box3();
@@ -1193,34 +1140,46 @@ function createAncientRedMapleGeometries(): MapleTreeGeometries {
   };
 }
 
+interface PlacedTreeItem {
+  x: number;
+  z: number;
+  matrix: Matrix4;
+  colorHex: number;
+}
+
 /**
- * Splits a ring of tree instances into North (z <= BOUNDARY.z) and South (z > BOUNDARY.z) halves
+ * Splits a ring of tree instances (with per-instance foliage colors) into North and South halves
  * so frustum culling skips the half behind the camera while keeping draw calls minimal.
  */
 function buildHemisphereInstancedMeshes(
   namePrefix: string,
   geometry: BufferGeometry,
   material: Material | Material[],
-  items: readonly { x: number; z: number; matrix: Matrix4 }[],
+  items: readonly PlacedTreeItem[],
   receiveShadow: boolean,
 ): InstancedMesh[] {
-  const north: Matrix4[] = [];
-  const south: Matrix4[] = [];
+  const north: PlacedTreeItem[] = [];
+  const south: PlacedTreeItem[] = [];
   for (const item of items) {
-    if (item.z <= BOUNDARY.z) north.push(item.matrix);
-    else south.push(item.matrix);
+    if (item.z <= BOUNDARY.z) north.push(item);
+    else south.push(item);
   }
 
   const meshes: InstancedMesh[] = [];
-  const pairs: readonly [string, Matrix4[]][] = [
+  const tintCol = new Color();
+  const pairs: readonly [string, PlacedTreeItem[]][] = [
     ["north", north],
     ["south", south],
   ];
   for (const [label, list] of pairs) {
     if (list.length === 0) continue;
     const mesh = new InstancedMesh(geometry, material, list.length);
-    list.forEach((mat, i) => mesh.setMatrixAt(i, mat));
+    list.forEach((item, i) => {
+      mesh.setMatrixAt(i, item.matrix);
+      mesh.setColorAt(i, tintCol.setHex(item.colorHex));
+    });
     mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.castShadow = false;
     mesh.receiveShadow = receiveShadow;
     mesh.computeBoundingSphere();
@@ -1396,32 +1355,50 @@ function ringPoint(a: number, s: number): Vec2 {
   return { x: BOUNDARY.x + Math.cos(a) * BOUNDARY.rx * s, z: BOUNDARY.z + Math.sin(a) * BOUNDARY.rz * s };
 }
 
-function generateTierItems(
-  tiers: readonly TierPlacementConfig[],
+/**
+ * Generates strictly brick-staggered tree positions & interleaved foliage colors
+ * so each outer ring's trunks stand directly in the gaps of the inner rings.
+ */
+function generateStaggeredMapleItems(
+  rings: readonly MapleRingSpec[],
   rand: () => number,
-): { x: number; z: number; matrix: Matrix4 }[] {
-  const items: { x: number; z: number; matrix: Matrix4 }[] = [];
-  for (const tier of tiers) {
-    const gap = GATE_GAP_RAD * tier.gateGapFactor;
-    const tierArc = Math.PI * 2 - 2 * gap;
-    for (let k = 0; k < tier.count; k++) {
-      const slot = k + 0.5 + tier.phaseOffset + (rand() - 0.5) * 0.22;
-      const wrappedSlot = ((slot % tier.count) + tier.count) % tier.count;
-      const a = Math.PI / 2 + gap + (wrappedSlot / tier.count) * tierArc;
+  ringIndexOffset = 0,
+): PlacedTreeItem[] {
+  const items: PlacedTreeItem[] = [];
+  const arc = Math.PI * 2 - 2 * GATE_GAP_RAD;
 
-      const radialT = (k % 2) * 0.45 + rand() * 0.55;
-      const r = tier.ring[0] + radialT * (tier.ring[1] - tier.ring[0]);
+  rings.forEach((spec, rIdx) => {
+    const tierNumber = ringIndexOffset + rIdx;
+    for (let k = 0; k < spec.slots; k++) {
+      if (spec.oddSlotsOnly && k % 2 === 0) continue;
+
+      // Tight angular jitter (±0.035 of a slot) keeps the quincunx interlocking alignment exact.
+      const slotPos = k + 0.5 + spec.phaseOffset + (rand() - 0.5) * 0.07;
+      const u = (((slotPos % spec.slots) + spec.slots) % spec.slots) / spec.slots;
+      const a = Math.PI / 2 + GATE_GAP_RAD + u * arc;
+
+      const r = spec.ring[0] + (0.25 + 0.5 * rand()) * (spec.ring[1] - spec.ring[0]);
       const p = ringPoint(a, r);
 
-      const sc = tier.scale[0] + rand() * (tier.scale[1] - tier.scale[0]);
-      const spreadFactor = tier.spread[0] + rand() * (tier.spread[1] - tier.spread[0]);
-      const sx = sc * spreadFactor;
-      const sz = sc * (spreadFactor * (0.94 + rand() * 0.12));
-      const yaw = (k * 1.6180339 + rand() * 0.65) * Math.PI * 2;
+      const sc = spec.scale[0] + rand() * (spec.scale[1] - spec.scale[0]);
+      // Keep horizontal scale close to `sc` so the tree trunk stays slender and never bloats.
+      const sx = sc * (0.98 + rand() * 0.08);
+      const sz = sc * (0.98 + rand() * 0.08);
+      const yaw = (k * 1.6180339 + tierNumber * 0.75 + rand() * 0.35) * Math.PI * 2;
 
-      items.push({ x: p.x, z: p.z, matrix: place(p.x, 0, p.z, yaw, sx, sc, sz).clone() });
+      // Deterministic interleaving of Chartreuse, Maple Red, and Golden-Orange across slots and rings.
+      const paletteIdx = (k + tierNumber * 2) % FOREST_FOLIAGE_PALETTE.length;
+      const colorHex = FOREST_FOLIAGE_PALETTE[paletteIdx] ?? 0xde3c24;
+
+      items.push({
+        x: p.x,
+        z: p.z,
+        matrix: place(p.x, 0, p.z, yaw, sx, sc, sz).clone(),
+        colorHex,
+      });
     }
-  }
+  });
+
   return items;
 }
 
@@ -1533,40 +1510,81 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
     activeWishTree.materialOrArray,
   );
 
-  // Place each Tier 1A `cothu.glb` ancient tree as an individually frustum-culled Mesh.
+  // Place `cothu.glb` on the EVEN slots (`k % 2 === 0`) of Ring 1 so they alternate 1-to-1 with the Maple trees.
   const ancientTreeMeshes: Mesh[] = [];
-  const tier1Items = generateTierItems(ANCIENT_TIERS, rand);
-  for (let i = 0; i < tier1Items.length; i++) {
-    const item = tier1Items[i]!;
+  const arc = Math.PI * 2 - 2 * GATE_GAP_RAD;
+  for (let k = 0; k < PERIMETER_SLOTS; k += 2) {
+    const slotPos = k + 0.5 + (rand() - 0.5) * 0.06;
+    const u = (((slotPos % PERIMETER_SLOTS) + PERIMETER_SLOTS) % PERIMETER_SLOTS) / PERIMETER_SLOTS;
+    const a = Math.PI / 2 + GATE_GAP_RAD + u * arc;
+    const r = 1.03 + rand() * 0.05;
+    const p = ringPoint(a, r);
+    const sc = 1.12 + rand() * 0.25;
+    const sx = sc * (1.06 + rand() * 0.12);
+    const sz = sc * (1.06 + rand() * 0.12);
+    const yaw = (k * 1.6180339 + rand() * 0.35) * Math.PI * 2;
+
     const treeMesh = new Mesh(preparedTree.geometry, preparedTree.materialOrArray);
-    treeMesh.matrix.copy(item.matrix);
-    treeMesh.matrix.decompose(treeMesh.position, treeMesh.quaternion, treeMesh.scale);
+    treeMesh.position.set(p.x, 0, p.z);
+    treeMesh.rotation.y = yaw;
+    treeMesh.scale.set(sx, sc, sz);
     treeMesh.castShadow = false;
     treeMesh.receiveShadow = true;
     treeMesh.frustumCulled = true;
     treeMesh.matrixAutoUpdate = false;
     treeMesh.updateMatrix();
     treeMesh.updateMatrixWorld(true);
-    treeMesh.name = `ancient-tree:${i}`;
+    treeMesh.name = `ancient-tree:${k}`;
     scene.add(treeMesh);
     ancientTreeMeshes.push(treeMesh);
   }
 
-  // 3. Build the procedural 3D Ancient Red Maple Tree (`Cây Lá Đỏ Cổ Thụ`) in High-LOD and Far-LOD.
+  // 3. Build the slender, multi-tone Temple Maple trees (Chartreuse / Maple Red / Golden-Orange).
   const mapleLeafTex = drawMapleClusterTexture(512);
   const mapleBarkMat = own(
     new MeshStandardMaterial({
       map: materials.wood.map,
       normalMap: materials.wood.normalMap,
       roughnessMap: materials.wood.roughnessMap,
-      normalScale: new Vector2(1.4, 1.4),
+      normalScale: new Vector2(1.25, 1.25),
       vertexColors: true,
-      color: new Color(0x9e7c62),
+      color: new Color(0x9c7b60),
       roughness: 0.88,
       metalness: 0.0,
     }),
   );
-  attachWindSwayShader(mapleBarkMat, uTreeTime);
+  // Keep trunk colour warm brown regardless of the per-instance leaf `instanceColor` tint!
+  mapleBarkMat.onBeforeCompile = (shader) => {
+    shader.uniforms["uTime"] = uTreeTime;
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nuniform float uTime;")
+      .replace(
+        "#include <color_vertex>",
+        `#if defined( USE_COLOR_ALPHA )
+          vColor = vec4( 1.0 );
+        #elif defined( USE_COLOR )
+          vColor = vec3( 1.0 );
+        #endif
+        #ifdef USE_COLOR
+          vColor.xyz *= color.xyz;
+        #endif`,
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        #ifdef USE_INSTANCING
+          vec2 treePos = vec2(instanceMatrix[3][0], instanceMatrix[3][2]);
+        #else
+          vec2 treePos = vec2(modelMatrix[3][0], modelMatrix[3][2]);
+        #endif
+        float swayWeight = clamp((transformed.y - 2.2) * 0.25, 0.0, 1.0);
+        float leafPhase = transformed.x * 0.85 + transformed.z * 0.75 + treePos.x * 0.18 + treePos.y * 0.14;
+        float leafSway = swayWeight * (0.042 * sin(uTime * 1.55 + leafPhase) + 0.018 * cos(uTime * 2.7 - leafPhase * 1.2));
+        transformed.x += leafSway;
+        transformed.y += leafSway * 0.2;
+        transformed.z += leafSway * 0.6;`,
+      );
+  };
 
   const mapleFoliageMat = own(
     new MeshStandardMaterial({
@@ -1577,8 +1595,8 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       transparent: false,
       roughness: 0.74,
       metalness: 0.0,
-      emissive: new Color(0x290704),
-      emissiveIntensity: 0.08,
+      emissive: new Color(0x1f1206),
+      emissiveIntensity: 0.06,
       side: DoubleSide,
     }),
   );
@@ -1587,23 +1605,15 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
   const generatedMaple = createAncientRedMapleGeometries();
   const mapleMats: Material[] = [mapleBarkMat, mapleFoliageMat];
 
-  const highMapleItems = generateTierItems(RED_MAPLE_HIGH_TIERS, rand);
-  const farMapleItems = generateTierItems(RED_MAPLE_FAR_TIERS, rand);
+  const highMapleItems = generateStaggeredMapleItems(MAPLE_HIGH_RINGS, rand, 0);
+  const farMapleItems = generateStaggeredMapleItems(MAPLE_FAR_RINGS, rand, MAPLE_HIGH_RINGS.length);
 
   const forest: InstancedMesh[] = [
-    ...buildHemisphereInstancedMeshes("red-maple-high", generatedMaple.highGeo, mapleMats, highMapleItems, true),
-    ...buildHemisphereInstancedMeshes("red-maple-far", generatedMaple.farGeo, mapleMats, farMapleItems, false),
+    ...buildHemisphereInstancedMeshes("temple-maple-high", generatedMaple.highGeo, mapleMats, highMapleItems, true),
+    ...buildHemisphereInstancedMeshes("temple-maple-far", generatedMaple.farGeo, mapleMats, farMapleItems, false),
   ];
 
-  // Subtle per-tree autumn tint variation across the forest.
-  const tintPalette = [0xffffff, 0xffded6, 0xffe8d1, 0xf7cfc6, 0xffd6cc] as const;
-  const tintCol = new Color();
   for (const mesh of forest) {
-    for (let i = 0; i < mesh.count; i++) {
-      const hex = tintPalette[i % tintPalette.length] ?? 0xffffff;
-      mesh.setColorAt(i, tintCol.setHex(hex));
-    }
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     scene.add(mesh);
   }
 
@@ -1626,7 +1636,7 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
           mat.emissiveIntensity = treeEmissive;
         }
       }
-      mapleFoliageMat.emissiveIntensity = 0.05 + 0.07 * daylight;
+      mapleFoliageMat.emissiveIntensity = 0.04 + 0.06 * daylight;
     },
     dispose() {
       for (const g of built) {
