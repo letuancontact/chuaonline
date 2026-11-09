@@ -35,7 +35,7 @@ export const WISH_TREE_POS = {
 
 const MAX_PLAQUES = 36;
 const INITIAL_PLAQUES = 16;
-/** Scale applied to the normalized 7.6 m `cothu1.glb` geometry so it fits the octagonal stone planter. */
+/** Scale applied to the normalized 7.6 m `cothu1.glb` model so it fits the octagonal stone planter. */
 const WISHING_TREE_SCALE = 0.88;
 const WISHING_TREE_BASE_Y = 0.22;
 
@@ -45,21 +45,26 @@ const v3 = new Vector3();
 const s3 = new Vector3();
 const tmpEuler = new Euler();
 
-/** Dedicated `cothu1.glb` geometry & material(s) provided by `createGarden`. */
-let cachedAncientTree: { geometry: BufferGeometry; material: Material | Material[] } | null = null;
-let activeTreeSlot: ((geometry: BufferGeometry, material: Material | Material[]) => void) | null = null;
+/** Dedicated `cothu1.glb` scene object (or fallback geometry) provided by `createGarden`. */
+let cachedAncientTree: {
+  modelOrGeometry: Object3D | BufferGeometry;
+  material?: Material | Material[];
+} | null = null;
+let activeTreeSlot:
+  | ((modelOrGeometry: Object3D | BufferGeometry, material?: Material | Material[]) => void)
+  | null = null;
 
 /**
- * Attaches the normalized `cothu1.glb` geometry and material(s) prepared in `garden.ts`
- * to the Wishing Tree planter.
+ * Attaches the normalized `cothu1.glb` Object3D scene (or fallback BufferGeometry)
+ * prepared in `garden.ts` to the Wishing Tree planter.
  */
 export function attachAncientTreeToWishingTree(
-  geometry: BufferGeometry,
-  material: Material | Material[],
+  modelOrGeometry: Object3D | BufferGeometry,
+  material?: Material | Material[],
 ): void {
-  cachedAncientTree = { geometry, material };
+  cachedAncientTree = { modelOrGeometry, material };
   if (activeTreeSlot) {
-    activeTreeSlot(geometry, material);
+    activeTreeSlot(modelOrGeometry, material);
   }
 }
 
@@ -260,25 +265,33 @@ export function createWishingTree(parent: Object3D): WishingTree {
   planterMesh.updateMatrix();
 
   // Mount for the dedicated `cothu1.glb` model prepared in `garden.ts`.
-  let treeMesh: Mesh | null = null;
-  const mountAncientTree = (geometry: BufferGeometry, material: Material | Material[]): void => {
-    if (treeMesh) {
-      root.remove(treeMesh);
+  let mountedTree: Object3D | null = null;
+  const mountAncientTree = (
+    modelOrGeometry: Object3D | BufferGeometry,
+    material?: Material | Material[],
+  ): void => {
+    if (mountedTree) {
+      root.remove(mountedTree);
     }
-    treeMesh = new Mesh(geometry, material);
-    treeMesh.position.set(0, WISHING_TREE_BASE_Y, 0);
-    treeMesh.scale.setScalar(WISHING_TREE_SCALE);
-    treeMesh.castShadow = true;
-    treeMesh.receiveShadow = true;
-    treeMesh.name = "wishing-tree-ancient-model";
-    treeMesh.matrixAutoUpdate = false;
-    treeMesh.updateMatrix();
-    root.add(treeMesh);
+    if ("isBufferGeometry" in modelOrGeometry && modelOrGeometry.isBufferGeometry) {
+      const mesh = new Mesh(modelOrGeometry, material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.frustumCulled = false;
+      mountedTree = mesh;
+    } else {
+      mountedTree = modelOrGeometry as Object3D;
+    }
+    mountedTree.position.set(0, WISHING_TREE_BASE_Y, 0);
+    mountedTree.scale.setScalar(WISHING_TREE_SCALE);
+    mountedTree.name = "wishing-tree-ancient-model";
+    root.add(mountedTree);
+    root.updateMatrixWorld(true);
   };
 
   activeTreeSlot = mountAncientTree;
   if (cachedAncientTree) {
-    mountAncientTree(cachedAncientTree.geometry, cachedAncientTree.material);
+    mountAncientTree(cachedAncientTree.modelOrGeometry, cachedAncientTree.material);
   }
 
   const lanternGeo = buildTreeLanternsGeometry();
@@ -395,9 +408,9 @@ export function createWishingTree(parent: Object3D): WishingTree {
       if (activeTreeSlot === mountAncientTree) {
         activeTreeSlot = null;
       }
-      if (treeMesh) {
-        root.remove(treeMesh);
-        treeMesh = null;
+      if (mountedTree) {
+        root.remove(mountedTree);
+        mountedTree = null;
       }
       parent.remove(root);
       plaqueMesh.dispose();
