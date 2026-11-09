@@ -12,17 +12,22 @@ import {
   Points,
   PointsMaterial,
   Quaternion,
+  Sphere,
   SRGBColorSpace,
   Vector3,
   type Scene,
 } from "three";
 import { HALL, POND } from "@santinh/shared";
 import { radialTexture } from "../engine/radial-texture.ts";
+import { IS_MOBILE, maxAnisotropy } from "../engine/renderer.ts";
 import { seeded } from "./random.ts";
 
-const FIREFLY_COUNT = 56;
-const LEAF_COUNT = 42;
-const BUTTERFLY_COUNT = 16;
+const FIREFLY_COUNT = IS_MOBILE ? 36 : 56;
+const LEAF_COUNT = IS_MOBILE ? 28 : 42;
+const BUTTERFLY_COUNT = IS_MOBILE ? 12 : 16;
+
+/** Bounding sphere covering the outdoor courtyard, west/east gardens, pond, and gate path. */
+const OUTDOOR_BOUNDS = new Sphere(new Vector3(3, 3, 12), 40);
 
 const m4 = new Matrix4();
 const q = new Quaternion();
@@ -158,6 +163,7 @@ function drawBodhiLeafTexture(size = 256): CanvasTexture {
 
   const tex = new CanvasTexture(c);
   tex.colorSpace = SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy();
   return tex;
 }
 
@@ -272,6 +278,7 @@ function drawButterflyTexture(size = 256): CanvasTexture {
 
   const tex = new CanvasTexture(c);
   tex.colorSpace = SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy();
   return tex;
 }
 
@@ -279,11 +286,9 @@ function drawButterflyTexture(size = 256): CanvasTexture {
 function buildLeafGeometry(): BufferGeometry {
   const g = new BufferGeometry();
   const positions = new Float32Array([
-    // Top-left, Top-center, Top-right
     -0.11, 0.13, -0.012,
     0, 0.13, 0.015,
     0.11, 0.13, -0.012,
-    // Bottom-left, Bottom-center, Bottom-right
     -0.11, -0.13, 0.012,
     0, -0.13, -0.015,
     0.11, -0.13, 0.012,
@@ -316,11 +321,9 @@ function buildButterflyGeometry(): BufferGeometry {
   const w = 0.14;
   const l = 0.13;
   const positions = new Float32Array([
-    // 0: Left front outer, 1: Spine front, 2: Right front outer
     -w, w, l,
     0, 0, l,
     w, w, l,
-    // 3: Left back outer, 4: Spine back, 5: Right back outer
     -w, w, -l,
     0, 0, -l,
     w, w, -l,
@@ -357,6 +360,7 @@ export function createNature(scene: Scene): Nature {
   const fireflyPositions = new Float32Array(FIREFLY_COUNT * 3);
   const fireflyAttr = new Float32BufferAttribute(fireflyPositions, 3);
   fireflyGeo.setAttribute("position", fireflyAttr);
+  fireflyGeo.boundingSphere = OUTDOOR_BOUNDS.clone();
   const fireflies: FireflyData[] = [];
 
   for (let i = 0; i < FIREFLY_COUNT; i++) {
@@ -390,7 +394,9 @@ export function createNature(scene: Scene): Nature {
   });
   const fireflyPoints = new Points(fireflyGeo, fireflyMat);
   fireflyPoints.name = "nature-fireflies";
-  fireflyPoints.frustumCulled = false;
+  fireflyPoints.frustumCulled = true;
+  fireflyPoints.matrixAutoUpdate = false;
+  fireflyPoints.updateMatrix();
   scene.add(fireflyPoints);
 
   // 2. Daytime falling golden Bodhi leaves in the temple courtyard (1 InstancedMesh draw call).
@@ -398,15 +404,18 @@ export function createNature(scene: Scene): Nature {
   const leafTex = drawBodhiLeafTexture();
   const leafMat = new MeshStandardMaterial({
     map: leafTex,
-    alphaTest: 0.15,
-    transparent: true,
+    alphaTest: 0.2,
+    transparent: false,
     roughness: 0.68,
     metalness: 0.04,
     side: DoubleSide,
   });
   const leafMesh = new InstancedMesh(leafGeo, leafMat, LEAF_COUNT);
   leafMesh.name = "nature-leaves";
-  leafMesh.frustumCulled = false;
+  leafMesh.boundingSphere = OUTDOOR_BOUNDS.clone();
+  leafMesh.frustumCulled = true;
+  leafMesh.matrixAutoUpdate = false;
+  leafMesh.updateMatrix();
   const leaves: LeafData[] = [];
 
   for (let i = 0; i < LEAF_COUNT; i++) {
@@ -432,8 +441,8 @@ export function createNature(scene: Scene): Nature {
   const bflyTex = drawButterflyTexture();
   const bflyMat = new MeshStandardMaterial({
     map: bflyTex,
-    alphaTest: 0.15,
-    transparent: true,
+    alphaTest: 0.2,
+    transparent: false,
     roughness: 0.5,
     metalness: 0.05,
     emissive: new Color(0x281904),
@@ -441,7 +450,10 @@ export function createNature(scene: Scene): Nature {
   });
   const bflyMesh = new InstancedMesh(bflyGeo, bflyMat, BUTTERFLY_COUNT);
   bflyMesh.name = "nature-butterflies";
-  bflyMesh.frustumCulled = false;
+  bflyMesh.boundingSphere = OUTDOOR_BOUNDS.clone();
+  bflyMesh.frustumCulled = true;
+  bflyMesh.matrixAutoUpdate = false;
+  bflyMesh.updateMatrix();
   const butterflies: ButterflyData[] = [];
 
   for (let i = 0; i < BUTTERFLY_COUNT; i++) {
@@ -528,7 +540,6 @@ export function createNature(scene: Scene): Nature {
           const yaw = Math.atan2(dx, dz);
           const pitch = Math.cos(t * b.frequency + b.phase) * 0.16;
 
-          // True 3D wing hinge rotation from -28° (downstroke) to +58° (upstroke).
           const flapAngle = 0.26 + Math.sin(t * 17 + b.phase * 3) * 0.75;
           const wingX = Math.cos(flapAngle);
           const wingY = Math.sin(flapAngle);
