@@ -52,17 +52,9 @@ const LOOP_Y = 0.02;
 const ANCIENT_BASE_HEIGHT = 7.6;
 
 /**
- * Clean, distortion-free triangle budgets per tree (tuned for mobile phones & integrated GPUs):
- * - Perimeter forest trees (64 instances at 48–98 m distance): 1,600 tris on Mobile, 2,400 on PC.
- * - Wishing Bodhi Tree (1 hero landmark outside the gate): 7,500 tris on Mobile, 12,000 on PC.
- */
-const FOREST_TREE_TARGET_TRIS = IS_MOBILE ? 1600 : 2400;
-const HERO_TREE_TARGET_TRIS = IS_MOBILE ? 7500 : 12000;
-
-/**
- * 4-tier brick-staggered configuration for ancient trees (`models/cothu.glb`).
- * Each outer tier uses a locked phase offset (0.0 -> 0.5 -> 0.25 -> 0.75) with tight angular jitter
- * so all 4 tiers interlock without gaps while maintaining 60 FPS performance.
+ * Single inner courtyard ring of 100% full-detail ancient trees (`models/cothu.glb`).
+ * Removing the 3 outer redundant rings (which were hidden behind Tier 1) and frustum-culling each tree
+ * individually means only 2–3 full-detail trees are drawn in view at any moment!
  */
 interface AncientTierConfig {
   readonly count: number;
@@ -74,48 +66,20 @@ interface AncientTierConfig {
 }
 
 const ANCIENT_TIERS: readonly AncientTierConfig[] = [
-  // Tier 1: Courtyard perimeter ring framing the temple grounds
   {
-    count: 14,
-    ring: [1.03, 1.12],
-    scale: [1.05, 1.35],
-    spread: [1.1, 1.25],
+    count: IS_MOBILE ? 8 : 12,
+    ring: [1.04, 1.15],
+    scale: [1.15, 1.45],
+    spread: [1.14, 1.3],
     phaseOffset: 0.0,
     gateGapFactor: 1.0,
   },
-  // Tier 2: Half-step staggered ring directly filling spaces between Tier 1 trees
-  {
-    count: 16,
-    ring: [1.15, 1.34],
-    scale: [1.2, 1.55],
-    spread: [1.15, 1.32],
-    phaseOffset: 0.5,
-    gateGapFactor: 0.82,
-  },
-  // Tier 3: Quarter-step staggered mid-woodland canopy layer
-  {
-    count: 16,
-    ring: [1.36, 1.66],
-    scale: [1.38, 1.78],
-    spread: [1.2, 1.38],
-    phaseOffset: 0.25,
-    gateGapFactor: 0.62,
-  },
-  // Tier 4: Three-quarter staggered deep ancient forest wall eliminating horizon gaps
-  {
-    count: 18,
-    ring: [1.68, 2.1],
-    scale: [1.55, 2.05],
-    spread: [1.24, 1.44],
-    phaseOffset: 0.75,
-    gateGapFactor: 0.42,
-  },
 ];
 
-/** Deep-toned broad-canopy trees beyond Tier 4: overlaps radially at 2.02 so no seam appears. */
-const FAR_TREE_COUNT = IS_MOBILE ? 140 : 180;
-const FAR_RING = [2.02, 2.95] as const;
-const FAR_HEIGHT = [12, 22] as const;
+/** Lightweight procedural woodland canopy trees filling the outer rings behind the inner ancient trees. */
+const FAR_TREE_COUNT = IS_MOBILE ? 120 : 160;
+const FAR_RING = [1.22, 2.75] as const;
+const FAR_HEIGHT = [11, 21] as const;
 /** Gate sector (around +z) stays open so the gate reads against the sky. */
 const GATE_GAP_RAD = 0.26;
 
@@ -166,8 +130,9 @@ type Object3DLike = {
 };
 
 /**
- * Extracts ONLY the referenced vertices for a sub-mesh or geometry material group (`indexStart..indexCount`).
- * Prevents vertex buffer duplication when a multi-material GLB mesh has multiple primitive groups.
+ * Extracts a normalized BufferGeometry slice for a sub-mesh or geometry material group.
+ * Preserves 100% of original triangles, `position`, `normal`, `uv`, and vertex `color` (`COLOR_0`),
+ * while compacting only the vertices referenced by `indexStart..indexCount`.
  */
 function extractSingleGroupGeometry(
   src: BufferGeometry,
@@ -186,6 +151,70 @@ function extractSingleGroupGeometry(
   if (count <= 0) return null;
 
   const vCount = posAttr.count;
+  const isFullMesh = start === 0 && count === totalIndices;
+
+  // Fast path when extracting the entire mesh: copy all vertices directly.
+  if (isFullMesh) {
+    const g = new BufferGeometry();
+    const posArr = new Float32Array(vCount * 3);
+    for (let i = 0; i < vCount; i++) {
+      posArr[i * 3] = posAttr.getX(i);
+      posArr[i * 3 + 1] = posAttr.getY(i);
+      posArr[i * 3 + 2] = posAttr.getZ(i);
+    }
+    g.setAttribute("position", new Float32BufferAttribute(posArr, 3));
+
+    const uvAttr = src.getAttribute("uv");
+    const uvArr = new Float32Array(vCount * 2);
+    if (uvAttr) {
+      for (let i = 0; i < vCount; i++) {
+        uvArr[i * 2] = uvAttr.getX(i);
+        uvArr[i * 2 + 1] = uvAttr.getY(i);
+      }
+    }
+    g.setAttribute("uv", new Float32BufferAttribute(uvArr, 2));
+
+    const colAttr = src.getAttribute("color");
+    const colArr = new Float32Array(vCount * 3);
+    if (colAttr) {
+      const tmpCol = new Color();
+      for (let i = 0; i < vCount; i++) {
+        tmpCol.fromBufferAttribute(colAttr, i);
+        colArr[i * 3] = tmpCol.r;
+        colArr[i * 3 + 1] = tmpCol.g;
+        colArr[i * 3 + 2] = tmpCol.b;
+      }
+    } else {
+      colArr.fill(1);
+    }
+    g.setAttribute("color", new Float32BufferAttribute(colArr, 3));
+
+    const idxArr = new Uint32Array(count);
+    if (srcIndex) {
+      for (let i = 0; i < count; i++) idxArr[i] = srcIndex.getX(i);
+    } else {
+      for (let i = 0; i < count; i++) idxArr[i] = i;
+    }
+    g.setIndex(new BufferAttribute(idxArr, 1));
+
+    const normAttr = src.getAttribute("normal");
+    if (normAttr) {
+      const normArr = new Float32Array(vCount * 3);
+      for (let i = 0; i < vCount; i++) {
+        normArr[i * 3] = normAttr.getX(i);
+        normArr[i * 3 + 1] = normAttr.getY(i);
+        normArr[i * 3 + 2] = normAttr.getZ(i);
+      }
+      g.setAttribute("normal", new Float32BufferAttribute(normArr, 3));
+    } else {
+      g.computeVertexNormals();
+    }
+
+    g.applyMatrix4(worldMatrix);
+    return g;
+  }
+
+  // Sub-group path: compact only the vertices used by this primitive group.
   const remap = new Int32Array(vCount).fill(-1);
   const usedVertices: number[] = [];
   const idxArr = new Uint32Array(count);
@@ -205,7 +234,6 @@ function extractSingleGroupGeometry(
   if (outVCount === 0) return null;
 
   const g = new BufferGeometry();
-
   const posArr = new Float32Array(outVCount * 3);
   for (let i = 0; i < outVCount; i++) {
     const srcIdx = usedVertices[i]!;
@@ -262,135 +290,6 @@ function extractSingleGroupGeometry(
   return g;
 }
 
-/**
- * Distortion-free triangle reducer for `cothu.glb` / `cothu1.glb`:
- * NEVER welds or mutates vertex positions/UVs/normals (preventing any purple spikes or stretched UVs).
- * Keeps the largest structural triangles (trunk, roots, main boughs) + a uniform stride of complete leaf quads.
- */
-function decimateTreeGeometryClean(src: BufferGeometry, targetTris: number): BufferGeometry {
-  const idxAttr = src.index;
-  const posAttr = src.getAttribute("position");
-  if (!posAttr) return src;
-  const totalIndices = idxAttr ? idxAttr.count : posAttr.count;
-  const triCount = Math.floor(totalIndices / 3);
-  if (triCount <= targetTris || targetTris <= 0) return src;
-
-  const areas = new Float32Array(triCount);
-  const order = new Uint32Array(triCount);
-
-  for (let t = 0; t < triCount; t++) {
-    order[t] = t;
-    const i0 = idxAttr ? idxAttr.getX(t * 3) : t * 3;
-    const i1 = idxAttr ? idxAttr.getX(t * 3 + 1) : t * 3 + 1;
-    const i2 = idxAttr ? idxAttr.getX(t * 3 + 2) : t * 3 + 2;
-
-    const ax = posAttr.getX(i0), ay = posAttr.getY(i0), az = posAttr.getZ(i0);
-    const bx = posAttr.getX(i1), by = posAttr.getY(i1), bz = posAttr.getZ(i1);
-    const cx = posAttr.getX(i2), cy = posAttr.getY(i2), cz = posAttr.getZ(i2);
-
-    const abx = bx - ax, aby = by - ay, abz = bz - az;
-    const acx = cx - ax, acy = cy - ay, acz = cz - az;
-    const nx = aby * acz - abz * acy;
-    const ny = abz * acx - abx * acz;
-    const nz = abx * acy - aby * acx;
-    areas[t] = nx * nx + ny * ny + nz * nz;
-  }
-
-  // Sort triangles by area descending: the top 65% of the budget goes to the largest structural triangles
-  // (trunk, roots, primary branches, and large canopy planes), and the remaining 35% samples evenly across the rest.
-  order.sort((a, b) => areas[b]! - areas[a]!);
-
-  const keepCount = Math.min(triCount, targetTris);
-  const largeBudget = Math.floor(keepCount * 0.68);
-  const sampleBudget = keepCount - largeBudget;
-
-  const chosen = new Uint8Array(triCount);
-  for (let i = 0; i < largeBudget; i++) {
-    chosen[order[i]!] = 1;
-  }
-
-  if (sampleBudget > 0 && triCount > largeBudget) {
-    const remaining = triCount - largeBudget;
-    const step = remaining / sampleBudget;
-    for (let s = 0; s < sampleBudget; s++) {
-      const idx = largeBudget + Math.min(remaining - 1, Math.floor(s * step));
-      chosen[order[idx]!] = 1;
-    }
-  }
-
-  const vCount = posAttr.count;
-  const remap = new Int32Array(vCount).fill(-1);
-  const keptVerts: number[] = [];
-  const outIndices = new Uint32Array(keepCount * 3);
-  let outIdxPtr = 0;
-
-  // Emit kept triangles in original index order so GPU vertex cache locality is preserved.
-  for (let t = 0; t < triCount; t++) {
-    if (!chosen[t]) continue;
-    for (let k = 0; k < 3; k++) {
-      const origV = idxAttr ? idxAttr.getX(t * 3 + k) : t * 3 + k;
-      let mapped = remap[origV]!;
-      if (mapped === -1) {
-        mapped = keptVerts.length;
-        remap[origV] = mapped;
-        keptVerts.push(origV);
-      }
-      outIndices[outIdxPtr++] = mapped;
-    }
-  }
-
-  const outVCount = keptVerts.length;
-  const uvAttr = src.getAttribute("uv");
-  const colAttr = src.getAttribute("color");
-  const normAttr = src.getAttribute("normal");
-
-  const outPos = new Float32Array(outVCount * 3);
-  const outUv = new Float32Array(outVCount * 2);
-  const outCol = new Float32Array(outVCount * 3);
-  const outNorm = new Float32Array(outVCount * 3);
-  const tmpCol = new Color();
-
-  for (let i = 0; i < outVCount; i++) {
-    const sIdx = keptVerts[i]!;
-    outPos[i * 3] = posAttr.getX(sIdx);
-    outPos[i * 3 + 1] = posAttr.getY(sIdx);
-    outPos[i * 3 + 2] = posAttr.getZ(sIdx);
-    if (uvAttr) {
-      outUv[i * 2] = uvAttr.getX(sIdx);
-      outUv[i * 2 + 1] = uvAttr.getY(sIdx);
-    }
-    if (colAttr) {
-      tmpCol.fromBufferAttribute(colAttr, sIdx);
-      outCol[i * 3] = tmpCol.r;
-      outCol[i * 3 + 1] = tmpCol.g;
-      outCol[i * 3 + 2] = tmpCol.b;
-    } else {
-      outCol[i * 3] = 1;
-      outCol[i * 3 + 1] = 1;
-      outCol[i * 3 + 2] = 1;
-    }
-    if (normAttr) {
-      outNorm[i * 3] = normAttr.getX(sIdx);
-      outNorm[i * 3 + 1] = normAttr.getY(sIdx);
-      outNorm[i * 3 + 2] = normAttr.getZ(sIdx);
-    }
-  }
-
-  const out = new BufferGeometry();
-  out.setAttribute("position", new Float32BufferAttribute(outPos, 3));
-  out.setAttribute("uv", new Float32BufferAttribute(outUv, 2));
-  out.setAttribute("color", new Float32BufferAttribute(outCol, 3));
-  out.setIndex(new BufferAttribute(outIndices.subarray(0, outIdxPtr), 1));
-  if (normAttr) {
-    out.setAttribute("normal", new Float32BufferAttribute(outNorm, 3));
-  } else {
-    out.computeVertexNormals();
-  }
-
-  src.dispose();
-  return out;
-}
-
 function attachWindSwayShader(material: MeshStandardMaterial, uTime: { value: number }): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms["uTime"] = uTime;
@@ -415,16 +314,15 @@ function attachWindSwayShader(material: MeshStandardMaterial, uTime: { value: nu
 }
 
 /**
- * Extracts all sub-meshes and multi-material primitive groups from `cothu.glb` / `cothu1.glb`,
- * preserving each part's exact original material transparency/color, baseColor/emissive texture,
- * and vertex colors while reducing triangle count cleanly without any UV or vertex distortion.
+ * Extracts all sub-meshes and multi-material primitive groups from `cothu.glb` / `cothu1.glb`
+ * with 100% original geometry, textures, and vertex colors intact (no polygon stripping).
  */
 function prepareAncientTreeModel(
   root: Object3DLike,
   uTime: { value: number },
-  targetTotalTris: number,
 ): PreparedAncientTree {
-  const rawParts: { geom: BufferGeometry; mat: MeshStandardMaterial; tris: number }[] = [];
+  const parts: BufferGeometry[] = [];
+  const materials: MeshStandardMaterial[] = [];
   const textures: Texture[] = [];
   const sourceGeoms = new Set<BufferGeometry>();
   const sourceMats = new Set<Material>();
@@ -479,8 +377,6 @@ function prepareAncientTreeModel(
     return partMat;
   };
 
-  let totalRawTris = 0;
-
   root.updateMatrixWorld(true);
   root.traverse((node) => {
     if (!(node instanceof Mesh)) return;
@@ -496,11 +392,8 @@ function prepareAncientTreeModel(
         if (rawMat) sourceMats.add(rawMat);
         const cleanGeom = extractSingleGroupGeometry(srcGeom, node.matrixWorld, grp.start, grp.count);
         if (cleanGeom) {
-          const idx = cleanGeom.index;
-          const pos = cleanGeom.getAttribute("position");
-          const tris = Math.floor((idx ? idx.count : pos.count) / 3);
-          totalRawTris += tris;
-          rawParts.push({ geom: cleanGeom, mat: buildPartMaterial(rawMat, hasVertexColors), tris });
+          parts.push(cleanGeom);
+          materials.push(buildPartMaterial(rawMat, hasVertexColors));
         }
       }
     } else {
@@ -514,11 +407,8 @@ function prepareAncientTreeModel(
       }
       const cleanGeom = extractSingleGroupGeometry(srcGeom, node.matrixWorld);
       if (cleanGeom) {
-        const idx = cleanGeom.index;
-        const pos = cleanGeom.getAttribute("position");
-        const tris = Math.floor((idx ? idx.count : pos.count) / 3);
-        totalRawTris += tris;
-        rawParts.push({ geom: cleanGeom, mat: buildPartMaterial(rawMat, hasVertexColors), tris });
+        parts.push(cleanGeom);
+        materials.push(buildPartMaterial(rawMat, hasVertexColors));
       }
     }
   });
@@ -526,19 +416,8 @@ function prepareAncientTreeModel(
   for (const m of sourceMats) m.dispose();
   for (const g of sourceGeoms) g.dispose();
 
-  if (rawParts.length === 0) {
+  if (parts.length === 0) {
     throw new Error("cothu.glb: no mesh geometry found");
-  }
-
-  const parts: BufferGeometry[] = [];
-  const materials: MeshStandardMaterial[] = [];
-
-  for (const entry of rawParts) {
-    const share = totalRawTris > 0 ? entry.tris / totalRawTris : 1;
-    const partTarget = Math.max(250, Math.round(targetTotalTris * share));
-    const decimated = decimateTreeGeometryClean(entry.geom, partTarget);
-    parts.push(decimated);
-    materials.push(entry.mat);
   }
 
   // Merge with `useGroups = true` so every sub-mesh retains its own material (bark, branches, leaves).
@@ -570,11 +449,11 @@ function prepareAncientTreeModel(
 /** Distant broad-canopy tree (unit height) for the outer forest ring. */
 function createFarCanopyTreeGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
-  const trunk = colorGeo(new CylinderGeometry(0.042, 0.072, 0.38, 5).translate(0, 0.19, 0), 0x2b1d12);
-  const subShade = colorGeo(new SphereGeometry(0.38, 6, 4).scale(1.32, 0.52, 1.32).translate(0, 0.44, 0), 0x102413);
-  const lowL = colorGeo(new SphereGeometry(0.36, 6, 4).scale(1.25, 0.58, 1.25).translate(-0.12, 0.54, 0.07), 0x152e19);
-  const lowR = colorGeo(new SphereGeometry(0.36, 6, 4).scale(1.28, 0.6, 1.28).translate(0.12, 0.6, -0.06), 0x1a381f);
-  const top = colorGeo(new SphereGeometry(0.34, 6, 4).scale(1.2, 0.62, 1.2).translate(0, 0.75, 0), 0x214226);
+  const trunk = colorGeo(new CylinderGeometry(0.045, 0.078, 0.4, 6).translate(0, 0.2, 0), 0x2b1d12);
+  const subShade = colorGeo(new SphereGeometry(0.38, 8, 6).scale(1.32, 0.52, 1.32).translate(0, 0.44, 0), 0x102413);
+  const lowL = colorGeo(new SphereGeometry(0.36, 8, 6).scale(1.25, 0.58, 1.25).translate(-0.12, 0.54, 0.07), 0x152e19);
+  const lowR = colorGeo(new SphereGeometry(0.36, 8, 6).scale(1.28, 0.6, 1.28).translate(0.12, 0.6, -0.06), 0x1a381f);
+  const top = colorGeo(new SphereGeometry(0.34, 8, 6).scale(1.2, 0.62, 1.2).translate(0, 0.75, 0), 0x214226);
   parts.push(trunk, subShade, lowL, lowR, top);
   const merged = mergeGeometries(parts);
   for (const g of parts) g.dispose();
@@ -582,50 +461,7 @@ function createFarCanopyTreeGeometry(): BufferGeometry {
   return merged;
 }
 
-/**
- * Splits a ring of tree instances into North (z <= BOUNDARY.z) and South (z > BOUNDARY.z) halves
- * so frustum culling skips the half behind the camera while keeping draw calls minimal.
- */
-function buildHemisphereInstancedMeshes(
-  namePrefix: string,
-  geometry: BufferGeometry,
-  material: Material | Material[],
-  items: readonly { x: number; z: number; matrix: Matrix4 }[],
-  receiveShadow: boolean,
-): InstancedMesh[] {
-  const north: Matrix4[] = [];
-  const south: Matrix4[] = [];
-  for (const item of items) {
-    if (item.z <= BOUNDARY.z) north.push(item.matrix);
-    else south.push(item.matrix);
-  }
-
-  const meshes: InstancedMesh[] = [];
-  const pairs: readonly [string, Matrix4[]][] = [
-    ["north", north],
-    ["south", south],
-  ];
-  for (const [label, list] of pairs) {
-    if (list.length === 0) continue;
-    const mesh = new InstancedMesh(geometry, material, list.length);
-    list.forEach((mat, i) => mesh.setMatrixAt(i, mat));
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.castShadow = false;
-    mesh.receiveShadow = receiveShadow;
-    mesh.computeBoundingSphere();
-    if (mesh.boundingSphere) {
-      mesh.boundingSphere.radius += 2.5;
-    }
-    mesh.frustumCulled = true;
-    mesh.matrixAutoUpdate = false;
-    mesh.updateMatrix();
-    mesh.name = `${namePrefix}:${label}`;
-    meshes.push(mesh);
-  }
-  return meshes;
-}
-
-/** Two columns of irregular flagstones along the stone path (castShadow = false: flat 5cm ground slabs). */
+/** Two columns of irregular flagstones along the stone path. */
 function addPath(batch: GeometryBatch<Key>, rand: () => number): void {
   const half = PATH.width / 2;
   const gap = 0.06;
@@ -870,16 +706,16 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
     built.push(group);
   }
 
-  // 1. Prepare `models/cothu.glb` preserving exact original vertex UVs/colors/materials without spikes.
+  // 1. Prepare `models/cothu.glb` with 100% original geometry, textures, and materials intact.
   const uTreeTime = { value: 0 };
-  const preparedTree = prepareAncientTreeModel(cothuGltf.scene, uTreeTime, FOREST_TREE_TARGET_TRIS);
+  const preparedTree = prepareAncientTreeModel(cothuGltf.scene, uTreeTime);
   for (const mat of preparedTree.materials) own(mat);
 
-  // 2. Prepare `models/cothu1.glb` specifically for the Wishing Tree outside the gate.
+  // 2. Prepare `models/cothu1.glb` with 100% original geometry for the Wishing Tree outside the gate.
   let preparedWishTree: PreparedAncientTree | null = null;
   if (wishTreeGltf) {
     try {
-      preparedWishTree = prepareAncientTreeModel(wishTreeGltf.scene, uTreeTime, HERO_TREE_TARGET_TRIS);
+      preparedWishTree = prepareAncientTreeModel(wishTreeGltf.scene, uTreeTime);
       for (const mat of preparedWishTree.materials) own(mat);
     } catch (err) {
       console.warn("[garden] Fallback to models/cothu.glb for Wishing Tree:", err);
@@ -889,15 +725,17 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
   const activeWishTree = preparedWishTree ?? preparedTree;
   attachAncientTreeToWishingTree(
     activeWishTree.geometry,
-    activeWishTree.materialOrArray as unknown as MeshStandardMaterial,
+    activeWishTree.materialOrArray,
   );
 
-  const ancientItems: { x: number; z: number; matrix: Matrix4 }[] = [];
+  // Place each of the inner-ring ancient trees as an individually frustum-culled Mesh sharing `preparedTree.geometry`.
+  // Only the 2–3 trees currently inside the camera's field of view are rendered each frame!
+  const ancientTreeMeshes: Mesh[] = [];
   for (const tier of ANCIENT_TIERS) {
     const gap = GATE_GAP_RAD * tier.gateGapFactor;
     const tierArc = Math.PI * 2 - 2 * gap;
     for (let k = 0; k < tier.count; k++) {
-      const slot = k + 0.5 + tier.phaseOffset + (rand() - 0.5) * 0.22;
+      const slot = k + 0.5 + tier.phaseOffset + (rand() - 0.5) * 0.18;
       const wrappedSlot = ((slot % tier.count) + tier.count) % tier.count;
       const a = Math.PI / 2 + gap + (wrappedSlot / tier.count) * tierArc;
 
@@ -911,11 +749,23 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       const sz = sc * (spreadFactor * (0.94 + rand() * 0.12));
       const yaw = (k * 1.6180339 + rand() * 0.65) * Math.PI * 2;
 
-      ancientItems.push({ x: p.x, z: p.z, matrix: place(p.x, 0, p.z, yaw, sx, sc, sz).clone() });
+      const treeMesh = new Mesh(preparedTree.geometry, preparedTree.materialOrArray);
+      treeMesh.position.set(p.x, 0, p.z);
+      treeMesh.rotation.y = yaw;
+      treeMesh.scale.set(sx, sc, sz);
+      treeMesh.castShadow = false;
+      treeMesh.receiveShadow = true;
+      treeMesh.frustumCulled = true;
+      treeMesh.matrixAutoUpdate = false;
+      treeMesh.updateMatrix();
+      treeMesh.updateMatrixWorld(true);
+      treeMesh.name = `ancient-tree:${k}`;
+      scene.add(treeMesh);
+      ancientTreeMeshes.push(treeMesh);
     }
   }
 
-  // Distant broad-canopy forest ring beyond Tier 4 with darkened, non-glowing PBR foliage.
+  // Distant broad-canopy forest ring behind the inner ancient trees (ultra-lightweight ~140 tris/tree).
   const farGeo = createFarCanopyTreeGeometry();
   const farMat = own(
     new MeshStandardMaterial({
@@ -925,8 +775,8 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       metalness: 0.0,
     }),
   );
-  const farItems: { x: number; z: number; matrix: Matrix4 }[] = [];
-  const farGap = GATE_GAP_RAD * 0.3;
+  const far = new InstancedMesh(farGeo, farMat, FAR_TREE_COUNT);
+  const farGap = GATE_GAP_RAD * 0.35;
   const farArc = Math.PI * 2 - 2 * farGap;
   for (let i = 0; i < FAR_TREE_COUNT; i++) {
     const slot = i + (i % 3) * 0.33 + (rand() - 0.5) * 0.28;
@@ -934,16 +784,15 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
     const p = ringPoint(a, FAR_RING[0] + rand() * (FAR_RING[1] - FAR_RING[0]));
     const h = FAR_HEIGHT[0] + rand() * (FAR_HEIGHT[1] - FAR_HEIGHT[0]);
     const w = h * (1.05 + rand() * 0.38);
-    farItems.push({ x: p.x, z: p.z, matrix: place(p.x, 0, p.z, rand() * Math.PI * 2, w, h, w).clone() });
+    far.setMatrixAt(i, place(p.x, 0, p.z, rand() * Math.PI * 2, w, h, w));
   }
-
-  const forest: InstancedMesh[] = [
-    ...buildHemisphereInstancedMeshes("ancient-trees", preparedTree.geometry, preparedTree.materialOrArray, ancientItems, false),
-    ...buildHemisphereInstancedMeshes("far-trees", farGeo, farMat, farItems, false),
-  ];
-  for (const o of forest) {
-    scene.add(o);
-  }
+  far.instanceMatrix.needsUpdate = true;
+  far.frustumCulled = false;
+  far.computeBoundingSphere();
+  far.matrixAutoUpdate = false;
+  far.updateMatrix();
+  far.name = "far-trees";
+  scene.add(far);
 
   registerCameraPreset("gate", { position: [0, 2.4, 36], target: [0, 2.6, 46] });
   registerCameraPreset("overview", { position: [0, 75, 100], target: [0, 0, 10] });
@@ -970,10 +819,11 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
         g.removeFromParent();
         disposeGroupGeometry(g);
       }
-      for (const o of forest) {
-        scene.remove(o);
-        o.dispose();
+      for (const m of ancientTreeMeshes) {
+        scene.remove(m);
       }
+      scene.remove(far);
+      far.dispose();
       preparedTree.geometry.dispose();
       for (const tex of preparedTree.textures) tex.dispose();
       if (preparedWishTree) {
