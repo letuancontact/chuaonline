@@ -10,6 +10,7 @@ import {
   MeshStandardMaterial,
   Quaternion,
   RingGeometry,
+  Sphere,
   SphereGeometry,
   Vector3,
   type BufferGeometry,
@@ -40,13 +41,23 @@ const s3 = new Vector3();
 const Y = new Vector3(0, 1, 0);
 const tmpEuler = new Euler();
 
+function fillVertexColors(g: BufferGeometry, hex: number): void {
+  const c = new Color(hex);
+  const n = g.getAttribute("position").count;
+  const arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    arr[i * 3] = c.r;
+    arr[i * 3 + 1] = c.g;
+    arr[i * 3 + 2] = c.b;
+  }
+  g.setAttribute("color", new Float32BufferAttribute(arr, 3));
+}
+
 /** One lotus: two rings of petals (squashed spheres) around a yellow seed head, coloured per vertex. */
 function flowerGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
   const add = (g: BufferGeometry, color: number): void => {
-    const c = new Color(color);
-    const n = g.getAttribute("position").count;
-    g.setAttribute("color", new Float32BufferAttribute(Array.from({ length: n * 3 }, (_, i) => [c.r, c.g, c.b][i % 3] ?? 1), 3));
+    fillVertexColors(g, color);
     parts.push(g);
   };
   const ring = (count: number, len: number, tilt: number, color: number, phase: number): void => {
@@ -75,9 +86,7 @@ function flowerGeometry(): BufferGeometry {
 function lanternGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
   const add = (g: BufferGeometry, color: number): void => {
-    const c = new Color(color);
-    const n = g.getAttribute("position").count;
-    g.setAttribute("color", new Float32BufferAttribute(Array.from({ length: n * 3 }, (_, i) => [c.r, c.g, c.b][i % 3] ?? 1), 3));
+    fillVertexColors(g, color);
     parts.push(g);
   };
   const base = new SphereGeometry(0.14, 12, 6);
@@ -115,9 +124,7 @@ function lanternGeometry(): BufferGeometry {
 function koiGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
   const add = (g: BufferGeometry, color: number): void => {
-    const c = new Color(color);
-    const n = g.getAttribute("position").count;
-    g.setAttribute("color", new Float32BufferAttribute(Array.from({ length: n * 3 }, (_, i) => [c.r, c.g, c.b][i % 3] ?? 1), 3));
+    fillVertexColors(g, color);
     parts.push(g);
   };
 
@@ -196,9 +203,9 @@ function koiGeometry(): BufferGeometry {
 
 /** Concentric double water-ripple ring on the pond surface. */
 function rippleGeometry(): BufferGeometry {
-  const outer = new RingGeometry(0.88, 1.0, 32, 1);
+  const outer = new RingGeometry(0.88, 1.0, 28, 1);
   outer.rotateX(-Math.PI / 2);
-  const inner = new RingGeometry(0.48, 0.56, 28, 1);
+  const inner = new RingGeometry(0.48, 0.56, 24, 1);
   inner.rotateX(-Math.PI / 2);
   const merged = mergeGeometries([outer, inner]);
   outer.dispose();
@@ -236,12 +243,12 @@ interface RippleState {
 }
 
 const KOI_TINTS = [
-  0xffffff, // Pure white & vermilion-red Kohaku
-  0xffe27a, // Golden Yamabuki / Hariwake
-  0xffb870, // Warm tangerine-orange Orenji
-  0xfff5d6, // Platinum-ivory Kohaku
-  0xffcf6e, // Bright amber-gold
-  0xff9e66, // Coral-red Kohaku
+  0xffffff,
+  0xffe27a,
+  0xffb870,
+  0xfff5d6,
+  0xffcf6e,
+  0xff9e66,
 ] as const;
 
 export interface Pond {
@@ -254,10 +261,10 @@ export interface Pond {
 export function createPond(group: Group, materials: Materials, sky: Color): Pond {
   const rand = seeded(0x90d);
   const uniforms = { uTime: { value: 0 }, uSky: { value: sky }, uNight: { value: 0 } };
+  const pondBounds = new Sphere(new Vector3(POND.x, WATER_Y, POND.z), Math.max(POND.rx, POND.rz) * 1.15);
 
-  const waterGeo = new CircleGeometry(1, 72);
+  const waterGeo = new CircleGeometry(1, 64);
   waterGeo.rotateX(-Math.PI / 2);
-  // Deep, natural ocean-blue water with calm marine depth (not overly bright under sunlight)
   const waterMat = new MeshStandardMaterial({
     color: 0x063452,
     emissive: new Color(0x031d30),
@@ -314,7 +321,7 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
   water.receiveShadow = true;
   water.name = "pond-water";
 
-  const bankGeo = new RingGeometry(0.98, BANK_OUTER, 72, 1);
+  const bankGeo = new RingGeometry(0.98, BANK_OUTER, 64, 1);
   bankGeo.rotateX(-Math.PI / 2);
   const bankMat = new MeshStandardMaterial({
     map: materials.stone.map,
@@ -331,7 +338,7 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
   bank.receiveShadow = true;
   bank.name = "pond-bank";
 
-  const leafGeo = new CircleGeometry(1, 20, 0.25, Math.PI * 2 - 0.5);
+  const leafGeo = new CircleGeometry(1, 18, 0.25, Math.PI * 2 - 0.5);
   leafGeo.rotateX(-Math.PI / 2);
   const leafMat = new MeshStandardMaterial({ color: 0x3b8038, roughness: 0.55, side: DoubleSide });
   const leaves = new InstancedMesh(leafGeo, leafMat, LEAF_COUNT);
@@ -371,7 +378,8 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
     emissiveIntensity: 0.85,
   });
   const lanterns = new InstancedMesh(lanternGeo, lanternMat, MAX_LANTERNS);
-  lanterns.frustumCulled = false;
+  lanterns.boundingSphere = pondBounds.clone();
+  lanterns.frustumCulled = true;
   lanterns.name = "lotus-lanterns";
 
   const states: DriftingLantern[] = Array.from({ length: MAX_LANTERNS }, (_, i) => ({
@@ -407,7 +415,8 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
       );
   };
   const koiMesh = new InstancedMesh(koiGeo, koiMat, KOI_COUNT);
-  koiMesh.frustumCulled = false;
+  koiMesh.boundingSphere = pondBounds.clone();
+  koiMesh.frustumCulled = true;
   koiMesh.name = "pond-koi";
 
   const koiColor = new Color();
@@ -441,7 +450,8 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
     side: DoubleSide,
   });
   const ripples = new InstancedMesh(rippleGeo, rippleMat, RIPPLE_COUNT);
-  ripples.frustumCulled = false;
+  ripples.boundingSphere = pondBounds.clone();
+  ripples.frustumCulled = true;
   ripples.name = "pond-ripples";
 
   const rippleStates: RippleState[] = Array.from({ length: RIPPLE_COUNT }, (_, i) => ({
@@ -569,6 +579,8 @@ export function createPond(group: Group, materials: Materials, sky: Color): Pond
     },
     update(t, daylight) {
       uniforms.uTime.value = t;
+      // Skip all per-frame Koi/lantern/ripple CPU matrix math & GPU buffer uploads when the pond region is culled!
+      if (!group.visible) return;
       const night = 1 - daylight;
       uniforms.uNight.value = night;
       waterMat.emissiveIntensity = 0.1 + daylight * 0.06;
