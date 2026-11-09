@@ -40,12 +40,13 @@ const GATE_Z = (GATE.zMin + GATE.zMax) / 2;
 const GATE_WALL_X = 18;
 
 /**
- * Placed OUTSIDE the temple gate (z = GATE_Z + 2.6) right at the far-left end
- * of the left perimeter wall (x = -GATE_WALL_X - 0.5 = -18.5).
+ * Placed INSIDE the temple courtyard garden (z = GATE_Z - 4.2),
+ * standing parallel in front of the left perimeter wall (x = -11.5)
+ * so players can walk directly onto the stepping stones and prayer platform.
  */
 export const WISH_TREE_POS = {
-  x: -GATE_WALL_X - 0.5,
-  z: GATE_Z + 2.6,
+  x: -11.5,
+  z: GATE_Z - 4.2,
 } as const;
 
 /** Interactive plaques that swing strongly when `hangWish()` is triggered. */
