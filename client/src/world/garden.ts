@@ -46,16 +46,13 @@ export const SLAB_TOP = 0.05;
 /** Loop ribbon height above the ground; polygonOffset keeps it from z-fighting. */
 const LOOP_Y = 0.02;
 
-/**
- * Normalised base height (metres) for `cothu.glb` before per-instance scale variation.
- * Set to 12.5 m so the ancient tree canopies rise visibly above the Main Hall roof (9 m).
- */
-const ANCIENT_BASE_HEIGHT = 12.5;
+/** Normalised base height (metres) for `cothu.glb` before per-instance scale variation. */
+const ANCIENT_BASE_HEIGHT = 7.6;
 
 /**
- * 4-tier staggered configuration for ancient trees (`models/cothu.glb`).
- * Each outer tier scales its tree count with circumference and uses a locked phase offset
- * (0.0 -> 0.5 -> 0.25 -> 0.75) with tight angular jitter so every gap is brick-interlocked.
+ * 4-tier brick-staggered configuration for ancient trees (`models/cothu.glb`).
+ * Balanced at 64 trees total with wide canopy spread so all 4 tiers interlock without gaps
+ * while keeping GPU triangle count smooth even if a 25 MB original GLB is used.
  */
 interface AncientTierConfig {
   readonly count: number;
@@ -67,39 +64,39 @@ interface AncientTierConfig {
 }
 
 const ANCIENT_TIERS: readonly AncientTierConfig[] = [
-  // Tier 1: Courtyard perimeter ring hugging the temple walls and behind the Main Hall
+  // Tier 1: Courtyard perimeter ring framing the temple grounds
   {
-    count: 24,
-    ring: [0.96, 1.08],
-    scale: [1.0, 1.28],
-    spread: [1.08, 1.24],
+    count: 14,
+    ring: [1.03, 1.12],
+    scale: [1.05, 1.35],
+    spread: [1.1, 1.25],
     phaseOffset: 0.0,
     gateGapFactor: 1.0,
   },
   // Tier 2: Half-step staggered ring directly filling spaces between Tier 1 trees
   {
-    count: 28,
-    ring: [1.1, 1.3],
-    scale: [1.15, 1.48],
-    spread: [1.12, 1.28],
+    count: 16,
+    ring: [1.15, 1.34],
+    scale: [1.2, 1.55],
+    spread: [1.15, 1.32],
     phaseOffset: 0.5,
     gateGapFactor: 0.82,
   },
   // Tier 3: Quarter-step staggered mid-woodland canopy layer
   {
-    count: 32,
-    ring: [1.32, 1.62],
-    scale: [1.3, 1.72],
-    spread: [1.15, 1.34],
+    count: 16,
+    ring: [1.36, 1.66],
+    scale: [1.38, 1.78],
+    spread: [1.2, 1.38],
     phaseOffset: 0.25,
     gateGapFactor: 0.62,
   },
   // Tier 4: Three-quarter staggered deep ancient forest wall eliminating horizon gaps
   {
-    count: 36,
-    ring: [1.64, 2.08],
-    scale: [1.48, 1.98],
-    spread: [1.18, 1.38],
+    count: 18,
+    ring: [1.68, 2.1],
+    scale: [1.55, 2.05],
+    spread: [1.24, 1.44],
     phaseOffset: 0.75,
     gateGapFactor: 0.42,
   },
@@ -108,11 +105,11 @@ const ANCIENT_TIERS: readonly AncientTierConfig[] = [
 const ANCIENT_TREE_COUNT = ANCIENT_TIERS.reduce((sum, t) => sum + t.count, 0);
 
 /** Deep-toned broad-canopy trees beyond Tier 4: overlaps radially at 2.02 so no seam appears. */
-const FAR_TREE_COUNT = 220;
+const FAR_TREE_COUNT = 200;
 const FAR_RING = [2.02, 2.95] as const;
 const FAR_HEIGHT = [12, 22] as const;
 /** Gate sector (around +z) stays open so the gate reads against the sky. */
-const GATE_GAP_RAD = 0.24;
+const GATE_GAP_RAD = 0.26;
 
 const GATE_Z = (GATE.zMin + GATE.zMax) / 2;
 const GATE_PILLAR_X = 3.4;
@@ -150,8 +147,7 @@ function colorGeo(g: BufferGeometry, hex: number): BufferGeometry {
 
 interface PreparedAncientTree {
   geometry: BufferGeometry;
-  materials: MeshStandardMaterial[];
-  materialOrArray: Material | Material[];
+  material: MeshStandardMaterial;
   textures: Texture[];
 }
 
@@ -167,19 +163,16 @@ type Object3DLike = {
  */
 function normalizeTreePartGeometry(src: BufferGeometry, worldMatrix: Matrix4): BufferGeometry | null {
   const posAttr = src.getAttribute("position");
-  if (!posAttr || posAttr.count < 3) return null;
+  if (!posAttr || posAttr.count === 0) return null;
   const count = posAttr.count;
 
   const g = new BufferGeometry();
 
   const posArr = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
-    const x = posAttr.getX(i);
-    const y = posAttr.getY(i);
-    const z = posAttr.getZ(i);
-    posArr[i * 3] = Number.isFinite(x) ? x : 0;
-    posArr[i * 3 + 1] = Number.isFinite(y) ? y : 0;
-    posArr[i * 3 + 2] = Number.isFinite(z) ? z : 0;
+    posArr[i * 3] = posAttr.getX(i);
+    posArr[i * 3 + 1] = posAttr.getY(i);
+    posArr[i * 3 + 2] = posAttr.getZ(i);
   }
   g.setAttribute("position", new Float32BufferAttribute(posArr, 3));
 
@@ -191,12 +184,9 @@ function normalizeTreePartGeometry(src: BufferGeometry, worldMatrix: Matrix4): B
   const normArr = new Float32Array(count * 3);
   if (normAttr) {
     for (let i = 0; i < count; i++) {
-      const nx = normAttr.getX(i);
-      const ny = normAttr.getY(i);
-      const nz = normAttr.getZ(i);
-      normArr[i * 3] = Number.isFinite(nx) ? nx : 0;
-      normArr[i * 3 + 1] = Number.isFinite(ny) ? ny : 1;
-      normArr[i * 3 + 2] = Number.isFinite(nz) ? nz : 0;
+      normArr[i * 3] = normAttr.getX(i);
+      normArr[i * 3 + 1] = normAttr.getY(i);
+      normArr[i * 3 + 2] = normAttr.getZ(i);
     }
   } else {
     for (let i = 0; i < count; i++) {
@@ -209,10 +199,8 @@ function normalizeTreePartGeometry(src: BufferGeometry, worldMatrix: Matrix4): B
   const uvArr = new Float32Array(count * 2);
   if (uvAttr) {
     for (let i = 0; i < count; i++) {
-      const u = uvAttr.getX(i);
-      const v = uvAttr.getY(i);
-      uvArr[i * 2] = Number.isFinite(u) ? u : 0;
-      uvArr[i * 2 + 1] = Number.isFinite(v) ? v : 0;
+      uvArr[i * 2] = uvAttr.getX(i);
+      uvArr[i * 2 + 1] = uvAttr.getY(i);
     }
   }
   g.setAttribute("uv", new Float32BufferAttribute(uvArr, 2));
@@ -233,11 +221,89 @@ function normalizeTreePartGeometry(src: BufferGeometry, worldMatrix: Matrix4): B
   }
 
   g.applyMatrix4(worldMatrix);
-  g.computeBoundingBox();
   return g;
 }
 
-function attachWindSwayShader(material: MeshStandardMaterial, uTime: { value: number }): void {
+/**
+ * Extracts meshes from `cothu.glb` / `cothu1.glb`, normalises vertex attributes so `mergeGeometries`
+ * never fails on `uv2`, shifts the bottom of the trunk (`min.y`) to sit flush on `y = 0`, scales the
+ * tree to `ANCIENT_BASE_HEIGHT` (7.6 m), and uses a single unified `MeshStandardMaterial` (no alphaTest
+ * discard) that renders reliably across both `InstancedMesh` and `Mesh`.
+ */
+function prepareAncientTreeModel(
+  root: Object3DLike,
+  uTime: { value: number },
+): PreparedAncientTree {
+  const parts: BufferGeometry[] = [];
+  const textures: Texture[] = [];
+  let baseMap: Texture | null = null;
+  let baseColor = new Color(0xffffff);
+
+  root.updateMatrixWorld(true);
+  root.traverse((node) => {
+    if (!(node instanceof Mesh)) return;
+    const srcGeom = node.geometry as BufferGeometry;
+    const cleanGeom = normalizeTreePartGeometry(srcGeom, node.matrixWorld);
+    if (cleanGeom) {
+      parts.push(cleanGeom);
+    }
+
+    const mats = Array.isArray(node.material) ? node.material : [node.material];
+    for (const m of mats) {
+      const srcMat = m as MeshStandardMaterial | undefined;
+      if (!srcMat) continue;
+      if (srcMat.map && !baseMap) {
+        baseMap = srcMat.map;
+      }
+      if (srcMat.map && !textures.includes(srcMat.map)) {
+        textures.push(srcMat.map);
+      }
+      if (srcMat.metalnessMap && !textures.includes(srcMat.metalnessMap)) {
+        textures.push(srcMat.metalnessMap);
+      }
+      if (srcMat.roughnessMap && !textures.includes(srcMat.roughnessMap)) {
+        textures.push(srcMat.roughnessMap);
+      }
+      if (srcMat.normalMap && !textures.includes(srcMat.normalMap)) {
+        textures.push(srcMat.normalMap);
+      }
+      if (srcMat.color && baseColor.getHex() === 0xffffff) {
+        baseColor = srcMat.color.clone();
+      }
+      srcMat.dispose();
+    }
+    srcGeom.dispose();
+  });
+
+  const merged = parts.length === 1 ? parts[0]! : mergeGeometries(parts);
+  if (parts.length > 1) {
+    for (const p of parts) p.dispose();
+  }
+  if (!merged) throw new Error("cothu.glb: no mesh geometry found");
+
+  // Align bottom (`min.y`) to y = 0, centre X/Z at 0, and scale height to ANCIENT_BASE_HEIGHT (7.6 m).
+  merged.computeBoundingBox();
+  const bbox = merged.boundingBox ?? new Box3();
+  const cx = (bbox.min.x + bbox.max.x) * 0.5;
+  const cz = (bbox.min.z + bbox.max.z) * 0.5;
+  const rawHeight = Math.max(0.01, bbox.max.y - bbox.min.y);
+  const normalizeScale = ANCIENT_BASE_HEIGHT / rawHeight;
+
+  merged.translate(-cx, -bbox.min.y, -cz);
+  merged.scale(normalizeScale, normalizeScale, normalizeScale);
+  merged.computeBoundingBox();
+  merged.computeBoundingSphere();
+
+  const material = new MeshStandardMaterial({
+    map: baseMap,
+    color: baseColor,
+    roughness: 0.86,
+    metalness: 0.0,
+    emissive: new Color(0x09170b),
+    emissiveIntensity: 0.06,
+    side: DoubleSide,
+  });
+
   material.onBeforeCompile = (shader) => {
     shader.uniforms["uTime"] = uTime;
     shader.vertexShader = shader.vertexShader
@@ -250,148 +316,16 @@ function attachWindSwayShader(material: MeshStandardMaterial, uTime: { value: nu
         #else
           vec2 treePos = vec2(modelMatrix[3][0], modelMatrix[3][2]);
         #endif
-        float swayWeight = clamp((transformed.y - 2.4) * 0.2, 0.0, 1.0);
+        float swayWeight = clamp((transformed.y - 2.4) * 0.25, 0.0, 1.0);
         float leafPhase = transformed.x * 0.85 + transformed.z * 0.75 + treePos.x * 0.18 + treePos.y * 0.14;
-        float leafSway = swayWeight * (0.055 * sin(uTime * 1.55 + leafPhase) + 0.025 * cos(uTime * 2.7 - leafPhase * 1.2));
+        float leafSway = swayWeight * (0.045 * sin(uTime * 1.55 + leafPhase) + 0.02 * cos(uTime * 2.7 - leafPhase * 1.2));
         transformed.x += leafSway;
         transformed.y += leafSway * 0.2;
         transformed.z += leafSway * 0.6;`,
       );
   };
-}
 
-interface ExtractedSubMesh {
-  geom: BufferGeometry;
-  mat: MeshStandardMaterial;
-  height: number;
-  horizSpan: number;
-}
-
-/**
- * Extracts sub-meshes from a tree GLB (`cothu.glb` or `cothu1.glb`), filters out flat shadow-catcher
- * ground planes (like `index 2` in Sketchfab exports) that distort bounding boxes, converts alpha-blend
- * leaf materials to opaque alpha-cutout (`transparent: false, alphaTest: 0.38`) so depth buffer never
- * hides the tree, and normalizes height to `targetHeight`.
- */
-function prepareAncientTreeModel(
-  root: Object3DLike,
-  uTime: { value: number },
-  targetHeight = ANCIENT_BASE_HEIGHT,
-): PreparedAncientTree {
-  const rawSubs: ExtractedSubMesh[] = [];
-  const textures: Texture[] = [];
-
-  const trackTex = (tex: Texture | null | undefined): Texture | null => {
-    if (!tex) return null;
-    if (!textures.includes(tex)) textures.push(tex);
-    return tex;
-  };
-
-  root.updateMatrixWorld(true);
-  root.traverse((node) => {
-    if (!(node instanceof Mesh) || !node.visible) return;
-    const srcGeom = node.geometry as BufferGeometry;
-    const cleanGeom = normalizeTreePartGeometry(srcGeom, node.matrixWorld);
-    if (!cleanGeom || !cleanGeom.boundingBox) return;
-
-    const bb = cleanGeom.boundingBox;
-    const dx = bb.max.x - bb.min.x;
-    const dy = bb.max.y - bb.min.y;
-    const dz = bb.max.z - bb.min.z;
-    const horizSpan = Math.max(dx, dz);
-    if (horizSpan < 1e-4 && dy < 1e-4) {
-      cleanGeom.dispose();
-      return;
-    }
-
-    const rawMat = (Array.isArray(node.material) ? node.material[0] : node.material) as
-      | MeshStandardMaterial
-      | undefined;
-
-    const map = trackTex(rawMat?.map);
-    const normalMap = trackTex(rawMat?.normalMap);
-    const roughnessMap = trackTex(rawMat?.roughnessMap);
-    const alphaMap = trackTex(rawMat?.alphaMap);
-    trackTex(rawMat?.metalnessMap);
-
-    const color = rawMat?.color ? rawMat.color.clone() : new Color(0xffffff);
-    // Guard against black/zeroed material colors exported by FBX->GLB converters
-    if (color.r + color.g + color.b < 0.18) {
-      color.setHex(map ? 0xffffff : 0x3b6e38);
-    }
-
-    // Use alpha-cutout instead of alpha-blending (`transparent: false`) so transparent leaf pixels
-    // never write to the depth buffer and occlude the rest of the tree in InstancedMesh.
-    const needsCutout = Boolean(
-      (rawMat && rawMat.alphaTest > 0) || rawMat?.transparent || alphaMap,
-    );
-
-    const partMat = new MeshStandardMaterial({
-      map,
-      normalMap,
-      roughnessMap,
-      alphaMap,
-      color,
-      transparent: false,
-      opacity: 1.0,
-      alphaTest: needsCutout ? Math.max(0.35, Math.min(0.5, rawMat?.alphaTest || 0.38)) : 0,
-      roughness: 0.84,
-      metalness: 0.0,
-      emissive: new Color(0x09170b),
-      emissiveIntensity: 0.06,
-      side: DoubleSide,
-    });
-    attachWindSwayShader(partMat, uTime);
-
-    rawSubs.push({ geom: cleanGeom, mat: partMat, height: dy, horizSpan });
-  });
-
-  if (rawSubs.length === 0) {
-    throw new Error("Tree GLB: no mesh geometry found");
-  }
-
-  // Filter out flat ground-shadow planes (height < 6% of horizontal span) if there are taller tree meshes
-  const maxSubHeight = Math.max(...rawSubs.map((s) => s.height));
-  const validSubs =
-    rawSubs.length > 1
-      ? rawSubs.filter((s) => {
-          const isFlatGroundPlane = s.height < s.horizSpan * 0.06 && s.height < maxSubHeight * 0.15;
-          if (isFlatGroundPlane) {
-            s.geom.dispose();
-            s.mat.dispose();
-            return false;
-          }
-          return true;
-        })
-      : rawSubs;
-
-  const finalSubs = validSubs.length > 0 ? validSubs : rawSubs;
-  const parts = finalSubs.map((s) => s.geom);
-  const materials = finalSubs.map((s) => s.mat);
-
-  const merged = parts.length === 1 ? parts[0]! : mergeGeometries(parts, true);
-  if (parts.length > 1) {
-    for (const p of parts) p.dispose();
-  }
-  if (!merged) throw new Error("Tree GLB: failed to merge mesh geometries");
-
-  // Align bottom (`min.y`) to y = 0, centre X/Z at 0, and scale height to `targetHeight`.
-  merged.computeBoundingBox();
-  const bbox = merged.boundingBox ?? new Box3();
-  const cx = (bbox.min.x + bbox.max.x) * 0.5;
-  const cz = (bbox.min.z + bbox.max.z) * 0.5;
-  const rawHeight = Math.max(0.01, bbox.max.y - bbox.min.y);
-  const normalizeScale = targetHeight / rawHeight;
-
-  merged.translate(-cx, -bbox.min.y, -cz);
-  merged.scale(normalizeScale, normalizeScale, normalizeScale);
-  merged.computeBoundingBox();
-  merged.computeBoundingSphere();
-
-  const materialOrArray: Material | Material[] =
-    materials.length === 1 ? materials[0]! : materials;
-
-  return { geometry: merged, materials, materialOrArray, textures };
+  return { geometry: merged, material, textures };
 }
 
 /** Distant broad-canopy tree (unit height) for the outer forest ring. */
@@ -658,37 +592,27 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
     built.push(group);
   }
 
-  // 1. Prepare `models/cothu.glb` for the 120 ancient forest trees in 4 brick-staggered rings.
+  // 1. Prepare `models/cothu.glb` with the single-material pipeline proven to render reliably.
   const uTreeTime = { value: 0 };
-  const preparedTree = prepareAncientTreeModel(cothuGltf.scene, uTreeTime, ANCIENT_BASE_HEIGHT);
-  for (const mat of preparedTree.materials) own(mat);
+  const preparedTree = prepareAncientTreeModel(cothuGltf.scene, uTreeTime);
+  own(preparedTree.material);
 
-  // 2. Prepare `models/cothu1.glb` (or fallback to `cothu.glb` normalized to 7.6 m) for the Wishing Tree.
+  // 2. Prepare `models/cothu1.glb` if valid; otherwise share `preparedTree` with the Wishing Tree.
   let preparedWishTree: PreparedAncientTree | null = null;
   if (wishTreeGltf) {
     try {
-      preparedWishTree = prepareAncientTreeModel(wishTreeGltf.scene, uTreeTime, 7.6);
-      for (const mat of preparedWishTree.materials) own(mat);
+      preparedWishTree = prepareAncientTreeModel(wishTreeGltf.scene, uTreeTime);
+      own(preparedWishTree.material);
     } catch {
       preparedWishTree = null;
     }
   }
-
-  if (preparedWishTree) {
-    attachAncientTreeToWishingTree(preparedWishTree.geometry, preparedWishTree.materialOrArray);
-  } else {
-    // Scale the 12.5 m ancient tree geometry down to 7.6 m so it fits the Wishing Tree planter
-    const fallbackWishGeo = preparedTree.geometry.clone();
-    const wishRatio = 7.6 / ANCIENT_BASE_HEIGHT;
-    fallbackWishGeo.scale(wishRatio, wishRatio, wishRatio);
-    fallbackWishGeo.computeBoundingBox();
-    fallbackWishGeo.computeBoundingSphere();
-    attachAncientTreeToWishingTree(fallbackWishGeo, preparedTree.materialOrArray);
-  }
+  const activeWishTree = preparedWishTree ?? preparedTree;
+  attachAncientTreeToWishingTree(activeWishTree.geometry, activeWishTree.material);
 
   const ancientTrees = new InstancedMesh(
     preparedTree.geometry,
-    preparedTree.materialOrArray,
+    preparedTree.material,
     ANCIENT_TREE_COUNT,
   );
   let treeIdx = 0;
@@ -697,12 +621,10 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
     const gap = GATE_GAP_RAD * tier.gateGapFactor;
     const tierArc = Math.PI * 2 - 2 * gap;
     for (let k = 0; k < tier.count; k++) {
-      // Controlled jitter (±0.11 of a slot) around a deterministic staggered phase prevents clumping/gaps
       const slot = k + 0.5 + tier.phaseOffset + (rand() - 0.5) * 0.22;
       const wrappedSlot = ((slot % tier.count) + tier.count) % tier.count;
       const a = Math.PI / 2 + gap + (wrappedSlot / tier.count) * tierArc;
 
-      // Stratified radial placement within the tier band
       const radialT = (k % 2) * 0.45 + rand() * 0.55;
       const r = tier.ring[0] + radialT * (tier.ring[1] - tier.ring[0]);
       const p = ringPoint(a, r);
@@ -718,7 +640,8 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
   }
 
   ancientTrees.instanceMatrix.needsUpdate = true;
-  ancientTrees.castShadow = true;
+  // Disable dynamic shadow-map casting on outer forest instances so even a 25 MB high-poly GLB runs at 60 FPS
+  ancientTrees.castShadow = false;
   ancientTrees.receiveShadow = true;
   ancientTrees.frustumCulled = false;
   ancientTrees.computeBoundingSphere();
@@ -768,13 +691,9 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       lanternPaper.emissiveIntensity = k;
       lotusLamp.emissiveIntensity = k;
       const treeEmissive = 0.04 + 0.05 * daylight;
-      for (const mat of preparedTree.materials) {
-        mat.emissiveIntensity = treeEmissive;
-      }
+      preparedTree.material.emissiveIntensity = treeEmissive;
       if (preparedWishTree) {
-        for (const mat of preparedWishTree.materials) {
-          mat.emissiveIntensity = treeEmissive;
-        }
+        preparedWishTree.material.emissiveIntensity = treeEmissive;
       }
     },
     dispose() {
