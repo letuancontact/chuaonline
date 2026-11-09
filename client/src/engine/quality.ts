@@ -2,15 +2,19 @@ import type { WebGLRenderer } from "three";
 import { basePixelRatio } from "./renderer.ts";
 import type { FrameStats } from "./frame-stats.ts";
 
-/** Pixel-ratio caps, stepped down one at a time while frames stay slow. */
-const CAPS = [Number.POSITIVE_INFINITY, 1.25, 1.0] as const;
-const WINDOW_S = 3;
-const SLOW_P95_MS = 25;
+/** Pixel-ratio caps, stepped down one at a time while frames stay slow, and stepped back up when smooth. */
+const CAPS = [Number.POSITIVE_INFINITY, 1.5, 1.25, 1.0] as const;
+const WARMUP_S = 5.0;
+const WINDOW_S = 3.5;
+const SLOW_P95_MS = 28;
+const FAST_P95_MS = 15.5;
 
 export class Quality {
   private level = 0;
+  private warmup = 0;
   private elapsed = 0;
   private frames = 0;
+  private fastStreak = 0;
 
   constructor(
     private readonly renderer: WebGLRenderer,
@@ -32,15 +36,37 @@ export class Quality {
   }
 
   readonly update = (dt: number): void => {
-    if (this.fixedRatio !== null || this.level >= CAPS.length - 1) return;
+    if (this.fixedRatio !== null) return;
+    if (this.warmup < WARMUP_S) {
+      this.warmup += dt;
+      return;
+    }
     this.elapsed += dt;
     this.frames++;
     if (this.elapsed < WINDOW_S) return;
-    const slow = this.stats.summary(this.frames).p95 > SLOW_P95_MS;
+
+    const p95 = this.stats.summary(this.frames).p95;
     this.elapsed = 0;
     this.frames = 0;
-    if (!slow) return;
-    this.level++;
-    this.apply();
+
+    if (p95 > SLOW_P95_MS) {
+      this.fastStreak = 0;
+      if (this.level < CAPS.length - 1) {
+        this.level++;
+        this.apply();
+      }
+      return;
+    }
+
+    if (p95 > 0 && p95 < FAST_P95_MS && this.level > 0) {
+      this.fastStreak++;
+      if (this.fastStreak >= 2) {
+        this.fastStreak = 0;
+        this.level--;
+        this.apply();
+      }
+    } else {
+      this.fastStreak = 0;
+    }
   };
 }
