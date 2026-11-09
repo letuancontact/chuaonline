@@ -74,18 +74,29 @@ export function clampToWalkable(
   const dz = to.z - from.z;
   const len = Math.hypot(dx, dz);
   if (len === 0) return { x: from.x, z: from.z };
-  // People are moving obstacles: one who sat down on top of us must not pin us in place.
-  const obstacles = extraCircles.filter((c) => !hitsCircle(from.x, from.z, r, c));
+
+  // Avoid allocating a new array unless `from` actually overlaps one of `extraCircles`.
+  let obstacles: readonly Circle[] = extraCircles;
+  for (let i = 0; i < extraCircles.length; i++) {
+    const c = extraCircles[i];
+    if (c && hitsCircle(from.x, from.z, r, c)) {
+      obstacles = extraCircles.filter((item) => !hitsCircle(from.x, from.z, r, item));
+      break;
+    }
+  }
+
   const steps = Math.ceil(len / SAMPLE_STEP);
-  let last: Vec2 = { x: from.x, z: from.z };
+  let lastX = from.x;
+  let lastZ = from.z;
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
     const x = i === steps ? to.x : from.x + dx * t;
     const z = i === steps ? to.z : from.z + dz * t;
-    if (!isWalkable(map, x, z, r, obstacles)) return last;
-    last = { x, z };
+    if (!isWalkable(map, x, z, r, obstacles)) return { x: lastX, z: lastZ };
+    lastX = x;
+    lastZ = z;
   }
-  return last;
+  return { x: lastX, z: lastZ };
 }
 
 /** True when the whole straight walk from → to is clear. */
