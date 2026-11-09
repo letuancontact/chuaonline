@@ -13,18 +13,18 @@ import { BOUNDARY, GATE_Z, HALL, LANTERN_LOOP, PATH, POND, PROP_COLLIDERS, ROOF,
 import { seeded } from "./random.ts";
 import { gardenRegionOf, type GardenRegion, type Regions } from "./regions.ts";
 
-/** Clumps of tufts read as natural grass; uniform scatter looks like a lawn. */
-const CLUMPS = 420;
-const TUFTS_PER_CLUMP = [6, 14] as const;
-const CLUMP_RADIUS = 1.6;
-const BLADES = 9;
-const BLADE_HEIGHT = [0.15, 0.34] as const;
+/** Sparse, low accent tufts near outer garden rocks/edges so the temple ground stays clean and uncluttered. */
+const CLUMPS = 64;
+const TUFTS_PER_CLUMP = [3, 5] as const;
+const CLUMP_RADIUS = 1.25;
+const BLADES = 5;
+const BLADE_HEIGHT = [0.11, 0.22] as const;
 /** Wind sway at the blade tip (metres). */
-const SWAY = 0.09;
+const SWAY = 0.065;
 
-/** Vibrant emerald-green base blending into sunlit spring-green blade tips. */
-const BASE = new Color(0x246b32);
-const TIP = new Color(0x76d158);
+/** Natural moss-green base blending into soft spring-green blade tips. */
+const BASE = new Color(0x286332);
+const TIP = new Color(0x64b84c);
 
 /** Several thin triangles fanned around the origin, leaning outwards. `uv.y` = height fraction (wind weight). */
 function tuftGeometry(rand: () => number): BufferGeometry {
@@ -35,10 +35,10 @@ function tuftGeometry(rand: () => number): BufferGeometry {
   for (let i = 0; i < BLADES; i++) {
     const a = (i / BLADES) * Math.PI * 2 + rand() * 0.6;
     const h = BLADE_HEIGHT[0] + rand() * (BLADE_HEIGHT[1] - BLADE_HEIGHT[0]);
-    const w = 0.02 + rand() * 0.012;
+    const w = 0.018 + rand() * 0.01;
     const cx = Math.cos(a);
     const sz = Math.sin(a);
-    const lean = 0.08 + rand() * 0.12;
+    const lean = 0.06 + rand() * 0.09;
     // Base corners across the lean direction, tip leaning outwards.
     pos.push(-sz * w, 0, cx * w, sz * w, 0, -cx * w, cx * lean, h, sz * lean);
     // Up-facing normals light grass softly from both sides (no dark backfaces).
@@ -71,7 +71,7 @@ function nearPolyline(x: number, z: number, pts: readonly { x: number; z: number
   return false;
 }
 
-/** True where grass may grow: inside the boundary, off the hall, paths, pond and props. */
+/** True where grass may grow: inside the boundary, off the hall, central courtyard, paths, pond and props. */
 export function grassAllowed(x: number, z: number): boolean {
   const bu = (x - BOUNDARY.x) / BOUNDARY.rx;
   const bv = (z - BOUNDARY.z) / BOUNDARY.rz;
@@ -100,7 +100,7 @@ export function createGrass(regions: Regions): Grass {
   const material = new MeshLambertMaterial({
     vertexColors: true,
     emissive: new Color(0x0e2912),
-    emissiveIntensity: 0.32,
+    emissiveIntensity: 0.26,
     side: DoubleSide,
   });
   material.onBeforeCompile = (shader) => {
@@ -122,20 +122,23 @@ export function createGrass(regions: Regions): Grass {
   const s = new Vector3();
   const Y = new Vector3(0, 1, 0);
   for (let c = 0; c < CLUMPS; c++) {
-    // Uniform point in the boundary ellipse.
+    // Bias clumps toward the outer garden ring (r in 0.42..0.96) so the central courtyard stays open and clean.
     const a = rand() * Math.PI * 2;
-    const r = Math.sqrt(rand());
+    const r = 0.42 + Math.sqrt(rand()) * 0.54;
     const cx = BOUNDARY.x + Math.cos(a) * BOUNDARY.rx * r;
     const cz = BOUNDARY.z + Math.sin(a) * BOUNDARY.rz * r;
+    // Keep the main front courtyard strip along the stone path completely clear of random grass clumps.
+    if (Math.abs(cx) < 9.5 && cz > HALL.zMax - 1 && cz < GATE_Z) continue;
     const n = TUFTS_PER_CLUMP[0] + Math.floor(rand() * (TUFTS_PER_CLUMP[1] - TUFTS_PER_CLUMP[0] + 1));
     for (let i = 0; i < n; i++) {
       const ta = rand() * Math.PI * 2;
       const tr = Math.sqrt(rand()) * CLUMP_RADIUS;
       const x = cx + Math.cos(ta) * tr;
       const z = cz + Math.sin(ta) * tr;
+      if (Math.abs(x) < 8.5 && z > HALL.zMax - 1 && z < GATE_Z) continue;
       if (!grassAllowed(x, z)) continue;
-      const k = 0.7 + rand() * 0.7;
-      const m = new Matrix4().compose(p.set(x, 0, z), q.setFromAxisAngle(Y, rand() * Math.PI * 2), s.set(k, k * (0.8 + rand() * 0.5), k));
+      const k = 0.65 + rand() * 0.45;
+      const m = new Matrix4().compose(p.set(x, 0, z), q.setFromAxisAngle(Y, rand() * Math.PI * 2), s.set(k, k * (0.75 + rand() * 0.35), k));
       const region = gardenRegionOf(x, z);
       let list = byRegion.get(region);
       if (!list) byRegion.set(region, (list = []));
@@ -145,12 +148,14 @@ export function createGrass(regions: Regions): Grass {
 
   const meshes: InstancedMesh[] = [];
   for (const [name, list] of byRegion) {
+    if (list.length === 0) continue;
     const mesh = new InstancedMesh(geometry, material, list.length);
     list.forEach((m, i) => mesh.setMatrixAt(i, m));
     mesh.computeBoundingSphere();
     mesh.receiveShadow = true;
     mesh.name = `grass:${name}`;
     mesh.matrixAutoUpdate = false;
+    mesh.updateMatrix();
     regions.group(name).add(mesh);
     meshes.push(mesh);
   }
