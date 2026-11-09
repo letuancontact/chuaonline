@@ -1,5 +1,5 @@
 import type { Object3D } from "three";
-import { CUSHION_TOP, type Circle, type SpaceDef, type Pose, type Visitor, type VisitorEvent } from "@santinh/shared";
+import { BOW_PERIOD_MS, CUSHION_TOP, type Circle, type SpaceDef, type Pose, type Visitor, type VisitorEvent } from "@santinh/shared";
 import { Avatar } from "../avatar/avatar.ts";
 import type { ContactShadows } from "../avatar/contact-shadow.ts";
 import type { MonkFactory } from "../avatar/monk-model.ts";
@@ -133,6 +133,9 @@ interface Remote {
   /** Last pose / bowAt applied from the network (the avatar may already show a later one, e.g. after hello). */
   netPose: Pose;
   netBowAt: number | undefined;
+  /** Accumulated dt for half-rate breathing skeleton updates on stationary/seated avatars. */
+  pendingDt: number;
+  dirtyPose: boolean;
 }
 
 /** Breathing phase per person so a room does not breathe as one. */
@@ -152,6 +155,7 @@ export class RemoteAvatars {
   private obstacleList: Circle[] = [];
   private readonly scratch: Sample = { t: 0, x: 0, z: 0, yaw: 0 };
   private changeListener: (() => void) | null = null;
+  private frameParity = 0;
 
   constructor(
     private readonly parent: Object3D,
@@ -193,7 +197,10 @@ export class RemoteAvatars {
   /** A `hello` event: show the greeting even if no pose update carries it. */
   greet(id: string): void {
     const r = this.remotes.get(id);
-    if (r && r.avatar.pose !== "hello") r.avatar.setPose("hello");
+    if (r && r.avatar.pose !== "hello") {
+      r.avatar.setPose("hello");
+      r.dirtyPose = true;
+    }
   }
 
   /** A `bead` event while not in the beads screen pose: show the 3D woodblock tap on this visitor. */
@@ -201,6 +208,7 @@ export class RemoteAvatars {
     const r = this.remotes.get(id);
     if (!r || r.visitor.asleep === true || r.avatar.pose === "beads") return false;
     r.avatar.tap();
+    r.dirtyPose = true;
     return r.avatar.object.visible && r.avatar.object.parent !== null;
   }
 
@@ -225,18 +233,22 @@ export class RemoteAvatars {
 
   /** Per frame: blend positions, drive poses, place contact shadows. */
   update(dt: number, serverNow: number): void {
+    this.frameParity = (this.frameParity + 1) & 1;
     const rt = serverNow - INTERP_DELAY_MS;
     const s = this.scratch;
     let slot = this.firstSlot;
+    let idx = 0;
+
     for (const r of this.remotes.values()) {
       const obj = r.avatar.object;
       let y: number;
+      let speed = 0;
       if (r.visitor.cushion !== null) {
         y = CUSHION_TOP;
         r.avatar.setMoving(0);
       } else {
         const stale = serverNow - r.buffer.lastTime > STALE_MS;
-        const speed = r.buffer.sample(stale ? Infinity : rt, s);
+        speed = r.buffer.sample(stale ? Infinity : rt, s);
         obj.position.x = s.x;
         obj.position.z = s.z;
         obj.rotation.y = s.yaw;
@@ -244,8 +256,23 @@ export class RemoteAvatars {
         r.avatar.setMoving(stale ? 0 : speed);
       }
       obj.position.y = y;
-      r.avatar.update(dt, serverNow);
+
+      // Full-rate skeleton evaluation for walking/bowing/greeting avatars;
+      // half-rate staggered evaluation for stationary/seated breathing avatars to save mobile CPU.
+      const bowActive =
+        r.visitor.bowAt !== undefined && serverNow - r.visitor.bowAt <= BOW_PERIOD_MS + 600;
+      const highPriority =
+        r.dirtyPose || speed > 0.01 || bowActive || r.avatar.pose === "hello";
+
+      r.pendingDt += dt;
+      if (highPriority || (idx & 1) === this.frameParity) {
+        r.avatar.update(r.pendingDt, serverNow);
+        r.pendingDt = 0;
+        r.dirtyPose = false;
+      }
+
       this.contacts.place(slot++, obj.position.x, y, obj.position.z, r.visitor.cushion !== null ? KNEEL_SHADOW : 1);
+      idx++;
     }
     this.contacts.setCount(slot);
   }
@@ -266,7 +293,15 @@ export class RemoteAvatars {
     if (!r) {
       const avatar = new Avatar(this.factory.create(v.color, "remote"), phaseOf(v.id));
       this.parent.add(avatar.object);
-      r = { visitor: v, avatar, buffer: new SampleBuffer(), netPose: "walk", netBowAt: undefined };
+      r = {
+        visitor: v,
+        avatar,
+        buffer: new SampleBuffer(),
+        netPose: "walk",
+        netBowAt: undefined,
+        pendingDt: 0,
+        dirtyPose: true,
+      };
       this.remotes.set(v.id, r);
       r.avatar.setPose(v.pose, v.bowAt === undefined ? {} : { bowAt: v.bowAt });
       r.netPose = v.pose;
@@ -277,14 +312,16 @@ export class RemoteAvatars {
         r.avatar.setPose(v.pose, v.bowAt === undefined ? {} : { bowAt: v.bowAt });
         r.netPose = v.pose;
         r.netBowAt = v.bowAt;
+        r.dirtyPose = true;
       }
+    }
+    if (Boolean(r.visitor.asleep) !== Boolean(v.asleep)) {
+      r.dirtyPose = true;
     }
     r.visitor = v;
     r.avatar.setAsleep(v.asleep === true);
 
     if (v.cushion !== null) {
-      // Seated people sit exactly on the cushion; drop the walk history so standing up does not glide.
-      // A cushion this space lacks (bad server data) falls back to the sent position.
       const c = this.space.cushions[v.cushion] ?? v.position;
       r.buffer.clear();
       r.buffer.push(serverTime, c.x, c.z, c.yaw);
