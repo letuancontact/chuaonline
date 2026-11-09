@@ -10,6 +10,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   Quaternion,
+  Sphere,
   SphereGeometry,
   Vector3,
   type BufferGeometry,
@@ -268,9 +269,10 @@ export function createWishingTree(parent: Object3D): WishingTree {
     treeMesh = new Mesh(geometry, material);
     treeMesh.position.set(0, WISHING_TREE_BASE_Y, 0);
     treeMesh.scale.setScalar(WISHING_TREE_SCALE);
-    treeMesh.castShadow = true;
+    treeMesh.castShadow = false;
     treeMesh.receiveShadow = true;
-    treeMesh.frustumCulled = false;
+    treeMesh.frustumCulled = true;
+    treeMesh.matrixAutoUpdate = false;
     treeMesh.name = "wishing-tree-ancient-model";
     treeMesh.updateMatrix();
     root.add(treeMesh);
@@ -302,8 +304,11 @@ export function createWishingTree(parent: Object3D): WishingTree {
     emissiveIntensity: 0.32,
   });
   const plaqueMesh = new InstancedMesh(plaqueGeo, plaqueMat, MAX_PLAQUES);
-  plaqueMesh.frustumCulled = false;
-  plaqueMesh.castShadow = true;
+  plaqueMesh.boundingSphere = new Sphere(new Vector3(0, 3.0, 0), 4.2);
+  plaqueMesh.frustumCulled = true;
+  plaqueMesh.castShadow = false;
+  plaqueMesh.matrixAutoUpdate = false;
+  plaqueMesh.updateMatrix();
   plaqueMesh.name = "wishing-plaques";
 
   const hangSpots = buildHangSpots();
@@ -387,6 +392,8 @@ export function createWishingTree(parent: Object3D): WishingTree {
     update(t, daylight) {
       const dt = Math.max(0, Math.min(0.1, t - lastT));
       lastT = t;
+      // Skip all 36 plaque matrix updates & GPU buffer uploads when the gate region is behind the camera!
+      if (!parent.visible) return;
       const night = Math.max(0, Math.min(1, 1 - daylight));
       lanternMat.emissiveIntensity = 0.75 + night * 1.65 + 0.1 * Math.sin(t * 2.8);
       plaqueMat.emissiveIntensity = 0.26 + night * 0.52;
@@ -396,6 +403,7 @@ export function createWishingTree(parent: Object3D): WishingTree {
       if (activeTreeSlot === mountAncientTree) {
         activeTreeSlot = null;
       }
+      cachedAncientTree = null;
       if (treeMesh) {
         root.remove(treeMesh);
         treeMesh = null;
