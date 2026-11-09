@@ -23,6 +23,8 @@ import {
   type Scene,
   type Texture,
 } from "three";
+import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { BOUNDARY, GATE, LANTERN_LOOP, PATH, PATH_LANTERNS, ROCKS, type Vec2 } from "@santinh/shared";
 import { registerCameraPreset } from "../debug/params.ts";
@@ -49,6 +51,9 @@ const LOOP_Y = 0.02;
 
 /** Normalised base height (metres) for `cothu.glb` and `cothu1.glb` before per-instance scale variation. */
 const ANCIENT_BASE_HEIGHT = 7.6;
+
+/** Google's official static CDN for the Three.js Draco WASM/JS decoder. */
+const DRACO_DECODER_URL = "https://www.gstatic.com/draco/versioned/decoders/1.5.7/";
 
 /**
  * 4-tier brick-staggered configuration for ancient trees (`models/cothu.glb`).
@@ -159,6 +164,33 @@ type Object3DLike = {
 };
 
 /**
+ * Loads a GLB model via `assets.model(path)`, and if the GLB uses Draco compression
+ * (`THREE.GLTFLoader: No DRACOLoader instance provided`), automatically retries with
+ * a `GLTFLoader` + `DRACOLoader` instance.
+ */
+async function loadModelWithDracoSupport(
+  assets: Assets,
+  path: string,
+): Promise<{ scene: Object3DLike }> {
+  try {
+    return await assets.model(path);
+  } catch {
+    const draco = new DRACOLoader();
+    draco.setDecoderPath(DRACO_DECODER_URL);
+    const loader = new GLTFLoader();
+    loader.setDRACOLoader(draco);
+    try {
+      const clean = path.replace(/^\/+/, "");
+      const url = clean.startsWith("assets/") ? `/${clean}` : `/assets/${clean}`;
+      const gltf = await loader.loadAsync(url);
+      return gltf as unknown as { scene: Object3DLike };
+    } finally {
+      draco.dispose();
+    }
+  }
+}
+
+/**
  * Extracts a normalized BufferGeometry slice for a sub-mesh or geometry material group.
  * Preserves `position`, `normal`, `uv`, and vertex `color` (`COLOR_0`), while stripping
  * mismatched secondary attributes (`uv2`, `uv1`, `tangent`) that cause `mergeGeometries` to fail.
@@ -189,25 +221,6 @@ function extractSingleGroupGeometry(
     posArr[i * 3 + 2] = posAttr.getZ(i);
   }
   g.setAttribute("position", new Float32BufferAttribute(posArr, 3));
-
-  let normAttr = src.getAttribute("normal");
-  if (!normAttr) {
-    src.computeVertexNormals();
-    normAttr = src.getAttribute("normal");
-  }
-  const normArr = new Float32Array(vCount * 3);
-  if (normAttr) {
-    for (let i = 0; i < vCount; i++) {
-      normArr[i * 3] = normAttr.getX(i);
-      normArr[i * 3 + 1] = normAttr.getY(i);
-      normArr[i * 3 + 2] = normAttr.getZ(i);
-    }
-  } else {
-    for (let i = 0; i < vCount; i++) {
-      normArr[i * 3 + 1] = 1;
-    }
-  }
-  g.setAttribute("normal", new Float32BufferAttribute(normArr, 3));
 
   const uvAttr = src.getAttribute("uv");
   const uvArr = new Float32Array(vCount * 2);
@@ -245,6 +258,19 @@ function extractSingleGroupGeometry(
     }
   }
   g.setIndex(new BufferAttribute(idxArr, 1));
+
+  const normAttr = src.getAttribute("normal");
+  if (normAttr) {
+    const normArr = new Float32Array(vCount * 3);
+    for (let i = 0; i < vCount; i++) {
+      normArr[i * 3] = normAttr.getX(i);
+      normArr[i * 3 + 1] = normAttr.getY(i);
+      normArr[i * 3 + 2] = normAttr.getZ(i);
+    }
+    g.setAttribute("normal", new Float32BufferAttribute(normArr, 3));
+  } else {
+    g.computeVertexNormals();
+  }
 
   g.applyMatrix4(worldMatrix);
   return g;
@@ -308,7 +334,6 @@ function prepareAncientTreeModel(
     trackTex(rawMat?.metalnessMap, false);
 
     const color = rawMat?.color ? rawMat.color.clone() : new Color(0xffffff);
-    // If an exporter stored the diffuse color in `emissive` with a black `color`, recover it
     if (color.r + color.g + color.b < 0.02) {
       if (rawMat?.emissive && rawMat.emissive.r + rawMat.emissive.g + rawMat.emissive.b > 0.02) {
         color.copy(rawMat.emissive);
@@ -587,8 +612,8 @@ export interface Garden {
 
 export async function createGarden(scene: Scene, assets: Assets, materials: Materials, regions: Regions): Promise<Garden> {
   const [cothuGltf, wishTreeGltf] = await Promise.all([
-    assets.model("models/cothu.glb"),
-    assets.model("models/cothu1.glb").catch((err: unknown) => {
+    loadModelWithDracoSupport(assets, "models/cothu.glb"),
+    loadModelWithDracoSupport(assets, "models/cothu1.glb").catch((err: unknown) => {
       console.warn("[garden] Fallback to models/cothu.glb for Wishing Tree:", err);
       return null;
     }),
@@ -664,7 +689,7 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
   const preparedTree = prepareAncientTreeModel(cothuGltf.scene, uTreeTime);
   for (const mat of preparedTree.materials) own(mat);
 
-  // 2. Prepare `models/cothu1.glb` specifically for the Wishing Tree outside the gate.
+  // 2. Prepare `models/cothu1.glb` (Draco-decoded) specifically for the Wishing Tree outside the gate.
   let preparedWishTree: PreparedAncientTree | null = null;
   if (wishTreeGltf) {
     try {
