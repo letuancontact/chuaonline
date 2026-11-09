@@ -26,6 +26,7 @@ import {
 import { ALTAR, CUSHION_COUNT, HALL, cushionPosition } from "@santinh/shared";
 import { registerCameraPreset } from "../debug/params.ts";
 import { radialTexture } from "../engine/radial-texture.ts";
+import { IS_MOBILE, maxAnisotropy } from "../engine/renderer.ts";
 import type { Assets } from "./assets.ts";
 import { WALL_TOP } from "./hall-exterior.ts";
 import type { MaterialKey, Materials } from "./materials.ts";
@@ -67,9 +68,9 @@ type Key = MaterialKey | "gold" | "lacquer" | "cushion" | "candle";
 const m4 = new Matrix4();
 const dummy = new Object3D();
 
-function box(batch: GeometryBatch<Key>, key: Key, x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, tile = 1): void {
+function box(batch: GeometryBatch<Key>, key: Key, x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, tile = 1, castShadow = false): void {
   const g = new BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
-  batch.add(key, g, m4.makeTranslation((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), { worldUV: tile });
+  batch.add(key, g, m4.makeTranslation((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), { worldUV: tile, castShadow });
   g.dispose();
 }
 
@@ -99,20 +100,20 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
   const batch = new GeometryBatch<Key>();
   const fy = HALL.floorY;
 
-  // Ceiling slab with cross beams.
-  box(batch, "wood", HALL.xMin, HALL.xMax, CEILING_Y, CEILING_Y + 0.2, HALL.zMin, HALL.zMax, 2);
-  for (let z = HALL.zMin + 4; z < HALL.zMax; z += 4) box(batch, "darkWood", HALL.xMin, HALL.xMax, CEILING_Y - 0.36, CEILING_Y, z - 0.16, z + 0.16, 1.5);
-  for (const x of [-7, 0, 7]) box(batch, "darkWood", x - 0.14, x + 0.14, CEILING_Y - 0.28, CEILING_Y, HALL.zMin, HALL.zMax, 1.5);
+  // Ceiling slab with cross beams (indoors under the main roof, so castShadow = false saves shadow-map work).
+  box(batch, "wood", HALL.xMin, HALL.xMax, CEILING_Y, CEILING_Y + 0.2, HALL.zMin, HALL.zMax, 2, false);
+  for (let z = HALL.zMin + 4; z < HALL.zMax; z += 4) box(batch, "darkWood", HALL.xMin, HALL.xMax, CEILING_Y - 0.36, CEILING_Y, z - 0.16, z + 0.16, 1.5, false);
+  for (const x of [-7, 0, 7]) box(batch, "darkWood", x - 0.14, x + 0.14, CEILING_Y - 0.28, CEILING_Y, HALL.zMin, HALL.zMax, 1.5, false);
 
   // Mural frame.
   const fx0 = -MURAL_W / 2 - 0.3;
   const fx1 = MURAL_W / 2 + 0.3;
   const fz0 = MURAL_Z - 0.02;
   const fz1 = MURAL_Z + 0.18;
-  box(batch, "darkWood", fx0, fx1, MURAL_BOTTOM - 0.3, MURAL_BOTTOM, fz0, fz1, 1);
-  box(batch, "darkWood", fx0, fx1, MURAL_BOTTOM + MURAL_H, MURAL_BOTTOM + MURAL_H + 0.3, fz0, fz1, 1);
-  box(batch, "darkWood", fx0, fx0 + 0.3, MURAL_BOTTOM, MURAL_BOTTOM + MURAL_H, fz0, fz1, 1);
-  box(batch, "darkWood", fx1 - 0.3, fx1, MURAL_BOTTOM, MURAL_BOTTOM + MURAL_H, fz0, fz1, 1);
+  box(batch, "darkWood", fx0, fx1, MURAL_BOTTOM - 0.3, MURAL_BOTTOM, fz0, fz1, 1, false);
+  box(batch, "darkWood", fx0, fx1, MURAL_BOTTOM + MURAL_H, MURAL_BOTTOM + MURAL_H + 0.3, fz0, fz1, 1, false);
+  box(batch, "darkWood", fx0, fx0 + 0.3, MURAL_BOTTOM, MURAL_BOTTOM + MURAL_H, fz0, fz1, 1, false);
+  box(batch, "darkWood", fx1 - 0.3, fx1, MURAL_BOTTOM, MURAL_BOTTOM + MURAL_H, fz0, fz1, 1, false);
 
   // Stone pedestal + gilded lotus base.
   const bbox = new Box3().setFromObject(buddha.scene);
@@ -120,15 +121,15 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
   const scale = BUDDHA_HEIGHT / size.y;
   const halfW = (size.x * scale) / 2 + 0.4;
   const halfD = (size.z * scale) / 2 + 0.3;
-  box(batch, "stone", -halfW, halfW, fy, PEDESTAL_TOP, BUDDHA_Z - halfD, BUDDHA_Z + halfD, 1.2);
+  box(batch, "stone", -halfW, halfW, fy, PEDESTAL_TOP, BUDDHA_Z - halfD, BUDDHA_Z + halfD, 1.2, false);
   const lotus = new CylinderGeometry(halfW * 0.92, halfW * 0.8, LOTUS_H, 28);
-  batch.add("gold", lotus, m4.makeTranslation(0, PEDESTAL_TOP + LOTUS_H / 2, BUDDHA_Z), { uvScale: [4, 1] });
+  batch.add("gold", lotus, m4.makeTranslation(0, PEDESTAL_TOP + LOTUS_H / 2, BUDDHA_Z), { uvScale: [4, 1], castShadow: false });
   lotus.dispose();
 
   // Offering table across the front of the altar.
-  box(batch, "lacquer", TABLE.xMin, TABLE.xMax, TABLE.top - 0.12, TABLE.top, TABLE.z0, TABLE.z1, 1);
+  box(batch, "lacquer", TABLE.xMin, TABLE.xMax, TABLE.top - 0.12, TABLE.top, TABLE.z0, TABLE.z1, 1, false);
   for (const x of [TABLE.xMin + 0.2, TABLE.xMax - 0.2]) {
-    for (const z of [TABLE.z0 + 0.12, TABLE.z1 - 0.12]) box(batch, "lacquer", x - 0.08, x + 0.08, fy, TABLE.top - 0.12, z - 0.08, z + 0.08, 1);
+    for (const z of [TABLE.z0 + 0.12, TABLE.z1 - 0.12]) box(batch, "lacquer", x - 0.08, x + 0.08, fy, TABLE.top - 0.12, z - 0.08, z + 0.08, 1, false);
   }
 
   // Candle bodies on the table.
@@ -180,31 +181,39 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
 
   const group = batch.build("hall-interior", { ...materials, gold, lacquer, cushion, candle });
 
-  // Mural plane.
+  // Mural plane (1024x512 on mobile for fast boot & low VRAM, 2048x1024 on desktop).
   const faceY = PEDESTAL_TOP + LOTUS_H + BUDDHA_HEIGHT * BUDDHA_FACE;
-  // Seen from the cushions the face projects slightly higher on the wall behind it.
   const haloY = faceY + 0.35;
-  const muralTex = drawMural(2048, 1024, { x: 0.5, y: 1 - (haloY - MURAL_BOTTOM) / MURAL_H, r: 0.27 });
+  const muralW = IS_MOBILE ? 1024 : 2048;
+  const muralH = IS_MOBILE ? 512 : 1024;
+  const muralTex = drawMural(muralW, muralH, { x: 0.5, y: 1 - (haloY - MURAL_BOTTOM) / MURAL_H, r: 0.27 });
+  muralTex.anisotropy = maxAnisotropy();
   const muralMat = own(new MeshStandardMaterial({ map: muralTex, roughness: 0.85, emissiveMap: muralTex, emissive: new Color(0x3b1f0e) }));
   const muralGeo = new PlaneGeometry(MURAL_W, MURAL_H);
   const mural = new Mesh(muralGeo, muralMat);
   mural.position.set(0, MURAL_BOTTOM + MURAL_H / 2, MURAL_Z);
   mural.receiveShadow = true;
+  mural.matrixAutoUpdate = false;
+  mural.updateMatrix();
   mural.name = "mural";
   group.add(mural);
 
   // Buddha, base on the lotus, facing +Z (towards the door).
+  // `castShadow = false` because the statue sits indoors beneath the solid hall roof (which already casts the sun shadow),
+  // saving ~200,000 triangles in the directional shadow map pass every frame!
   const statue = buddha.scene;
   statue.scale.setScalar(scale);
   statue.position.set(-((bbox.min.x + bbox.max.x) / 2) * scale, PEDESTAL_TOP + LOTUS_H - bbox.min.y * scale, BUDDHA_Z - ((bbox.min.z + bbox.max.z) / 2) * scale);
+  const aniso = maxAnisotropy();
   statue.traverse((o) => {
     if (o instanceof Mesh) {
-      o.castShadow = true;
+      o.castShadow = false;
       o.receiveShadow = true;
       const m = o.material as MeshStandardMaterial;
-      // Gilt bronze: a little sheen and warmth so it reads gold under the spots.
-      m.roughness = 0.5;
-      m.metalness = 0.18;
+      if (m.map) m.map.anisotropy = aniso;
+      if (m.normalMap) m.normalMap.anisotropy = aniso;
+      m.roughness = 0.46;
+      m.metalness = 0.2;
       m.emissive = new Color(0x281808);
     }
   });
@@ -235,6 +244,9 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
     dummy.updateMatrix();
     flames.setMatrixAt(i, dummy.matrix);
   });
+  flames.computeBoundingSphere();
+  flames.matrixAutoUpdate = false;
+  flames.updateMatrix();
   flames.name = "candle-flames";
   group.add(flames);
 
@@ -262,6 +274,8 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
     }),
   );
   const embers = new Points(emberGeo, emberMat);
+  embers.matrixAutoUpdate = false;
+  embers.updateMatrix();
   embers.name = "incense-embers";
   group.add(embers);
 
@@ -289,7 +303,7 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
   let incenseBoost = 0;
 
   // Hanji lanterns hanging from the ceiling.
-  const lanternGeo = new SphereGeometry(0.42, 16, 12);
+  const lanternGeo = new SphereGeometry(0.42, 14, 10);
   lanternGeo.scale(1, 1.25, 1);
   const lanternMat = own(new MeshStandardMaterial({ color: 0xf4e8cc, roughness: 0.9, emissive: 0xffcf8a, emissiveIntensity: GLOW_DAY }));
   const cordGeo = new CylinderGeometry(0.012, 0.012, CEILING_Y - LANTERN_Y, 4);
@@ -307,12 +321,18 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
     cords.setMatrixAt(k, dummy.matrix);
     k++;
   }
+  lanterns.computeBoundingSphere();
+  cords.computeBoundingSphere();
+  lanterns.matrixAutoUpdate = false;
+  cords.matrixAutoUpdate = false;
+  lanterns.updateMatrix();
+  cords.updateMatrix();
   lanterns.name = "lanterns";
   cords.name = "lantern-cords";
   group.add(lanterns, cords);
 
   // 30 cushions on the cushionPosition grid.
-  const cushionGeo = new CylinderGeometry(0.46, 0.5, 0.14, 24);
+  const cushionGeo = new CylinderGeometry(0.46, 0.5, 0.14, 20);
   const cushions = new InstancedMesh(cushionGeo, cushion, CUSHION_COUNT);
   for (let i = 0; i < CUSHION_COUNT; i++) {
     const c = cushionPosition(i);
@@ -322,17 +342,21 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
     cushions.setMatrixAt(i, dummy.matrix);
   }
   dummy.rotation.set(0, 0, 0);
+  cushions.computeBoundingSphere();
   cushions.receiveShadow = true;
+  cushions.matrixAutoUpdate = false;
+  cushions.updateMatrix();
   cushions.name = "cushions";
   group.add(cushions);
 
-  // Lights: two warm spots on the statue (no shadows, cheap), a few warm fills that grow at night.
+  // Lights: two warm spots on the statue with bounded 18 m range (so outdoor pixels don't evaluate them),
+  // plus warm fills that dim to 0 when the hall is behind the camera.
   const faceTarget = new Object3D();
   faceTarget.position.set(0, faceY - 0.6, BUDDHA_Z);
   group.add(faceTarget);
   const spots: SpotLight[] = [];
   for (const x of [-4.5, 4.5]) {
-    const spot = new SpotLight(0xffd296, 210, 0, 0.45, 0.65, 2);
+    const spot = new SpotLight(0xffd296, 210, 18, 0.45, 0.65, 2);
     spot.position.set(x, CEILING_Y - 0.6, BUDDHA_Z + 8);
     spot.target = faceTarget;
     spot.castShadow = false;
@@ -341,7 +365,7 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
   }
   const fills: PointLight[] = [];
   for (const z of [-11, -2, 7]) {
-    const p = new PointLight(0xffca85, 8, 20, 2);
+    const p = new PointLight(0xffca85, 8, 16, 2);
     p.position.set(0, LANTERN_Y - 0.6, z);
     fills.push(p);
     group.add(p);
@@ -358,12 +382,21 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
       incenseBoost = INCENSE_BOOST_S;
     },
     update(dt, t, daylight) {
+      if (incenseBoost > 0) incenseBoost = Math.max(0, incenseBoost - dt);
+      const hallVisible = mural.visible;
+      if (!hallVisible) {
+        for (const s of spots) s.intensity = 0;
+        for (const p of fills) p.intensity = 0;
+        return;
+      }
+
       flameTime.value = t;
       const night = 1 - daylight;
       lanternMat.emissiveIntensity = GLOW_DAY + (GLOW_NIGHT - GLOW_DAY) * night;
-      for (const p of fills) p.intensity = 8 + 30 * night;
+      for (const s of spots) s.intensity = 210;
+      const fillIntensity = 8 + 30 * night;
+      for (const p of fills) p.intensity = fillIntensity;
 
-      if (incenseBoost > 0) incenseBoost = Math.max(0, incenseBoost - dt);
       const boost = incenseBoost > 0 ? 1 : 0;
       emberMat.size = 0.09 + 0.05 * boost + 0.015 * Math.sin(t * 6);
       smokeMat.opacity = 0.22 + 0.2 * boost;
@@ -381,7 +414,6 @@ export async function createHallInterior(scene: Scene, assets: Assets, materials
     },
     dispose() {
       scene.remove(group);
-      // The GLB's own material and textures are not shared with anything else.
       statue.traverse((o) => {
         if (!(o instanceof Mesh)) return;
         const m = o.material as MeshStandardMaterial;
