@@ -26,7 +26,7 @@ import {
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { BOUNDARY, GATE, LANTERN_LOOP, PATH, PATH_LANTERNS, ROCKS, type Vec2 } from "@santinh/shared";
 import { registerCameraPreset } from "../debug/params.ts";
-import { maxAnisotropy } from "../engine/renderer.ts";
+import { IS_MOBILE, maxAnisotropy } from "../engine/renderer.ts";
 import type { Assets } from "./assets.ts";
 import type { MaterialKey, Materials } from "./materials.ts";
 import { GeometryBatch, disposeGroupGeometry } from "./merge.ts";
@@ -52,12 +52,12 @@ const LOOP_Y = 0.02;
 const ANCIENT_BASE_HEIGHT = 7.6;
 
 /**
- * Triangle budgets per tree model:
- * - Perimeter forest trees (64 instances at 48–98 m distance): ~4,200 tris/tree (~100k tris in view instead of 25.6M!).
- * - Wishing Bodhi Tree (1 hero landmark right outside the gate): ~16,000 tris for close-up inspection.
+ * Clean, distortion-free triangle budgets per tree (tuned for mobile phones & integrated GPUs):
+ * - Perimeter forest trees (64 instances at 48–98 m distance): 1,600 tris on Mobile, 2,400 on PC.
+ * - Wishing Bodhi Tree (1 hero landmark outside the gate): 7,500 tris on Mobile, 12,000 on PC.
  */
-const FOREST_TREE_TARGET_TRIS = 4200;
-const HERO_TREE_TARGET_TRIS = 16000;
+const FOREST_TREE_TARGET_TRIS = IS_MOBILE ? 1600 : 2400;
+const HERO_TREE_TARGET_TRIS = IS_MOBILE ? 7500 : 12000;
 
 /**
  * 4-tier brick-staggered configuration for ancient trees (`models/cothu.glb`).
@@ -113,7 +113,7 @@ const ANCIENT_TIERS: readonly AncientTierConfig[] = [
 ];
 
 /** Deep-toned broad-canopy trees beyond Tier 4: overlaps radially at 2.02 so no seam appears. */
-const FAR_TREE_COUNT = 200;
+const FAR_TREE_COUNT = IS_MOBILE ? 140 : 180;
 const FAR_RING = [2.02, 2.95] as const;
 const FAR_HEIGHT = [12, 22] as const;
 /** Gate sector (around +z) stays open so the gate reads against the sky. */
@@ -263,13 +263,11 @@ function extractSingleGroupGeometry(
 }
 
 /**
- * Decimates an ultra-dense tree sub-mesh (e.g. 394k-triangle `cothu.glb`) down to `targetTris`
- * while preserving 100% of UVs, vertex colors, normals, trunk solidity, and canopy silhouette:
- * 1. Seam-safe spatial vertex clustering collapses micro-triangles smaller than the grid cell.
- * 2. If triangle count still exceeds `targetTris`, preserves all large structural trunk/branch triangles
- *    and deterministically samples canopy leaf triangles (expanding kept leaves slightly to maintain full foliage density).
+ * Distortion-free triangle reducer for `cothu.glb` / `cothu1.glb`:
+ * NEVER welds or mutates vertex positions/UVs/normals (preventing any purple spikes or stretched UVs).
+ * Keeps the largest structural triangles (trunk, roots, main boughs) + a uniform stride of complete leaf quads.
  */
-function simplifyTreePartGeometry(src: BufferGeometry, targetTris: number): BufferGeometry {
+function decimateTreeGeometryClean(src: BufferGeometry, targetTris: number): BufferGeometry {
   const idxAttr = src.index;
   const posAttr = src.getAttribute("position");
   if (!posAttr) return src;
@@ -277,132 +275,75 @@ function simplifyTreePartGeometry(src: BufferGeometry, targetTris: number): Buff
   const triCount = Math.floor(totalIndices / 3);
   if (triCount <= targetTris || targetTris <= 0) return src;
 
-  src.computeBoundingBox();
-  const bbox = src.boundingBox ?? new Box3();
-  const minY = bbox.min.y;
-  const spanY = Math.max(0.01, bbox.max.y - minY);
-  const trunkTopY = minY + spanY * 0.34;
+  const areas = new Float32Array(triCount);
+  const order = new Uint32Array(triCount);
 
-  // Stage 1: Seam-safe spatial vertex welding (finer on the trunk, slightly coarser in the upper canopy).
-  const ratio = triCount / targetTris;
-  const baseCell = Math.min(0.09, Math.max(0.012, 0.011 * Math.cbrt(ratio))) * (spanY / ANCIENT_BASE_HEIGHT);
-  const invTrunkCell = 1 / (baseCell * 0.55);
-  const invCanopyCell = 1 / baseCell;
-
-  const uvAttr = src.getAttribute("uv");
-  const normAttr = src.getAttribute("normal");
-  const colAttr = src.getAttribute("color");
-
-  const vCount = posAttr.count;
-  const clusterMap = new Map<string, number>();
-  const vertToCluster = new Uint32Array(vCount);
-  const repVertices: number[] = [];
-
-  for (let i = 0; i < vCount; i++) {
-    const x = posAttr.getX(i);
-    const y = posAttr.getY(i);
-    const z = posAttr.getZ(i);
-    const inv = y < trunkTopY ? invTrunkCell : invCanopyCell;
-    const gx = Math.round(x * inv);
-    const gy = Math.round(y * inv);
-    const gz = Math.round(z * inv);
-    const uq = uvAttr ? Math.round(uvAttr.getX(i) * 24) : 0;
-    const vq = uvAttr ? Math.round(uvAttr.getY(i) * 24) : 0;
-    const key = `${gx},${gy},${gz},${uq},${vq}`;
-    let cid = clusterMap.get(key);
-    if (cid === undefined) {
-      cid = repVertices.length;
-      clusterMap.set(key, cid);
-      repVertices.push(i);
-    }
-    vertToCluster[i] = cid;
-  }
-
-  const weldedTris: number[] = [];
   for (let t = 0; t < triCount; t++) {
+    order[t] = t;
     const i0 = idxAttr ? idxAttr.getX(t * 3) : t * 3;
     const i1 = idxAttr ? idxAttr.getX(t * 3 + 1) : t * 3 + 1;
     const i2 = idxAttr ? idxAttr.getX(t * 3 + 2) : t * 3 + 2;
-    const c0 = vertToCluster[i0]!;
-    const c1 = vertToCluster[i1]!;
-    const c2 = vertToCluster[i2]!;
-    if (c0 === c1 || c1 === c2 || c2 === c0) continue;
-    weldedTris.push(repVertices[c0]!, repVertices[c1]!, repVertices[c2]!);
+
+    const ax = posAttr.getX(i0), ay = posAttr.getY(i0), az = posAttr.getZ(i0);
+    const bx = posAttr.getX(i1), by = posAttr.getY(i1), bz = posAttr.getZ(i1);
+    const cx = posAttr.getX(i2), cy = posAttr.getY(i2), cz = posAttr.getZ(i2);
+
+    const abx = bx - ax, aby = by - ay, abz = bz - az;
+    const acx = cx - ax, acy = cy - ay, acz = cz - az;
+    const nx = aby * acz - abz * acy;
+    const ny = abz * acx - abx * acz;
+    const nz = abx * acy - aby * acx;
+    areas[t] = nx * nx + ny * ny + nz * nz;
   }
 
-  const weldedCount = weldedTris.length / 3;
-  let selectedTris = weldedTris;
-  let canopyScaleBoost = 1.0;
+  // Sort triangles by area descending: the top 65% of the budget goes to the largest structural triangles
+  // (trunk, roots, primary branches, and large canopy planes), and the remaining 35% samples evenly across the rest.
+  order.sort((a, b) => areas[b]! - areas[a]!);
 
-  // Stage 2: If overlapping leaf cards still exceed `targetTris`, keep 100% of structural trunk/branch triangles
-  // and deterministically sample canopy leaf triangles across all branches.
-  if (weldedCount > targetTris) {
-    const scores = new Float32Array(weldedCount);
-    const order = new Uint32Array(weldedCount);
-    let structuralCount = 0;
+  const keepCount = Math.min(triCount, targetTris);
+  const largeBudget = Math.floor(keepCount * 0.68);
+  const sampleBudget = keepCount - largeBudget;
 
-    for (let t = 0; t < weldedCount; t++) {
-      order[t] = t;
-      const a = weldedTris[t * 3]!;
-      const b = weldedTris[t * 3 + 1]!;
-      const c = weldedTris[t * 3 + 2]!;
+  const chosen = new Uint8Array(triCount);
+  for (let i = 0; i < largeBudget; i++) {
+    chosen[order[i]!] = 1;
+  }
 
-      const ax = posAttr.getX(a), ay = posAttr.getY(a), az = posAttr.getZ(a);
-      const bx = posAttr.getX(b), by = posAttr.getY(b), bz = posAttr.getZ(b);
-      const cx = posAttr.getX(c), cy = posAttr.getY(c), cz = posAttr.getZ(c);
+  if (sampleBudget > 0 && triCount > largeBudget) {
+    const remaining = triCount - largeBudget;
+    const step = remaining / sampleBudget;
+    for (let s = 0; s < sampleBudget; s++) {
+      const idx = largeBudget + Math.min(remaining - 1, Math.floor(s * step));
+      chosen[order[idx]!] = 1;
+    }
+  }
 
-      const abx = bx - ax, aby = by - ay, abz = bz - az;
-      const acx = cx - ax, acy = cy - ay, acz = cz - az;
-      const nx = aby * acz - abz * acy;
-      const ny = abz * acx - abx * acz;
-      const nz = abx * acy - aby * acx;
-      const areaSq = nx * nx + ny * ny + nz * nz;
+  const vCount = posAttr.count;
+  const remap = new Int32Array(vCount).fill(-1);
+  const keptVerts: number[] = [];
+  const outIndices = new Uint32Array(keepCount * 3);
+  let outIdxPtr = 0;
 
-      const avgY = (ay + by + cy) * 0.333333;
-      const isTrunkOrMainBranch = avgY < trunkTopY;
-      if (isTrunkOrMainBranch) {
-        structuralCount++;
-        scores[t] = 1e9 + areaSq * 1e6;
-      } else {
-        // Deterministic spatial hash mixes with triangle area so kept leaves spread evenly 360° around the canopy.
-        const hash = (((t * 2654435761) >>> 0) % 1000) / 1000;
-        scores[t] = areaSq * 1200 + hash * 0.35;
+  // Emit kept triangles in original index order so GPU vertex cache locality is preserved.
+  for (let t = 0; t < triCount; t++) {
+    if (!chosen[t]) continue;
+    for (let k = 0; k < 3; k++) {
+      const origV = idxAttr ? idxAttr.getX(t * 3 + k) : t * 3 + k;
+      let mapped = remap[origV]!;
+      if (mapped === -1) {
+        mapped = keptVerts.length;
+        remap[origV] = mapped;
+        keptVerts.push(origV);
       }
-    }
-
-    order.sort((i, j) => scores[j]! - scores[i]!);
-    const keepCount = Math.min(weldedCount, targetTris);
-    const canopyBefore = Math.max(1, weldedCount - structuralCount);
-    const canopyAfter = Math.max(1, keepCount - Math.min(keepCount, structuralCount));
-    canopyScaleBoost = Math.min(1.32, Math.max(1.0, Math.pow(canopyBefore / canopyAfter, 0.22)));
-
-    selectedTris = new Array<number>(keepCount * 3);
-    for (let k = 0; k < keepCount; k++) {
-      const t = order[k]!;
-      selectedTris[k * 3] = weldedTris[t * 3]!;
-      selectedTris[k * 3 + 1] = weldedTris[t * 3 + 1]!;
-      selectedTris[k * 3 + 2] = weldedTris[t * 3 + 2]!;
+      outIndices[outIdxPtr++] = mapped;
     }
   }
 
-  // Compact final vertices and apply gentle leaf-card expansion in the upper canopy if foliage was thinned.
-  const finalTriCount = selectedTris.length / 3;
-  const finalRemap = new Int32Array(vCount).fill(-1);
-  const finalVerts: number[] = [];
-  const finalIndices = new Uint32Array(finalTriCount * 3);
+  const outVCount = keptVerts.length;
+  const uvAttr = src.getAttribute("uv");
+  const colAttr = src.getAttribute("color");
+  const normAttr = src.getAttribute("normal");
 
-  for (let i = 0; i < selectedTris.length; i++) {
-    const orig = selectedTris[i]!;
-    let mapped = finalRemap[orig]!;
-    if (mapped === -1) {
-      mapped = finalVerts.length;
-      finalRemap[orig] = mapped;
-      finalVerts.push(orig);
-    }
-    finalIndices[i] = mapped;
-  }
-
-  const outVCount = finalVerts.length;
   const outPos = new Float32Array(outVCount * 3);
   const outUv = new Float32Array(outVCount * 2);
   const outCol = new Float32Array(outVCount * 3);
@@ -410,7 +351,7 @@ function simplifyTreePartGeometry(src: BufferGeometry, targetTris: number): Buff
   const tmpCol = new Color();
 
   for (let i = 0; i < outVCount; i++) {
-    const sIdx = finalVerts[i]!;
+    const sIdx = keptVerts[i]!;
     outPos[i * 3] = posAttr.getX(sIdx);
     outPos[i * 3 + 1] = posAttr.getY(sIdx);
     outPos[i * 3 + 2] = posAttr.getZ(sIdx);
@@ -435,39 +376,11 @@ function simplifyTreePartGeometry(src: BufferGeometry, targetTris: number): Buff
     }
   }
 
-  // Slightly expand kept small leaf triangles in the upper canopy around their centroids so foliage stays lush.
-  if (canopyScaleBoost > 1.01) {
-    const maxLeafEdgeSq = Math.pow(0.42 * (spanY / ANCIENT_BASE_HEIGHT), 2);
-    for (let t = 0; t < finalTriCount; t++) {
-      const i0 = finalIndices[t * 3]!;
-      const i1 = finalIndices[t * 3 + 1]!;
-      const i2 = finalIndices[t * 3 + 2]!;
-      const y0 = outPos[i0 * 3 + 1]!;
-      const y1 = outPos[i1 * 3 + 1]!;
-      const y2 = outPos[i2 * 3 + 1]!;
-      if ((y0 + y1 + y2) * 0.333333 < trunkTopY) continue;
-
-      const x0 = outPos[i0 * 3]!, z0 = outPos[i0 * 3 + 2]!;
-      const x1 = outPos[i1 * 3]!, z1 = outPos[i1 * 3 + 2]!;
-      const d01 = (x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0) + (z1 - z0) * (z1 - z0);
-      if (d01 > maxLeafEdgeSq) continue;
-
-      const cx = (x0 + x1 + outPos[i2 * 3]!) * 0.333333;
-      const cy = (y0 + y1 + y2) * 0.333333;
-      const cz = (z0 + z1 + outPos[i2 * 3 + 2]!) * 0.333333;
-      for (const idx of [i0, i1, i2]) {
-        outPos[idx * 3] = cx + (outPos[idx * 3]! - cx) * canopyScaleBoost;
-        outPos[idx * 3 + 1] = cy + (outPos[idx * 3 + 1]! - cy) * canopyScaleBoost;
-        outPos[idx * 3 + 2] = cz + (outPos[idx * 3 + 2]! - cz) * canopyScaleBoost;
-      }
-    }
-  }
-
   const out = new BufferGeometry();
   out.setAttribute("position", new Float32BufferAttribute(outPos, 3));
   out.setAttribute("uv", new Float32BufferAttribute(outUv, 2));
   out.setAttribute("color", new Float32BufferAttribute(outCol, 3));
-  out.setIndex(new BufferAttribute(finalIndices, 1));
+  out.setIndex(new BufferAttribute(outIndices.subarray(0, outIdxPtr), 1));
   if (normAttr) {
     out.setAttribute("normal", new Float32BufferAttribute(outNorm, 3));
   } else {
@@ -503,15 +416,15 @@ function attachWindSwayShader(material: MeshStandardMaterial, uTime: { value: nu
 
 /**
  * Extracts all sub-meshes and multi-material primitive groups from `cothu.glb` / `cothu1.glb`,
- * deduplicating identical materials, applying anisotropic texture filtering, and simplifying
- * excessive micro-triangles so the GPU stays at 60 FPS.
+ * preserving each part's exact original material transparency/color, baseColor/emissive texture,
+ * and vertex colors while reducing triangle count cleanly without any UV or vertex distortion.
  */
 function prepareAncientTreeModel(
   root: Object3DLike,
   uTime: { value: number },
   targetTotalTris: number,
 ): PreparedAncientTree {
-  const rawParts: { geom: BufferGeometry; rawMat: MeshStandardMaterial | undefined; hasVertexColors: boolean }[] = [];
+  const rawParts: { geom: BufferGeometry; mat: MeshStandardMaterial; tris: number }[] = [];
   const textures: Texture[] = [];
   const sourceGeoms = new Set<BufferGeometry>();
   const sourceMats = new Set<Material>();
@@ -546,8 +459,6 @@ function prepareAncientTreeModel(
       }
     }
 
-    const usesAlphaCutout = Boolean(alphaMap || rawMat?.transparent || (rawMat && rawMat.alphaTest > 0));
-
     const partMat = new MeshStandardMaterial({
       map,
       normalMap,
@@ -555,10 +466,10 @@ function prepareAncientTreeModel(
       alphaMap,
       color,
       vertexColors: hasVertexColors,
-      transparent: false,
+      transparent: Boolean(rawMat?.transparent && (!rawMat.alphaTest || rawMat.alphaTest === 0)),
       opacity: rawMat?.opacity ?? 1,
-      alphaTest: usesAlphaCutout ? Math.max(0.32, rawMat?.alphaTest ?? 0.32) : 0,
-      roughness: rawMat?.roughness !== undefined ? Math.max(0.55, rawMat.roughness) : 0.82,
+      alphaTest: rawMat && rawMat.alphaTest > 0 ? rawMat.alphaTest : 0,
+      roughness: rawMat?.roughness !== undefined ? Math.max(0.55, rawMat.roughness) : 0.84,
       metalness: 0.0,
       emissive: new Color(0x09170b),
       emissiveIntensity: 0.05,
@@ -567,6 +478,8 @@ function prepareAncientTreeModel(
     attachWindSwayShader(partMat, uTime);
     return partMat;
   };
+
+  let totalRawTris = 0;
 
   root.updateMatrixWorld(true);
   root.traverse((node) => {
@@ -583,7 +496,11 @@ function prepareAncientTreeModel(
         if (rawMat) sourceMats.add(rawMat);
         const cleanGeom = extractSingleGroupGeometry(srcGeom, node.matrixWorld, grp.start, grp.count);
         if (cleanGeom) {
-          rawParts.push({ geom: cleanGeom, rawMat, hasVertexColors });
+          const idx = cleanGeom.index;
+          const pos = cleanGeom.getAttribute("position");
+          const tris = Math.floor((idx ? idx.count : pos.count) / 3);
+          totalRawTris += tris;
+          rawParts.push({ geom: cleanGeom, mat: buildPartMaterial(rawMat, hasVertexColors), tris });
         }
       }
     } else {
@@ -597,66 +514,34 @@ function prepareAncientTreeModel(
       }
       const cleanGeom = extractSingleGroupGeometry(srcGeom, node.matrixWorld);
       if (cleanGeom) {
-        rawParts.push({ geom: cleanGeom, rawMat, hasVertexColors });
+        const idx = cleanGeom.index;
+        const pos = cleanGeom.getAttribute("position");
+        const tris = Math.floor((idx ? idx.count : pos.count) / 3);
+        totalRawTris += tris;
+        rawParts.push({ geom: cleanGeom, mat: buildPartMaterial(rawMat, hasVertexColors), tris });
       }
     }
   });
+
+  for (const m of sourceMats) m.dispose();
+  for (const g of sourceGeoms) g.dispose();
 
   if (rawParts.length === 0) {
     throw new Error("cothu.glb: no mesh geometry found");
   }
 
-  // Group sub-meshes that share the exact same material signature so each material becomes 1 draw call.
-  const buckets = new Map<
-    string,
-    { geoms: BufferGeometry[]; rawMat: MeshStandardMaterial | undefined; hasVertexColors: boolean }
-  >();
-  for (const p of rawParts) {
-    const rm = p.rawMat;
-    const sig = `${rm?.map?.uuid ?? ""}|${rm?.normalMap?.uuid ?? ""}|${rm?.roughnessMap?.uuid ?? ""}|${rm?.alphaMap?.uuid ?? ""}|${rm?.color?.getHexString() ?? "ffffff"}|${rm?.transparent ? 1 : 0}|${rm?.alphaTest ?? 0}|${p.hasVertexColors ? 1 : 0}`;
-    let b = buckets.get(sig);
-    if (!b) {
-      b = { geoms: [], rawMat: rm, hasVertexColors: p.hasVertexColors };
-      buckets.set(sig, b);
-    }
-    b.geoms.push(p.geom);
-  }
-
-  const bucketEntries: { geom: BufferGeometry; mat: MeshStandardMaterial; tris: number }[] = [];
-  let totalRawTris = 0;
-
-  for (const b of buckets.values()) {
-    const combined = b.geoms.length === 1 ? b.geoms[0]! : mergeGeometries(b.geoms, false);
-    if (b.geoms.length > 1) {
-      for (const g of b.geoms) g.dispose();
-    }
-    if (!combined) continue;
-    const idx = combined.index;
-    const pos = combined.getAttribute("position");
-    const tris = Math.floor((idx ? idx.count : pos.count) / 3);
-    totalRawTris += tris;
-    bucketEntries.push({
-      geom: combined,
-      mat: buildPartMaterial(b.rawMat, b.hasVertexColors),
-      tris,
-    });
-  }
-
-  for (const m of sourceMats) m.dispose();
-  for (const g of sourceGeoms) g.dispose();
-
   const parts: BufferGeometry[] = [];
   const materials: MeshStandardMaterial[] = [];
 
-  for (const entry of bucketEntries) {
+  for (const entry of rawParts) {
     const share = totalRawTris > 0 ? entry.tris / totalRawTris : 1;
-    const partTarget = Math.max(400, Math.round(targetTotalTris * share));
-    const simplified = simplifyTreePartGeometry(entry.geom, partTarget);
-    parts.push(simplified);
+    const partTarget = Math.max(250, Math.round(targetTotalTris * share));
+    const decimated = decimateTreeGeometryClean(entry.geom, partTarget);
+    parts.push(decimated);
     materials.push(entry.mat);
   }
 
-  // Merge with `useGroups = true` so every distinct material retains its own group.
+  // Merge with `useGroups = true` so every sub-mesh retains its own material (bark, branches, leaves).
   const merged = parts.length === 1 ? parts[0]! : mergeGeometries(parts, true);
   if (parts.length > 1) {
     for (const p of parts) p.dispose();
@@ -685,11 +570,11 @@ function prepareAncientTreeModel(
 /** Distant broad-canopy tree (unit height) for the outer forest ring. */
 function createFarCanopyTreeGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
-  const trunk = colorGeo(new CylinderGeometry(0.042, 0.072, 0.38, 6).translate(0, 0.19, 0), 0x2b1d12);
-  const subShade = colorGeo(new SphereGeometry(0.38, 8, 6).scale(1.32, 0.52, 1.32).translate(0, 0.44, 0), 0x102413);
-  const lowL = colorGeo(new SphereGeometry(0.36, 8, 6).scale(1.25, 0.58, 1.25).translate(-0.12, 0.54, 0.07), 0x152e19);
-  const lowR = colorGeo(new SphereGeometry(0.36, 8, 6).scale(1.28, 0.6, 1.28).translate(0.12, 0.6, -0.06), 0x1a381f);
-  const top = colorGeo(new SphereGeometry(0.34, 8, 6).scale(1.2, 0.62, 1.2).translate(0, 0.75, 0), 0x214226);
+  const trunk = colorGeo(new CylinderGeometry(0.042, 0.072, 0.38, 5).translate(0, 0.19, 0), 0x2b1d12);
+  const subShade = colorGeo(new SphereGeometry(0.38, 6, 4).scale(1.32, 0.52, 1.32).translate(0, 0.44, 0), 0x102413);
+  const lowL = colorGeo(new SphereGeometry(0.36, 6, 4).scale(1.25, 0.58, 1.25).translate(-0.12, 0.54, 0.07), 0x152e19);
+  const lowR = colorGeo(new SphereGeometry(0.36, 6, 4).scale(1.28, 0.6, 1.28).translate(0.12, 0.6, -0.06), 0x1a381f);
+  const top = colorGeo(new SphereGeometry(0.34, 6, 4).scale(1.2, 0.62, 1.2).translate(0, 0.75, 0), 0x214226);
   parts.push(trunk, subShade, lowL, lowR, top);
   const merged = mergeGeometries(parts);
   for (const g of parts) g.dispose();
@@ -698,28 +583,30 @@ function createFarCanopyTreeGeometry(): BufferGeometry {
 }
 
 /**
- * Splits a ring of tree instance matrices into 4 directional quadrant `InstancedMesh`es (North, South, West, East)
- * with accurate bounding spheres so Three.js frustum culling skips the 2–3 quadrants behind the camera.
+ * Splits a ring of tree instances into North (z <= BOUNDARY.z) and South (z > BOUNDARY.z) halves
+ * so frustum culling skips the half behind the camera while keeping draw calls minimal.
  */
-function buildQuadrantInstancedMeshes(
+function buildHemisphereInstancedMeshes(
   namePrefix: string,
   geometry: BufferGeometry,
   material: Material | Material[],
   items: readonly { x: number; z: number; matrix: Matrix4 }[],
   receiveShadow: boolean,
 ): InstancedMesh[] {
-  const buckets: [Matrix4[], Matrix4[], Matrix4[], Matrix4[]] = [[], [], [], []];
+  const north: Matrix4[] = [];
+  const south: Matrix4[] = [];
   for (const item of items) {
-    const dx = item.x - BOUNDARY.x;
-    const dz = item.z - BOUNDARY.z;
-    const qIdx = Math.abs(dz) >= Math.abs(dx) ? (dz < 0 ? 0 : 1) : dx < 0 ? 2 : 3;
-    buckets[qIdx]!.push(item.matrix);
+    if (item.z <= BOUNDARY.z) north.push(item.matrix);
+    else south.push(item.matrix);
   }
 
   const meshes: InstancedMesh[] = [];
-  const labels = ["north", "south", "west", "east"] as const;
-  buckets.forEach((list, idx) => {
-    if (list.length === 0) return;
+  const pairs: readonly [string, Matrix4[]][] = [
+    ["north", north],
+    ["south", south],
+  ];
+  for (const [label, list] of pairs) {
+    if (list.length === 0) continue;
     const mesh = new InstancedMesh(geometry, material, list.length);
     list.forEach((mat, i) => mesh.setMatrixAt(i, mat));
     mesh.instanceMatrix.needsUpdate = true;
@@ -732,13 +619,13 @@ function buildQuadrantInstancedMeshes(
     mesh.frustumCulled = true;
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
-    mesh.name = `${namePrefix}:${labels[idx]}`;
+    mesh.name = `${namePrefix}:${label}`;
     meshes.push(mesh);
-  });
+  }
   return meshes;
 }
 
-/** Two columns of irregular flagstones along the stone path. */
+/** Two columns of irregular flagstones along the stone path (castShadow = false: flat 5cm ground slabs). */
 function addPath(batch: GeometryBatch<Key>, rand: () => number): void {
   const half = PATH.width / 2;
   const gap = 0.06;
@@ -748,7 +635,10 @@ function addPath(batch: GeometryBatch<Key>, rand: () => number): void {
     const split = (rand() - 0.5) * 0.7;
     for (const [x0, x1] of [[-half, split], [split, half]] as const) {
       const g = new BoxGeometry(x1 - x0 - gap, 0.1, len - gap);
-      batch.add("stone", g, place((x0 + x1) / 2, SLAB_TOP - 0.05, z + len / 2, (rand() - 0.5) * 0.03), { worldUV: 2.6 });
+      batch.add("stone", g, place((x0 + x1) / 2, SLAB_TOP - 0.05, z + len / 2, (rand() - 0.5) * 0.03), {
+        worldUV: 2.6,
+        castShadow: false,
+      });
       g.dispose();
     }
     z += len;
@@ -791,16 +681,20 @@ function loopRibbon(points: readonly Vec2[], width: number): BufferGeometry {
 }
 
 function addStoneLantern(batch: GeometryBatch<Key>, x: number, z: number): void {
-  box(batch, "rock", x - 0.31, x + 0.31, 0, 0.16, z - 0.31, z + 0.31, 3);
+  box(batch, "rock", x - 0.31, x + 0.31, 0, 0.16, z - 0.31, z + 0.31, 3, false);
   box(batch, "rock", x - 0.12, x + 0.12, 0.16, 0.78, z - 0.12, z + 0.12, 3);
-  box(batch, "rock", x - 0.25, x + 0.25, 0.78, 0.86, z - 0.25, z + 0.25, 3);
-  box(batch, "lanternPaper", x - 0.17, x + 0.17, 0.86, 1.22, z - 0.17, z + 0.17, 0.5);
-  for (const dx of [-0.19, 0.19]) for (const dz of [-0.19, 0.19]) box(batch, "rock", x + dx - 0.035, x + dx + 0.035, 0.86, 1.22, z + dz - 0.035, z + dz + 0.035, 3);
+  box(batch, "rock", x - 0.25, x + 0.25, 0.78, 0.86, z - 0.25, z + 0.25, 3, false);
+  box(batch, "lanternPaper", x - 0.17, x + 0.17, 0.86, 1.22, z - 0.17, z + 0.17, 0.5, false);
+  for (const dx of [-0.19, 0.19]) {
+    for (const dz of [-0.19, 0.19]) {
+      box(batch, "rock", x + dx - 0.035, x + dx + 0.035, 0.86, 1.22, z + dz - 0.035, z + dz + 0.035, 3, false);
+    }
+  }
   const cap = new ConeGeometry(0.42, 0.26, 4, 1);
   batch.add("rock", cap, place(x, 1.35, z, Math.PI / 4), { worldUV: 3 });
   cap.dispose();
   const knob = new SphereGeometry(0.07, 8, 6);
-  batch.add("rock", knob, place(x, 1.5, z), { worldUV: 3 });
+  batch.add("rock", knob, place(x, 1.5, z), { worldUV: 3, castShadow: false });
   knob.dispose();
 }
 
@@ -871,8 +765,8 @@ function addGate(batch: GeometryBatch<Key>): void {
     thickness: 0.16,
   }, 3);
   batch.add("roof", roof.top);
-  batch.add("wood", roof.bottom);
-  batch.add("roofTrim", roof.fascia);
+  batch.add("wood", roof.bottom, undefined, { castShadow: false });
+  batch.add("roofTrim", roof.fascia, undefined, { castShadow: false });
   roof.top.dispose();
   roof.bottom.dispose();
   roof.fascia.dispose();
@@ -976,12 +870,12 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
     built.push(group);
   }
 
-  // 1. Prepare `models/cothu.glb` for the 64 perimeter forest trees with fast triangle decimation.
+  // 1. Prepare `models/cothu.glb` preserving exact original vertex UVs/colors/materials without spikes.
   const uTreeTime = { value: 0 };
   const preparedTree = prepareAncientTreeModel(cothuGltf.scene, uTreeTime, FOREST_TREE_TARGET_TRIS);
   for (const mat of preparedTree.materials) own(mat);
 
-  // 2. Prepare `models/cothu1.glb` at higher hero detail specifically for the Wishing Tree outside the gate.
+  // 2. Prepare `models/cothu1.glb` specifically for the Wishing Tree outside the gate.
   let preparedWishTree: PreparedAncientTree | null = null;
   if (wishTreeGltf) {
     try {
@@ -1044,8 +938,8 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
   }
 
   const forest: InstancedMesh[] = [
-    ...buildQuadrantInstancedMeshes("ancient-trees", preparedTree.geometry, preparedTree.materialOrArray, ancientItems, true),
-    ...buildQuadrantInstancedMeshes("far-trees", farGeo, farMat, farItems, false),
+    ...buildHemisphereInstancedMeshes("ancient-trees", preparedTree.geometry, preparedTree.materialOrArray, ancientItems, false),
+    ...buildHemisphereInstancedMeshes("far-trees", farGeo, farMat, farItems, false),
   ];
   for (const o of forest) {
     scene.add(o);
