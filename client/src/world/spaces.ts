@@ -40,13 +40,11 @@ interface SpaceScene {
 }
 
 async function buildTichMacDuong({ scene, assets }: SceneContext): Promise<BuiltScene> {
-  // Kick off all network downloads (ground textures, PBR material textures, and GLB models) in parallel!
+  // Kick off all required network downloads in parallel (cothu.glb and cothu1.glb are completely removed!).
   const [, materials] = await Promise.all([
     createGround(scene, assets),
     createMaterials(assets),
     assets.model("models/buddha.glb"),
-    assets.model("models/cothu.glb"),
-    assets.model("models/cothu1.glb").catch(() => null),
   ]);
 
   const exterior = createHallExterior(scene, materials);
@@ -77,7 +75,6 @@ async function buildTichMacDuong({ scene, assets }: SceneContext): Promise<Built
       wishingTree.hangWish();
     },
     update(dt, t, day, camera) {
-      // Update region visibility first so off-screen regions can skip per-frame CPU/GPU work.
       regions.update(camera);
       interior.update(dt, t, day);
       garden.update(day);
