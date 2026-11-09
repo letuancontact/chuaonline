@@ -16,6 +16,7 @@ import {
   Vector2,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { IS_MOBILE, maxAnisotropy } from "../engine/renderer.ts";
 import { BONE, JOINT, createRig, type BoneName, type Rig } from "./rig.ts";
 
 export type MonkDetail = "full" | "remote";
@@ -324,7 +325,7 @@ export function createMonkGeometry(robeColor: Color, detail: MonkDetail): Buffer
 }
 
 /** Closed, smiling eyes and rosy cheeks on white; multiplied by the skin vertex colour. */
-export function drawFace(size = 256): CanvasTexture {
+export function drawFace(size = 512): CanvasTexture {
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const ctx = c.getContext("2d");
@@ -355,7 +356,7 @@ export function drawFace(size = 256): CanvasTexture {
   ctx.stroke();
   const tex = new CanvasTexture(c);
   tex.colorSpace = SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = maxAnisotropy();
   return tex;
 }
 
@@ -373,11 +374,11 @@ export interface MonkModel {
  */
 export class MonkFactory {
   private readonly geometries = new Map<string, BufferGeometry>();
-  private readonly face = drawFace();
+  private readonly face = drawFace(IS_MOBILE ? 384 : 512);
   private readonly woodblockPropGeo = createWoodblockPropGeometry();
   private readonly malletPropGeo = createMalletPropGeometry();
-  private readonly propMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.06 });
-  readonly material = new MeshStandardMaterial({ vertexColors: true, map: this.face, roughness: 0.82, metalness: 0 });
+  private readonly propMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.52, metalness: 0.08 });
+  readonly material = new MeshStandardMaterial({ vertexColors: true, map: this.face, roughness: 0.8, metalness: 0 });
 
   private getGeometry(robeColor: string, detail: MonkDetail): BufferGeometry {
     const key = `${robeColor}|${detail}`;
@@ -405,13 +406,13 @@ export class MonkFactory {
     const woodblockMesh = new Mesh(this.woodblockPropGeo, this.propMaterial);
     woodblockMesh.name = "prop:woodblock";
     woodblockMesh.visible = false;
-    woodblockMesh.castShadow = detail === "full";
+    woodblockMesh.castShadow = false;
     rig.bones["hand.L"].add(woodblockMesh);
 
     const malletMesh = new Mesh(this.malletPropGeo, this.propMaterial);
     malletMesh.name = "prop:mallet";
     malletMesh.visible = false;
-    malletMesh.castShadow = detail === "full";
+    malletMesh.castShadow = false;
     rig.bones["hand.R"].add(malletMesh);
 
     return {
