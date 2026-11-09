@@ -7,11 +7,17 @@ import {
   MeshBasicMaterial,
   PlaneGeometry,
   SRGBColorSpace,
-   type Object3D,
+  type Object3D,
 } from "three";
 
 const RIPPLE_POOL_SIZE = 4;
 const RIPPLE_DURATION_S = 1.15;
+/**
+ * Sits proud of the stone path flagstones (`0.05 m` in `garden.ts`), gravel loop (`0.02 m`),
+ * and pond stone bank (`0.06 m` in `pond.ts`) so foot auras (`aura_lotus`, `aura_jade`, `aura_wheel`)
+ * and woodblock soundwave ripples are never occluded by floor tiles.
+ */
+const AURA_BASE_Y = 0.068;
 
 interface RippleSlot {
   mesh: Mesh<PlaneGeometry, MeshBasicMaterial>;
@@ -116,6 +122,7 @@ function drawAuraTexture(kind: string): CanvasTexture {
       grad.addColorStop(0, "rgba(255, 228, 168, 0.38)");
       grad.addColorStop(0.6, "rgba(242, 198, 122, 0.22)");
       grad.addColorStop(0.88, "rgba(245, 208, 138, 0.45)");
+      ctx.addColorStop?.(1, "rgba(242, 198, 122, 0)");
       grad.addColorStop(1, "rgba(242, 198, 122, 0)");
       ctx.fillStyle = grad;
       ctx.beginPath();
@@ -194,7 +201,7 @@ export class SpiritualEffects {
   private phase = 0;
 
   constructor(avatarRoot: Object3D) {
-    this.root.position.y = 0.025;
+    this.root.position.y = AURA_BASE_Y;
     avatarRoot.add(this.root);
 
     this.auraMat = new MeshBasicMaterial({
@@ -202,10 +209,14 @@ export class SpiritualEffects {
       opacity: 0,
       blending: AdditiveBlending,
       depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -10,
+      polygonOffsetUnits: -10,
       side: DoubleSide,
     });
     this.auraMesh = new Mesh(this.planeGeo, this.auraMat);
     this.auraMesh.rotation.x = -Math.PI / 2;
+    this.auraMesh.renderOrder = 3;
     this.auraMesh.visible = false;
     this.root.add(this.auraMesh);
 
@@ -217,11 +228,15 @@ export class SpiritualEffects {
         opacity: 0,
         blending: AdditiveBlending,
         depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -10,
+        polygonOffsetUnits: -10,
         side: DoubleSide,
       });
       const mesh = new Mesh(this.rippleGeo, mat);
       mesh.rotation.x = -Math.PI / 2;
-      mesh.position.y = 0.01;
+      mesh.position.y = 0.006;
+      mesh.renderOrder = 3;
       mesh.visible = false;
       this.root.add(mesh);
       this.ripples.push({ mesh, age: 0, active: false });
