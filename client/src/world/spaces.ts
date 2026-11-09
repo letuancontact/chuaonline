@@ -40,15 +40,25 @@ interface SpaceScene {
 }
 
 async function buildTichMacDuong({ scene, assets }: SceneContext): Promise<BuiltScene> {
-  await createGround(scene, assets);
-  const materials = await createMaterials(assets);
-  const exterior = createHallExterior(scene, materials);
-  const interior = await createHallInterior(scene, assets, materials);
+  // Kick off all network downloads (ground textures, PBR material textures, and GLB models) in parallel!
+  const [, materials] = await Promise.all([
+    createGround(scene, assets),
+    createMaterials(assets),
+    assets.model("models/buddha.glb"),
+    assets.model("models/cothu.glb"),
+    assets.model("models/cothu1.glb").catch(() => null),
+  ]);
 
+  const exterior = createHallExterior(scene, materials);
   const regions = new Regions(scene);
   regions.track("hall", exterior.group);
+
+  const [interior, garden] = await Promise.all([
+    createHallInterior(scene, assets, materials),
+    createGarden(scene, assets, materials, regions),
+  ]);
   regions.track("hall", interior.group);
-  const garden = await createGarden(scene, assets, materials, regions);
+
   const pond = createPond(regions.group("garden-east"), materials, scene.fog?.color ?? new Color());
   const wishingTree = createWishingTree(regions.group("gate"));
   const grass = createGrass(regions);
@@ -67,6 +77,8 @@ async function buildTichMacDuong({ scene, assets }: SceneContext): Promise<Built
       wishingTree.hangWish();
     },
     update(dt, t, day, camera) {
+      // Update region visibility first so off-screen regions can skip per-frame CPU/GPU work.
+      regions.update(camera);
       interior.update(dt, t, day);
       garden.update(day);
       pond.update(t, day);
@@ -74,7 +86,6 @@ async function buildTichMacDuong({ scene, assets }: SceneContext): Promise<Built
       grass.update(t);
       glow.update(day);
       nature.update(dt, t, day);
-      regions.update(camera);
     },
   };
 }
