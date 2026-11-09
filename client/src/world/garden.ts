@@ -14,6 +14,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   Quaternion,
+  SRGBColorSpace,
   SphereGeometry,
   Vector2,
   Vector3,
@@ -46,13 +47,13 @@ export const SLAB_TOP = 0.05;
 /** Loop ribbon height above the ground; polygonOffset keeps it from z-fighting. */
 const LOOP_Y = 0.02;
 
-/** Normalised base height (metres) for `cothu.glb` before per-instance scale variation. */
+/** Normalised base height (metres) for `cothu.glb` and `cothu1.glb` before per-instance scale variation. */
 const ANCIENT_BASE_HEIGHT = 7.6;
 
 /**
  * 4-tier brick-staggered configuration for ancient trees (`models/cothu.glb`).
- * Balanced at 64 trees total with wide canopy spread so all 4 tiers interlock without gaps
- * while keeping GPU triangle count smooth even if a 25 MB original GLB is used.
+ * Each outer tier uses a locked phase offset (0.0 -> 0.5 -> 0.25 -> 0.75) with tight angular jitter
+ * so all 4 tiers interlock without gaps while maintaining 60 FPS performance.
  */
 interface AncientTierConfig {
   readonly count: number;
@@ -147,7 +148,8 @@ function colorGeo(g: BufferGeometry, hex: number): BufferGeometry {
 
 interface PreparedAncientTree {
   geometry: BufferGeometry;
-  material: MeshStandardMaterial;
+  materials: MeshStandardMaterial[];
+  materialOrArray: Material | Material[];
   textures: Texture[];
 }
 
@@ -157,19 +159,31 @@ type Object3DLike = {
 };
 
 /**
- * Normalises a sub-mesh BufferGeometry so all parts share the exact same attribute layout
- * (`position`, `normal`, `uv` as Float32BufferAttribute + Uint32 index) and strips
- * inconsistent attributes (`uv2`, `uv1`, `tangent`, `color`, etc.) that cause `mergeGeometries` to fail.
+ * Extracts a normalized BufferGeometry slice for a sub-mesh or geometry material group.
+ * Preserves `position`, `normal`, `uv`, and vertex `color` (`COLOR_0`), while stripping
+ * mismatched secondary attributes (`uv2`, `uv1`, `tangent`) that cause `mergeGeometries` to fail.
  */
-function normalizeTreePartGeometry(src: BufferGeometry, worldMatrix: Matrix4): BufferGeometry | null {
+function extractSingleGroupGeometry(
+  src: BufferGeometry,
+  worldMatrix: Matrix4,
+  indexStart?: number,
+  indexCount?: number,
+): BufferGeometry | null {
   const posAttr = src.getAttribute("position");
   if (!posAttr || posAttr.count === 0) return null;
-  const count = posAttr.count;
+
+  const srcIndex = src.index;
+  const totalIndices = srcIndex ? srcIndex.count : posAttr.count;
+  const start = indexStart ?? 0;
+  const count =
+    indexCount !== undefined ? Math.min(indexCount, totalIndices - start) : totalIndices - start;
+  if (count <= 0) return null;
 
   const g = new BufferGeometry();
+  const vCount = posAttr.count;
 
-  const posArr = new Float32Array(count * 3);
-  for (let i = 0; i < count; i++) {
+  const posArr = new Float32Array(vCount * 3);
+  for (let i = 0; i < vCount; i++) {
     posArr[i * 3] = posAttr.getX(i);
     posArr[i * 3 + 1] = posAttr.getY(i);
     posArr[i * 3 + 2] = posAttr.getZ(i);
@@ -181,129 +195,62 @@ function normalizeTreePartGeometry(src: BufferGeometry, worldMatrix: Matrix4): B
     src.computeVertexNormals();
     normAttr = src.getAttribute("normal");
   }
-  const normArr = new Float32Array(count * 3);
+  const normArr = new Float32Array(vCount * 3);
   if (normAttr) {
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < vCount; i++) {
       normArr[i * 3] = normAttr.getX(i);
       normArr[i * 3 + 1] = normAttr.getY(i);
       normArr[i * 3 + 2] = normAttr.getZ(i);
     }
   } else {
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < vCount; i++) {
       normArr[i * 3 + 1] = 1;
     }
   }
   g.setAttribute("normal", new Float32BufferAttribute(normArr, 3));
 
   const uvAttr = src.getAttribute("uv");
-  const uvArr = new Float32Array(count * 2);
+  const uvArr = new Float32Array(vCount * 2);
   if (uvAttr) {
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < vCount; i++) {
       uvArr[i * 2] = uvAttr.getX(i);
       uvArr[i * 2 + 1] = uvAttr.getY(i);
     }
   }
   g.setAttribute("uv", new Float32BufferAttribute(uvArr, 2));
 
-  if (src.index) {
-    const idxAttr = src.index;
-    const idxArr = new Uint32Array(idxAttr.count);
-    for (let i = 0; i < idxAttr.count; i++) {
-      idxArr[i] = idxAttr.getX(i);
+  const colAttr = src.getAttribute("color");
+  const colArr = new Float32Array(vCount * 3);
+  if (colAttr) {
+    const tmpCol = new Color();
+    for (let i = 0; i < vCount; i++) {
+      tmpCol.fromBufferAttribute(colAttr, i);
+      colArr[i * 3] = tmpCol.r;
+      colArr[i * 3 + 1] = tmpCol.g;
+      colArr[i * 3 + 2] = tmpCol.b;
     }
-    g.setIndex(new BufferAttribute(idxArr, 1));
   } else {
-    const idxArr = new Uint32Array(count);
-    for (let i = 0; i < count; i++) {
-      idxArr[i] = i;
-    }
-    g.setIndex(new BufferAttribute(idxArr, 1));
+    colArr.fill(1);
   }
+  g.setAttribute("color", new Float32BufferAttribute(colArr, 3));
+
+  const idxArr = new Uint32Array(count);
+  if (srcIndex) {
+    for (let i = 0; i < count; i++) {
+      idxArr[i] = srcIndex.getX(start + i);
+    }
+  } else {
+    for (let i = 0; i < count; i++) {
+      idxArr[i] = start + i;
+    }
+  }
+  g.setIndex(new BufferAttribute(idxArr, 1));
 
   g.applyMatrix4(worldMatrix);
   return g;
 }
 
-/**
- * Extracts meshes from `cothu.glb` / `cothu1.glb`, normalises vertex attributes so `mergeGeometries`
- * never fails on `uv2`, shifts the bottom of the trunk (`min.y`) to sit flush on `y = 0`, scales the
- * tree to `ANCIENT_BASE_HEIGHT` (7.6 m), and uses a single unified `MeshStandardMaterial` (no alphaTest
- * discard) that renders reliably across both `InstancedMesh` and `Mesh`.
- */
-function prepareAncientTreeModel(
-  root: Object3DLike,
-  uTime: { value: number },
-): PreparedAncientTree {
-  const parts: BufferGeometry[] = [];
-  const textures: Texture[] = [];
-  let baseMap: Texture | null = null;
-  let baseColor = new Color(0xffffff);
-
-  root.updateMatrixWorld(true);
-  root.traverse((node) => {
-    if (!(node instanceof Mesh)) return;
-    const srcGeom = node.geometry as BufferGeometry;
-    const cleanGeom = normalizeTreePartGeometry(srcGeom, node.matrixWorld);
-    if (cleanGeom) {
-      parts.push(cleanGeom);
-    }
-
-    const mats = Array.isArray(node.material) ? node.material : [node.material];
-    for (const m of mats) {
-      const srcMat = m as MeshStandardMaterial | undefined;
-      if (!srcMat) continue;
-      if (srcMat.map && !baseMap) {
-        baseMap = srcMat.map;
-      }
-      if (srcMat.map && !textures.includes(srcMat.map)) {
-        textures.push(srcMat.map);
-      }
-      if (srcMat.metalnessMap && !textures.includes(srcMat.metalnessMap)) {
-        textures.push(srcMat.metalnessMap);
-      }
-      if (srcMat.roughnessMap && !textures.includes(srcMat.roughnessMap)) {
-        textures.push(srcMat.roughnessMap);
-      }
-      if (srcMat.normalMap && !textures.includes(srcMat.normalMap)) {
-        textures.push(srcMat.normalMap);
-      }
-      if (srcMat.color && baseColor.getHex() === 0xffffff) {
-        baseColor = srcMat.color.clone();
-      }
-      srcMat.dispose();
-    }
-    srcGeom.dispose();
-  });
-
-  const merged = parts.length === 1 ? parts[0]! : mergeGeometries(parts);
-  if (parts.length > 1) {
-    for (const p of parts) p.dispose();
-  }
-  if (!merged) throw new Error("cothu.glb: no mesh geometry found");
-
-  // Align bottom (`min.y`) to y = 0, centre X/Z at 0, and scale height to ANCIENT_BASE_HEIGHT (7.6 m).
-  merged.computeBoundingBox();
-  const bbox = merged.boundingBox ?? new Box3();
-  const cx = (bbox.min.x + bbox.max.x) * 0.5;
-  const cz = (bbox.min.z + bbox.max.z) * 0.5;
-  const rawHeight = Math.max(0.01, bbox.max.y - bbox.min.y);
-  const normalizeScale = ANCIENT_BASE_HEIGHT / rawHeight;
-
-  merged.translate(-cx, -bbox.min.y, -cz);
-  merged.scale(normalizeScale, normalizeScale, normalizeScale);
-  merged.computeBoundingBox();
-  merged.computeBoundingSphere();
-
-  const material = new MeshStandardMaterial({
-    map: baseMap,
-    color: baseColor,
-    roughness: 0.86,
-    metalness: 0.0,
-    emissive: new Color(0x09170b),
-    emissiveIntensity: 0.06,
-    side: DoubleSide,
-  });
-
+function attachWindSwayShader(material: MeshStandardMaterial, uTime: { value: number }): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms["uTime"] = uTime;
     shader.vertexShader = shader.vertexShader
@@ -324,8 +271,139 @@ function prepareAncientTreeModel(
         transformed.z += leafSway * 0.6;`,
       );
   };
+}
 
-  return { geometry: merged, material, textures };
+/**
+ * Extracts all sub-meshes and multi-material primitive groups from `cothu.glb` / `cothu1.glb`,
+ * preserving each part's original material color, baseColor/emissive texture, and vertex colors
+ * via `mergeGeometries(parts, true)`.
+ */
+function prepareAncientTreeModel(
+  root: Object3DLike,
+  uTime: { value: number },
+): PreparedAncientTree {
+  const parts: BufferGeometry[] = [];
+  const materials: MeshStandardMaterial[] = [];
+  const textures: Texture[] = [];
+  const sourceGeoms = new Set<BufferGeometry>();
+  const sourceMats = new Set<Material>();
+
+  const trackTex = (tex: Texture | null | undefined, isColorMap = false): Texture | null => {
+    if (!tex) return null;
+    if (isColorMap) {
+      tex.colorSpace = SRGBColorSpace;
+    }
+    if (!textures.includes(tex)) textures.push(tex);
+    return tex;
+  };
+
+  const buildPartMaterial = (
+    rawMat: MeshStandardMaterial | undefined,
+    hasVertexColors: boolean,
+  ): MeshStandardMaterial => {
+    const map = trackTex(rawMat?.map ?? rawMat?.emissiveMap, true);
+    const normalMap = trackTex(rawMat?.normalMap, false);
+    const roughnessMap = trackTex(rawMat?.roughnessMap, false);
+    const alphaMap = trackTex(rawMat?.alphaMap, false);
+    trackTex(rawMat?.metalnessMap, false);
+
+    const color = rawMat?.color ? rawMat.color.clone() : new Color(0xffffff);
+    // If an exporter stored the diffuse color in `emissive` with a black `color`, recover it
+    if (color.r + color.g + color.b < 0.02) {
+      if (rawMat?.emissive && rawMat.emissive.r + rawMat.emissive.g + rawMat.emissive.b > 0.02) {
+        color.copy(rawMat.emissive);
+      } else if (map) {
+        color.setHex(0xffffff);
+      }
+    }
+
+    const partMat = new MeshStandardMaterial({
+      map,
+      normalMap,
+      roughnessMap,
+      alphaMap,
+      color,
+      vertexColors: hasVertexColors,
+      transparent: Boolean(rawMat?.transparent && (!rawMat.alphaTest || rawMat.alphaTest === 0)),
+      opacity: rawMat?.opacity ?? 1,
+      alphaTest: rawMat && rawMat.alphaTest > 0 ? rawMat.alphaTest : 0,
+      roughness: rawMat?.roughness !== undefined ? Math.max(0.55, rawMat.roughness) : 0.84,
+      metalness: 0.0,
+      emissive: new Color(0x09170b),
+      emissiveIntensity: 0.05,
+      side: DoubleSide,
+    });
+    attachWindSwayShader(partMat, uTime);
+    return partMat;
+  };
+
+  root.updateMatrixWorld(true);
+  root.traverse((node) => {
+    if (!(node instanceof Mesh)) return;
+    const srcGeom = node.geometry as BufferGeometry;
+    sourceGeoms.add(srcGeom);
+    const hasVertexColors = Boolean(srcGeom.getAttribute("color"));
+
+    if (Array.isArray(node.material) && srcGeom.groups.length > 0) {
+      for (const grp of srcGeom.groups) {
+        const rawMat = (node.material[grp.materialIndex] ?? node.material[0]) as
+          | MeshStandardMaterial
+          | undefined;
+        if (rawMat) sourceMats.add(rawMat);
+        const cleanGeom = extractSingleGroupGeometry(srcGeom, node.matrixWorld, grp.start, grp.count);
+        if (cleanGeom) {
+          parts.push(cleanGeom);
+          materials.push(buildPartMaterial(rawMat, hasVertexColors));
+        }
+      }
+    } else {
+      const rawMat = (Array.isArray(node.material) ? node.material[0] : node.material) as
+        | MeshStandardMaterial
+        | undefined;
+      if (Array.isArray(node.material)) {
+        for (const m of node.material) if (m) sourceMats.add(m as Material);
+      } else if (rawMat) {
+        sourceMats.add(rawMat);
+      }
+      const cleanGeom = extractSingleGroupGeometry(srcGeom, node.matrixWorld);
+      if (cleanGeom) {
+        parts.push(cleanGeom);
+        materials.push(buildPartMaterial(rawMat, hasVertexColors));
+      }
+    }
+  });
+
+  for (const m of sourceMats) m.dispose();
+  for (const g of sourceGeoms) g.dispose();
+
+  if (parts.length === 0) {
+    throw new Error("cothu.glb: no mesh geometry found");
+  }
+
+  // Merge with `useGroups = true` so every sub-mesh retains its own material (bark, branches, leaves).
+  const merged = parts.length === 1 ? parts[0]! : mergeGeometries(parts, true);
+  if (parts.length > 1) {
+    for (const p of parts) p.dispose();
+  }
+  if (!merged) throw new Error("cothu.glb: failed to merge mesh geometries");
+
+  // Align bottom (`min.y`) to y = 0, centre X/Z at 0, and scale height to ANCIENT_BASE_HEIGHT (7.6 m).
+  merged.computeBoundingBox();
+  const bbox = merged.boundingBox ?? new Box3();
+  const cx = (bbox.min.x + bbox.max.x) * 0.5;
+  const cz = (bbox.min.z + bbox.max.z) * 0.5;
+  const rawHeight = Math.max(0.01, bbox.max.y - bbox.min.y);
+  const normalizeScale = ANCIENT_BASE_HEIGHT / rawHeight;
+
+  merged.translate(-cx, -bbox.min.y, -cz);
+  merged.scale(normalizeScale, normalizeScale, normalizeScale);
+  merged.computeBoundingBox();
+  merged.computeBoundingSphere();
+
+  const materialOrArray: Material | Material[] =
+    materials.length === 1 ? materials[0]! : materials;
+
+  return { geometry: merged, materials, materialOrArray, textures };
 }
 
 /** Distant broad-canopy tree (unit height) for the outer forest ring. */
@@ -496,20 +574,6 @@ function ringPoint(a: number, s: number): Vec2 {
   return { x: BOUNDARY.x + Math.cos(a) * BOUNDARY.rx * s, z: BOUNDARY.z + Math.sin(a) * BOUNDARY.rz * s };
 }
 
-/** Checks whether `/assets/models/cothu1.glb` is a valid non-empty binary GLB before parsing. */
-async function loadOptionalWishTreeModel(assets: Assets): Promise<{ scene: Object3DLike } | null> {
-  try {
-    const res = await fetch("/assets/models/cothu1.glb", { method: "HEAD" });
-    const lenHeader = res.headers.get("content-length");
-    if (!res.ok || (lenHeader !== null && Number(lenHeader) < 128)) {
-      return null;
-    }
-    return await assets.model("models/cothu1.glb");
-  } catch {
-    return null;
-  }
-}
-
 export interface LanternSpots {
   stone: readonly Vector3[];
   lotus: readonly Vector3[];
@@ -524,7 +588,10 @@ export interface Garden {
 export async function createGarden(scene: Scene, assets: Assets, materials: Materials, regions: Regions): Promise<Garden> {
   const [cothuGltf, wishTreeGltf] = await Promise.all([
     assets.model("models/cothu.glb"),
-    loadOptionalWishTreeModel(assets),
+    assets.model("models/cothu1.glb").catch((err: unknown) => {
+      console.warn("[garden] Fallback to models/cothu.glb for Wishing Tree:", err);
+      return null;
+    }),
   ]);
   const rand = seeded(0x5a7d);
 
@@ -592,27 +659,31 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
     built.push(group);
   }
 
-  // 1. Prepare `models/cothu.glb` with the single-material pipeline proven to render reliably.
+  // 1. Prepare `models/cothu.glb` preserving all sub-mesh materials, textures, and vertex colors.
   const uTreeTime = { value: 0 };
   const preparedTree = prepareAncientTreeModel(cothuGltf.scene, uTreeTime);
-  own(preparedTree.material);
+  for (const mat of preparedTree.materials) own(mat);
 
-  // 2. Prepare `models/cothu1.glb` if valid; otherwise share `preparedTree` with the Wishing Tree.
+  // 2. Prepare `models/cothu1.glb` specifically for the Wishing Tree outside the gate.
   let preparedWishTree: PreparedAncientTree | null = null;
   if (wishTreeGltf) {
     try {
       preparedWishTree = prepareAncientTreeModel(wishTreeGltf.scene, uTreeTime);
-      own(preparedWishTree.material);
-    } catch {
+      for (const mat of preparedWishTree.materials) own(mat);
+    } catch (err) {
+      console.warn("[garden] Fallback to models/cothu.glb for Wishing Tree:", err);
       preparedWishTree = null;
     }
   }
   const activeWishTree = preparedWishTree ?? preparedTree;
-  attachAncientTreeToWishingTree(activeWishTree.geometry, activeWishTree.material);
+  attachAncientTreeToWishingTree(
+    activeWishTree.geometry,
+    activeWishTree.materialOrArray as unknown as MeshStandardMaterial,
+  );
 
   const ancientTrees = new InstancedMesh(
     preparedTree.geometry,
-    preparedTree.material,
+    preparedTree.materialOrArray,
     ANCIENT_TREE_COUNT,
   );
   let treeIdx = 0;
@@ -640,7 +711,6 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
   }
 
   ancientTrees.instanceMatrix.needsUpdate = true;
-  // Disable dynamic shadow-map casting on outer forest instances so even a 25 MB high-poly GLB runs at 60 FPS
   ancientTrees.castShadow = false;
   ancientTrees.receiveShadow = true;
   ancientTrees.frustumCulled = false;
@@ -691,9 +761,13 @@ export async function createGarden(scene: Scene, assets: Assets, materials: Mate
       lanternPaper.emissiveIntensity = k;
       lotusLamp.emissiveIntensity = k;
       const treeEmissive = 0.04 + 0.05 * daylight;
-      preparedTree.material.emissiveIntensity = treeEmissive;
+      for (const mat of preparedTree.materials) {
+        mat.emissiveIntensity = treeEmissive;
+      }
       if (preparedWishTree) {
-        preparedWishTree.material.emissiveIntensity = treeEmissive;
+        for (const mat of preparedWishTree.materials) {
+          mat.emissiveIntensity = treeEmissive;
+        }
       }
     },
     dispose() {
