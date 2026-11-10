@@ -101,13 +101,6 @@ export const ROCKS: readonly Circle[] = [
   { x: 32, z: 32, r: 1.1 },
 ];
 
-/** Every static garden prop a walker must go around (path lanterns, lotus lanterns, rocks). */
-export const PROP_COLLIDERS: readonly Circle[] = [
-  ...PATH_LANTERNS.map((p) => ({ x: p.x, z: p.z, r: LANTERN_RADIUS })),
-  ...LANTERN_LOOP.lanterns.map((p) => ({ x: p.x, z: p.z, r: LANTERN_RADIUS })),
-  ...ROCKS,
-];
-
 export const POND = { x: 24, z: 12, rx: 7, rz: 10 } as const;
 export const LOTUS_FLOWERS: readonly Vec2[] = [
   { x: 22, z: 8 },
@@ -119,6 +112,33 @@ export const BOUNDARY = { x: 0, z: 16, rx: 47, rz: 44 } as const;
 /** The gate closes the garden to the south: nothing past it is walkable. */
 export const GATE_Z = 44;
 export const GATE = { xMin: -5, xMax: 5, zMin: 44, zMax: 45.6 } as const;
+
+/**
+ * Colliders for the Ancient Wishing Tree inside the courtyard (`x = -11.5, z = 40.6`):
+ * - Main trunk, root collar, and mossy boulders (`r = 1.85m`), leaving the prayer platform (`dist = 2.95m`) walkable.
+ * - Three low stone garden lanterns flanking the root sanctuary (`dist = 2.75m`, `r = 0.32m`).
+ */
+const WISH_TREE_CENTER = {
+  x: -11.5,
+  z: (GATE.zMin + GATE.zMax) / 2 - 4.2,
+} as const;
+
+export const WISHING_TREE_COLLIDERS: readonly Circle[] = [
+  { x: WISH_TREE_CENTER.x, z: WISH_TREE_CENTER.z, r: 1.85 },
+  ...([-2.25, -0.35, 2.75] as const).map((a) => ({
+    x: WISH_TREE_CENTER.x + Math.cos(a) * 2.75,
+    z: WISH_TREE_CENTER.z + Math.sin(a) * 2.75,
+    r: 0.32,
+  })),
+];
+
+/** Every static garden prop a walker must go around (path lanterns, lotus lanterns, rocks, wishing tree). */
+export const PROP_COLLIDERS: readonly Circle[] = [
+  ...PATH_LANTERNS.map((p) => ({ x: p.x, z: p.z, r: LANTERN_RADIUS })),
+  ...LANTERN_LOOP.lanterns.map((p) => ({ x: p.x, z: p.z, r: LANTERN_RADIUS })),
+  ...ROCKS,
+  ...WISHING_TREE_COLLIDERS,
+];
 
 export const SPAWN: Vec2Yaw = { x: 0, z: 38, yaw: Math.PI };
 export const SPAWN_JITTER = 1.5;
@@ -137,8 +157,12 @@ export const ROOM_COUNT = 10;
 export const ROOM_CAPACITY = 100;
 
 export function roomId(n: number): string {
-  if (!Number.isInteger(n) || n < 1 || n > ROOM_COUNT) throw new RangeError(`room ${n}`);
+  if (!Number.isInteger(n) || iCheck(n)) throw new RangeError(`room ${n}`);
   return `san-${String(n).padStart(2, "0")}`;
+}
+
+function iCheck(n: number): boolean {
+  return n < 1 || n > ROOM_COUNT;
 }
 
 /** Inverse of roomId; null for anything that is not `san-01`…`san-10`. */
