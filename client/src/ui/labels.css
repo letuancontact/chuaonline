@@ -7,7 +7,7 @@
   pointer-events: none;
 }
 
-/* Vertical stack: Spiritual Title Badge on TOP, Character Nametag on BOTTOM */
+/* Vertical stack: Floating Luminous Title on TOP, Borderless Arrow + Character Name on BOTTOM */
 .nametag-wrap {
   position: absolute;
   left: 0;
@@ -15,7 +15,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 1px;
   will-change: transform;
 }
 
@@ -24,193 +24,196 @@
 }
 
 /* ============================================================================
-   LUMINOUS SPIRITUAL TITLE BADGE (PHÁP BẢO CÁC) — STACKED ABOVE CHARACTER NAME
+   BORDERLESS LUMINOUS SPIRITUAL TITLE (PHÁP BẢO CÁC) — PURE GLOWING TEXT
    ============================================================================ */
 .nametag-title-pill {
-  --title-bg: linear-gradient(135deg, rgb(78 44 10 / 0.88), rgb(42 22 4 / 0.92));
-  --title-border: #ffd666;
-  --title-glow: rgb(255 196 56 / 0.65);
-  --title-glow-outer: rgb(255 162 24 / 0.38);
-  --title-text-grad: linear-gradient(180deg, #fffdf0 0%, #ffe078 52%, #f5a623 100%);
-  --title-ornament: #ffdf75;
+  --title-glow: rgb(255 204 68 / 0.9);
+  --title-glow-outer: rgb(255 152 24 / 0.65);
+  --title-text-grad: linear-gradient(
+    90deg,
+    #ffe27a 0%,
+    #ffffff 28%,
+    #ffb830 55%,
+    #fffdf0 78%,
+    #ffe27a 100%
+  );
+  --title-ornament: #ffe885;
 
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  height: 21px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1.25px solid var(--title-border);
-  background: var(--title-bg);
-  box-shadow:
-    0 0 10px var(--title-glow),
-    0 0 20px var(--title-glow-outer),
-    inset 0 1px 1px rgb(255 255 255 / 0.45);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  gap: 4px;
+  padding: 0 2px;
+  background: none;
+  border: none;
+  box-shadow: none;
   white-space: nowrap;
-  overflow: hidden;
-  animation: title-aura-pulse 2.6s ease-in-out infinite;
+  animation: title-float-pulse 2.6s ease-in-out infinite;
 }
 
 .nametag-title-pill[hidden] {
   display: none !important;
 }
 
-/* Sweeping light shimmer across the title badge */
-.nametag-title-pill::after {
-  content: "";
-  position: absolute;
-  top: -20%;
-  left: -120%;
-  width: 65%;
-  height: 140%;
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    rgb(255 255 255 / 0.05) 30%,
-    rgb(255 255 255 / 0.55) 50%,
-    rgb(255 255 255 / 0.05) 70%,
-    transparent 100%
-  );
-  transform: skewX(-22deg);
-  animation: title-shimmer-sweep 3.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-  pointer-events: none;
-}
-
 .nametag-title-ornament {
   font-size: 9px;
   line-height: 1;
   color: var(--title-ornament);
-  filter: drop-shadow(0 0 4px var(--title-glow));
+  text-shadow:
+    0 1px 2px rgb(0 0 0 / 0.95),
+    0 0 6px var(--title-glow),
+    0 0 12px var(--title-glow-outer);
   animation: title-sparkle-spin 2.2s ease-in-out infinite alternate;
 }
 
 .nametag-title-text {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.03em;
-  line-height: 1;
-  background: var(--title-text-grad);
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+  background-image: var(--title-text-grad);
+  background-size: 200% auto;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.85));
+  filter:
+    drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.95))
+    drop-shadow(0 0 5px var(--title-glow))
+    drop-shadow(0 0 11px var(--title-glow-outer));
+  animation: title-text-shimmer 3.2s linear infinite;
 }
 
 /* Theme 1: Tịnh Tâm — Kim Liên Tịnh Quang (Radiant Golden Lotus) */
 .nametag-title-pill[data-theme="tinhtam"] {
-  --title-bg: linear-gradient(135deg, rgb(86 48 10 / 0.88), rgb(44 22 4 / 0.92));
-  --title-border: #ffda6b;
-  --title-glow: rgb(255 204 68 / 0.72);
-  --title-glow-outer: rgb(255 166 28 / 0.42);
-  --title-text-grad: linear-gradient(180deg, #ffffff 0%, #ffe688 55%, #f5a623 100%);
-  --title-ornament: #ffe484;
+  --title-glow: rgb(255 208 68 / 0.92);
+  --title-glow-outer: rgb(255 156 20 / 0.65);
+  --title-text-grad: linear-gradient(
+    90deg,
+    #ffe074 0%,
+    #ffffff 30%,
+    #ffae24 55%,
+    #fffbe6 80%,
+    #ffe074 100%
+  );
+  --title-ornament: #ffe680;
 }
 
 /* Theme 2: An Nhiên — Bích Ngọc Thanh Lương (Luminous Jade Emerald) */
 .nametag-title-pill[data-theme="annhien"] {
-  --title-bg: linear-gradient(135deg, rgb(12 68 54 / 0.88), rgb(6 38 30 / 0.92));
-  --title-border: #6bffd0;
-  --title-glow: rgb(72 245 190 / 0.7);
-  --title-glow-outer: rgb(32 195 145 / 0.4);
-  --title-text-grad: linear-gradient(180deg, #ffffff 0%, #b3ffe6 55%, #3be8b0 100%);
-  --title-ornament: #8affdb;
+  --title-glow: rgb(72 250 195 / 0.92);
+  --title-glow-outer: rgb(20 195 145 / 0.65);
+  --title-text-grad: linear-gradient(
+    90deg,
+    #7affd6 0%,
+    #ffffff 30%,
+    #2be0a8 55%,
+    #e6fff7 80%,
+    #7affd6 100%
+  );
+  --title-ornament: #94ffe0;
 }
 
 /* Theme 3: Cư Sĩ — Hổ Phách Trang Nghiêm (Sacred Crimson & Imperial Amber) */
 .nametag-title-pill[data-theme="cusi"] {
-  --title-bg: linear-gradient(135deg, rgb(108 26 18 / 0.9), rgb(56 12 8 / 0.94));
-  --title-border: #ffc459;
-  --title-glow: rgb(255 142 54 / 0.75);
-  --title-glow-outer: rgb(224 68 32 / 0.45);
-  --title-text-grad: linear-gradient(180deg, #fffdf2 0%, #ffd885 52%, #ff9436 100%);
-  --title-ornament: #ffd275;
+  --title-glow: rgb(255 148 56 / 0.94);
+  --title-glow-outer: rgb(235 64 28 / 0.68);
+  --title-text-grad: linear-gradient(
+    90deg,
+    #ffd275 0%,
+    #fffdf2 30%,
+    #ff7b29 55%,
+    #ffe8b3 80%,
+    #ffd275 100%
+  );
+  --title-ornament: #ffcf70;
 }
 
 /* Theme 4: Phước Huệ — Bảo Liên Cát Tường (Supreme Celestial Lotus Gold & Rose) */
 .nametag-title-pill[data-theme="phuochue"] {
-  --title-bg: linear-gradient(135deg, rgb(98 24 62 / 0.9), rgb(58 28 10 / 0.94));
-  --title-border: #ffe082;
-  --title-glow: rgb(255 182 115 / 0.82);
-  --title-glow-outer: rgb(255 105 180 / 0.5);
-  --title-text-grad: linear-gradient(180deg, #ffffff 0%, #ffe999 45%, #ff9ec6 100%);
-  --title-ornament: #ffe694;
+  --title-glow: rgb(255 186 120 / 0.95);
+  --title-glow-outer: rgb(255 96 176 / 0.72);
+  --title-text-grad: linear-gradient(
+    90deg,
+    #ffe894 0%,
+    #ffffff 25%,
+    #ff94c2 52%,
+    #ffe078 78%,
+    #ffe894 100%
+  );
+  --title-ornament: #ffe999;
 }
 
-@keyframes title-aura-pulse {
+@keyframes title-float-pulse {
   0%, 100% {
     transform: translateY(0) scale(1);
-    box-shadow:
-      0 0 8px var(--title-glow),
-      0 0 16px var(--title-glow-outer),
-      inset 0 1px 1px rgb(255 255 255 / 0.45);
   }
   50% {
-    transform: translateY(-1px) scale(1.03);
-    box-shadow:
-      0 0 13px var(--title-glow),
-      0 0 26px var(--title-glow-outer),
-      inset 0 1px 2px rgb(255 255 255 / 0.7);
+    transform: translateY(-1.5px) scale(1.03);
   }
 }
 
-@keyframes title-shimmer-sweep {
+@keyframes title-text-shimmer {
   0% {
-    left: -120%;
+    background-position: 0% center;
   }
-  38%, 100% {
-    left: 160%;
+  100% {
+    background-position: 200% center;
   }
 }
 
 @keyframes title-sparkle-spin {
   0% {
     transform: scale(0.88) rotate(-8deg);
-    opacity: 0.8;
+    opacity: 0.82;
   }
   100% {
-    transform: scale(1.15) rotate(8deg);
+    transform: scale(1.16) rotate(8deg);
     opacity: 1;
   }
 }
 
 /* ============================================================================
-   CHARACTER NAMETAG (BOTTOM ROW)
+   CLEAN BORDERLESS CHARACTER NAMETAG (ARROW + CHARACTER NAME)
    ============================================================================ */
 .nametag {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  max-width: 156px;
-  height: 24px;
-  padding: 0 9px;
-  border: 1px solid rgb(255 247 229 / 0.14);
-  border-radius: 14px;
-  background: rgb(32 42 35 / 0.54);
-  color: #f8f2e4;
+  justify-content: center;
+  gap: 3px;
+  max-width: 168px;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: #fff9eb;
   font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  text-shadow:
+    0 1px 2px rgb(0 0 0 / 0.95),
+    0 0 5px rgb(0 0 0 / 0.8),
+    0 0 10px rgb(0 0 0 / 0.55);
 }
 
-.nametag i {
-  display: inline-grid;
-  place-items: center;
-  height: 16px;
-  padding: 0 5px;
-  border-radius: 8px;
-  background: rgb(242 220 168 / 0.9);
-  color: var(--color-ink);
+.nametag--other {
+  color: #f0eae1;
+  font-weight: 500;
+}
+
+.nametag i.nametag-arrow {
+  display: inline-block;
+  color: #ffd86b;
   font-style: normal;
-  font-size: var(--text-2xs);
-  font-weight: 600;
+  font-size: 11px;
+  line-height: 1;
   flex-shrink: 0;
+  text-shadow:
+    0 1px 2px rgb(0 0 0 / 0.95),
+    0 0 6px rgb(255 200 60 / 0.75);
 }
 
 .nametag--other i {
@@ -226,15 +229,15 @@
 /* Dozing (D25): three letters drift up from the tag's top-right corner, one after another. */
 .zzz {
   position: absolute;
-  left: calc(100% - 4px);
-  bottom: 6px;
+  left: calc(100% + 2px);
+  bottom: 2px;
   display: flex;
   align-items: flex-end;
   gap: 1px;
   color: #f8f2e4;
   font-weight: 600;
   line-height: 1;
-  text-shadow: 0 1px 3px rgb(0 0 0 / 0.55);
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.75);
 }
 
 .zzz[hidden] {
@@ -277,7 +280,7 @@
 @media (prefers-reduced-motion: reduce) {
   .zzz b,
   .nametag-title-pill,
-  .nametag-title-pill::after,
+  .nametag-title-text,
   .nametag-title-ornament {
     animation: none;
   }
@@ -286,11 +289,11 @@
   }
 }
 
-/* Chat bubble (P4-D9): above the entire stacked wrapper, so it sits cleanly above the title badge. */
+/* Chat bubble (P4-D9): above the entire stacked wrapper, so it sits cleanly above the title. */
 .chat-bubble {
   position: absolute;
   left: 50%;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 5px);
   width: max-content;
   max-width: 200px;
   padding: 5px 10px;
