@@ -19,65 +19,35 @@ function resolveTitleTheme(title: string): TitleTheme {
   return "tinhtam";
 }
 
-/** Builds the ornate sacred cloud-and-lotus filigree wing SVG flanking the title text. */
-function createTitleWingSvg(side: "left" | "right"): SVGSVGElement {
+/** Builds a luminous emerald-green downward-pointing crystal arrow SVG placed before the player's name. */
+function createDownArrowSvg(): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("viewBox", "0 0 38 16");
-  svg.setAttribute("aria-hidden", "true");
-  svg.setAttribute("class", `nametag-title-wing nametag-title-wing--${side}`);
-
-  // Main sweeping lotus-cloud blade
-  const mainWing = document.createElementNS(SVG_NS, "path");
-  mainWing.setAttribute(
-    "d",
-    "M35 8 C27 8 23 2.8 14 3.8 C8 4.4 4.2 6.8 0.5 8 C5.5 9.6 10.5 11.8 17.5 11.2 C24.5 10.6 28.5 8.5 35 8 Z",
-  );
-  mainWing.setAttribute("fill", "currentColor");
-
-  // Upper delicate filigree curl
-  const upperCurl = document.createElementNS(SVG_NS, "path");
-  upperCurl.setAttribute(
-    "d",
-    "M32 5.8 C26.5 4.6 22.5 1.2 16 2.2 C21 3.4 25.2 5.8 32 5.8 Z",
-  );
-  upperCurl.setAttribute("fill", "currentColor");
-  upperCurl.setAttribute("opacity", "0.82");
-
-  // Inner sacred star-diamond gem next to the title letters
-  const gem = document.createElementNS(SVG_NS, "path");
-  gem.setAttribute("d", "M35.2 4.8 L38 8 L35.2 11.2 L32.4 8 Z");
-  gem.setAttribute("fill", "#ffffff");
-
-  svg.append(mainWing, upperCurl, gem);
-  return svg;
-}
-
-/** Builds a faceted double-chevron golden spirit arrow SVG pointing at the player's own name. */
-function createSelfArrowSvg(): SVGSVGElement {
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("viewBox", "0 0 18 14");
+  svg.setAttribute("viewBox", "0 0 14 16");
   svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("class", "nametag-arrow-svg");
 
-  const tail = document.createElementNS(SVG_NS, "path");
-  tail.setAttribute("d", "M1 2.2 L6.6 7 L1 11.8 L3.4 7 Z");
-  tail.setAttribute("fill", "currentColor");
-  tail.setAttribute("opacity", "0.78");
+  // Upper floating chevron crown
+  const upper = document.createElementNS(SVG_NS, "path");
+  upper.setAttribute("d", "M2.2 1.8 L7 5.8 L11.8 1.8 L7 3.8 Z");
+  upper.setAttribute("fill", "currentColor");
+  upper.setAttribute("opacity", "0.82");
 
-  const head = document.createElementNS(SVG_NS, "path");
-  head.setAttribute("d", "M5.2 1.2 L16.8 7 L5.2 12.8 L8.6 7 Z");
-  head.setAttribute("fill", "currentColor");
+  // Main downward-pointing emerald crystal arrowhead
+  const main = document.createElementNS(SVG_NS, "path");
+  main.setAttribute("d", "M1.2 5.2 L7 15.0 L12.8 5.2 L7 8.4 Z");
+  main.setAttribute("fill", "currentColor");
 
+  // Pure luminous mint-white inner core
   const core = document.createElementNS(SVG_NS, "path");
-  core.setAttribute("d", "M8.0 4.2 L14.2 7 L8.0 9.8 L9.8 7 Z");
-  core.setAttribute("fill", "#ffffff");
+  core.setAttribute("d", "M4.2 6.8 L7 12.2 L9.8 6.8 L7 8.4 Z");
+  core.setAttribute("fill", "#eafff4");
 
-  svg.append(tail, head, core);
+  svg.append(upper, main, core);
   return svg;
 }
 
 interface Label {
-  /** Positioned wrapper: stacks the glowing title above the character nametag. */
+  /** Positioned wrapper: stacks the minimalist glowing Dharma title above the character nametag. */
   el: HTMLSpanElement;
   titleEl: HTMLSpanElement;
   tag: HTMLSpanElement;
@@ -94,9 +64,10 @@ interface Label {
   self: boolean;
   placed: boolean;
   shown: boolean;
-  /** Last written screen position (px) — skip style writes when it did not move. */
+  /** Last written screen position (px) and scale — skip style writes when unchanged. */
   sx: number;
   sy: number;
+  sc: number;
 }
 
 /**
@@ -112,6 +83,7 @@ export class NameLabels {
   private now = 0;
   private width = 1;
   private height = 1;
+  private viewportScale = 1;
 
   constructor(parent: HTMLElement = document.body) {
     this.root = document.createElement("div");
@@ -120,7 +92,7 @@ export class NameLabels {
     parent.append(this.root);
   }
 
-  /** Adds or renames a label; `self` adds the faceted golden spirit arrow before the character name. */
+  /** Adds or renames a label; `self` adds the glowing green downward arrow before the character name. */
   set(id: string, name: string, self = false): void {
     const existing = this.labels.get(id);
     if (existing && existing.name === name && existing.self === self) return;
@@ -158,6 +130,7 @@ export class NameLabels {
         shown: false,
         sx: NaN,
         sy: NaN,
+        sc: NaN,
       });
     } else {
       existing.name = name;
@@ -179,7 +152,7 @@ export class NameLabels {
     if (self) {
       const arrowWrap = document.createElement("i");
       arrowWrap.className = "nametag-arrow";
-      arrowWrap.append(createSelfArrowSvg());
+      arrowWrap.append(createDownArrowSvg());
       tag.append(arrowWrap);
     }
     const nameSpan = document.createElement("span");
@@ -208,21 +181,12 @@ export class NameLabels {
     const motes = document.createElement("span");
     motes.className = "nametag-title-motes";
 
-    const row = document.createElement("span");
-    row.className = "nametag-title-row";
-
     const textSpan = document.createElement("span");
     textSpan.className = "nametag-title-text";
     textSpan.dataset.text = title;
     textSpan.textContent = title;
 
-    row.append(createTitleWingSvg("left"), textSpan, createTitleWingSvg("right"));
-
-    const flare = document.createElement("span");
-    flare.className = "nametag-title-flare";
-    flare.append(document.createElement("i"));
-
-    titleEl.replaceChildren(aura, motes, row, flare);
+    titleEl.replaceChildren(aura, motes, textSpan);
   }
 
   /** D25: floating "z z Z" beside the tag while that person dozes. */
@@ -275,6 +239,10 @@ export class NameLabels {
     camera.getWorldPosition(this.camPos);
     this.width = window.innerWidth;
     this.height = window.innerHeight;
+    // Scale proportionally when the browser frame or mobile viewport is shrunk
+    const wRatio = this.width / 520;
+    const hRatio = this.height / 720;
+    this.viewportScale = Math.max(0.74, Math.min(1.04, Math.min(wRatio, hRatio)));
   }
 
   /** World point of the label's bottom centre (above the head). */
@@ -283,7 +251,8 @@ export class NameLabels {
     const camera = this.camera;
     if (!l || !camera) return;
     const v = this.v.set(x, y, z);
-    let visible = v.distanceTo(this.camPos) <= LABEL_MAX_DISTANCE;
+    const dist = v.distanceTo(this.camPos);
+    let visible = dist <= LABEL_MAX_DISTANCE;
     if (visible) {
       v.project(camera);
       // z > 1 = behind the camera; far off screen = no point laying it out.
@@ -291,12 +260,19 @@ export class NameLabels {
     }
     l.placed = visible;
     if (!visible) return;
+
     const sx = Math.round((v.x + 1) * 0.5 * this.width * 2) / 2;
     const sy = Math.round((1 - v.y) * 0.5 * this.height * 2) / 2;
-    if (sx !== l.sx || sy !== l.sy) {
+
+    // Scale down smoothly as the camera zooms out (map zoom) or when the viewport frame is smaller
+    const distScale = Math.max(0.46, Math.min(1.06, 6.2 / Math.max(5.0, dist)));
+    const sc = Math.round(distScale * this.viewportScale * 100) / 100;
+
+    if (sx !== l.sx || sy !== l.sy || sc !== l.sc) {
       l.sx = sx;
       l.sy = sy;
-      l.el.style.transform = `translate3d(${sx}px, ${sy}px, 0) translate(-50%, -100%)`;
+      l.sc = sc;
+      l.el.style.transform = `translate3d(${sx}px, ${sy}px, 0) translate(-50%, -100%) scale(${sc})`;
       if (l.bubbleUntil !== 0) this.nudgeBubble(l, sx);
     }
   }
@@ -306,7 +282,7 @@ export class NameLabels {
     if (l.bubbleHalf === 0 && !l.el.hidden) {
       l.bubbleHalf = (l.bubble.offsetWidth || BUBBLE_MAX_PX) / 2;
     }
-    const half = l.bubbleHalf || BUBBLE_MAX_PX / 2;
+    const half = (l.bubbleHalf || BUBBLE_MAX_PX / 2) * (Number.isFinite(l.sc) ? l.sc : 1);
     const dx = Math.max(0, half + EDGE_PX - sx) - Math.max(0, sx + half + EDGE_PX - this.width);
     if (dx !== l.bubbleDx) {
       l.bubbleDx = dx;
