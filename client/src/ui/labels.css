@@ -7,7 +7,7 @@
   pointer-events: none;
 }
 
-/* Vertical stack: Celestial Title Emblem on TOP, Crisp Arrow + Character Name on BOTTOM */
+/* Vertical stack anchored at bottom-center (50% 100%) so camera/viewport scaling stays pinned to the head */
 .nametag-wrap {
   position: absolute;
   left: 0;
@@ -15,7 +15,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
+  transform-origin: 50% 100%;
   will-change: transform;
 }
 
@@ -24,129 +25,101 @@
 }
 
 /* ============================================================================
-   CELESTIAL SPIRITUAL TITLE (PHÁP BẢO CÁC) — BORDERLESS WINGED HALO EMBLEM
+   OPTION 2: PURE MINIMALIST LUMINOUS DHARMA TITLE (SMALLER THAN CHARACTER NAME)
+   Zero black borders, zero black shadows — pure colored luminescence & motes.
    ============================================================================ */
 .nametag-title-pill {
-  --aura-core: rgb(255 205 64 / 0.52);
-  --aura-mid: rgb(255 145 20 / 0.24);
-  --glow-inner: rgb(255 215 80 / 0.95);
-  --glow-outer: rgb(255 140 16 / 0.8);
-  --wing-color: #ffde73;
-  --flare-color: #ffd45e;
-  --stroke-color: rgb(26 12 3 / 0.96);
+  --aura-core: rgb(255 205 64 / 0.42);
+  --aura-mid: rgb(255 150 24 / 0.18);
+  --glow-tight: rgb(214 112 0 / 0.92);
+  --glow-mid: rgb(255 196 48 / 0.9);
+  --glow-outer: rgb(255 148 16 / 0.68);
+  --mote-color: #ffe88a;
   --title-grad: linear-gradient(
     180deg,
     #ffffff 0%,
-    #fff3b8 28%,
-    #ffd24c 58%,
-    #e88d14 82%,
-    #ffe89c 100%
+    #fff6cc 35%,
+    #ffd859 72%,
+    #ffea99 100%
   );
 
   position: relative;
   display: inline-flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2px 8px 3px;
+  padding: 1px 6px;
   background: none;
   border: none;
   box-shadow: none;
   white-space: nowrap;
   isolation: isolate;
-  animation: title-levitate 2.8s ease-in-out infinite;
+  animation: title-pure-float 2.6s ease-in-out infinite;
 }
 
 .nametag-title-pill[hidden] {
   display: none !important;
 }
 
-/* 1. Soft breathing elliptical radial halo behind the title (zero hard box edges) */
+/* Soft borderless radial backlight behind the Dharma title */
 .nametag-title-aura {
   position: absolute;
-  inset: -6px -18px -4px;
+  inset: -4px -14px;
   z-index: -2;
   background: radial-gradient(
-    ellipse 50% 50% at 50% 50%,
+    ellipse 52% 52% at 50% 50%,
     var(--aura-core) 0%,
-    var(--aura-mid) 48%,
-    transparent 78%
+    var(--aura-mid) 52%,
+    transparent 80%
   );
-  filter: blur(4px);
-  animation: title-aura-breathe 2.8s ease-in-out infinite;
+  filter: blur(5px);
+  animation: title-aura-pulse 2.6s ease-in-out infinite;
   pointer-events: none;
 }
 
-/* 2. Floating golden light motes drifting around the title */
+/* Delicate floating light motes around the Dharma title */
 .nametag-title-motes {
   position: absolute;
-  inset: -8px -10px;
+  inset: -5px -10px;
   z-index: -1;
   background-image:
-    radial-gradient(circle at 18% 65%, #ffffff 0px, var(--wing-color) 1.5px, transparent 3px),
-    radial-gradient(circle at 82% 35%, #ffffff 0px, var(--wing-color) 1.5px, transparent 3px),
-    radial-gradient(circle at 34% 22%, #ffffff 0px, var(--flare-color) 1.2px, transparent 2.5px),
-    radial-gradient(circle at 68% 78%, #ffffff 0px, var(--flare-color) 1.2px, transparent 2.5px);
-  animation: title-motes-rise 3.4s ease-in-out infinite alternate;
+    radial-gradient(circle at 12% 55%, #ffffff 0px, var(--mote-color) 1.3px, transparent 2.8px),
+    radial-gradient(circle at 88% 45%, #ffffff 0px, var(--mote-color) 1.3px, transparent 2.8px),
+    radial-gradient(circle at 28% 20%, #ffffff 0px, var(--mote-color) 1px, transparent 2.2px),
+    radial-gradient(circle at 72% 80%, #ffffff 0px, var(--mote-color) 1px, transparent 2.2px);
+  animation: title-motes-twinkle 3s ease-in-out infinite alternate;
   pointer-events: none;
 }
 
-/* 3. Main row: Left Lotus-Cloud Wing + Dual-Layer Title Text + Right Lotus-Cloud Wing */
-.nametag-title-row {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-}
-
-.nametag-title-wing {
-  width: 28px;
-  height: 12px;
-  color: var(--wing-color);
-  flex-shrink: 0;
-  filter:
-    drop-shadow(0 1px 1.5px var(--stroke-color))
-    drop-shadow(0 0 5px var(--glow-inner))
-    drop-shadow(0 0 10px var(--glow-outer));
-}
-
-.nametag-title-wing--right {
-  transform: scaleX(-1);
-}
-
-/* Dual-layer calligraphic title text: razor-sharp stroke in ::before, pure metallic fill on top */
+/* Dharma title text: 10.5px (deliberately smaller & more refined than the 14px character name) */
 .nametag-title-text {
   position: relative;
   display: inline-block;
-  font-family: "Noto Serif", "Playfair Display", Georgia, serif;
-  font-size: 13.5px;
-  font-weight: 900;
+  font-size: 10.5px;
+  font-weight: 700;
   letter-spacing: 0.06em;
   line-height: 1.15;
   background-image: var(--title-grad);
-  background-size: 100% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
-/* Back layer: crisp dark ink outline + multi-stage neon/celestial glow */
+/* Pure colored halo behind the title letters (ZERO black stroke or black shadow) */
 .nametag-title-text::before {
   content: attr(data-text);
   position: absolute;
   inset: 0;
   z-index: -1;
   color: transparent;
-  -webkit-text-stroke: 3.2px var(--stroke-color);
   text-shadow:
-    0 1px 2px rgb(0 0 0 / 0.95),
-    0 0 7px var(--glow-inner),
-    0 0 15px var(--glow-outer),
-    0 0 26px var(--glow-outer);
+    0 0 2px var(--glow-tight),
+    0 0 5px var(--glow-tight),
+    0 0 10px var(--glow-mid),
+    0 0 18px var(--glow-outer);
   pointer-events: none;
 }
 
-/* Front layer: sweeping white-diamond specular highlight across the metallic letters */
+/* Diamond light sweep across the Dharma title */
 .nametag-title-text::after {
   content: attr(data-text);
   position: absolute;
@@ -155,162 +128,95 @@
   background-image: linear-gradient(
     110deg,
     transparent 0%,
-    transparent 36%,
-    rgb(255 255 255 / 0.95) 50%,
-    transparent 64%,
+    transparent 38%,
+    rgb(255 255 255 / 0.96) 50%,
+    transparent 62%,
     transparent 100%
   );
   background-size: 240% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: title-diamond-sweep 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation: title-shimmer-sweep 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   pointer-events: none;
 }
 
-/* 4. Horizon light flare & central sacred lotus diamond under the title */
-.nametag-title-flare {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 88%;
-  height: 1.5px;
-  margin-top: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--flare-color) 28%,
-    #ffffff 50%,
-    var(--flare-color) 72%,
-    transparent 100%
-  );
-  box-shadow:
-    0 0 6px var(--glow-inner),
-    0 0 12px var(--glow-outer);
-}
-
-.nametag-title-flare i {
-  width: 4.5px;
-  height: 4.5px;
-  background: #ffffff;
-  border: 1px solid var(--wing-color);
-  transform: rotate(45deg);
-  box-shadow: 0 0 6px #ffffff, 0 0 10px var(--glow-inner);
-}
-
-/* ============================================================================
-   4 SACRED THEMES FOR PHÁP BẢO CÁC TITLES
-   ============================================================================ */
-
-/* Theme 1: Tịnh Tâm — Kim Liên Tịnh Quang (24K Sovereign Gold) */
+/* Theme 1: Tịnh Tâm — Kim Liên Tịnh Quang (Pure Golden Luminescence) */
 .nametag-title-pill[data-theme="tinhtam"] {
-  --aura-core: rgb(255 204 56 / 0.52);
-  --aura-mid: rgb(245 138 16 / 0.24);
-  --glow-inner: rgb(255 216 75 / 0.96);
-  --glow-outer: rgb(255 148 18 / 0.82);
-  --wing-color: #ffe278;
-  --flare-color: #ffd24d;
-  --stroke-color: rgb(30 14 3 / 0.96);
-  --title-grad: linear-gradient(
-    180deg,
-    #ffffff 0%,
-    #fff4c2 26%,
-    #ffcf40 55%,
-    #e68a00 82%,
-    #ffea9f 100%
-  );
+  --aura-core: rgb(255 206 64 / 0.44);
+  --aura-mid: rgb(255 152 20 / 0.18);
+  --glow-tight: rgb(204 102 0 / 0.92);
+  --glow-mid: rgb(255 198 52 / 0.92);
+  --glow-outer: rgb(255 150 20 / 0.7);
+  --mote-color: #ffe885;
+  --title-grad: linear-gradient(180deg, #ffffff 0%, #fff5c4 38%, #ffd44d 75%, #ffea9c 100%);
 }
 
-/* Theme 2: An Nhiên — Lưu Ly Bích Ngọc (Celestial Jade & Emerald Cyan) */
+/* Theme 2: An Nhiên — Bích Ngọc Thanh Lương (Pure Jade Luminescence) */
 .nametag-title-pill[data-theme="annhien"] {
-  --aura-core: rgb(52 245 190 / 0.5);
-  --aura-mid: rgb(16 178 140 / 0.24);
-  --glow-inner: rgb(90 255 208 / 0.95);
-  --glow-outer: rgb(18 198 152 / 0.82);
-  --wing-color: #84ffdc;
-  --flare-color: #42f5c0;
-  --stroke-color: rgb(4 26 20 / 0.96);
-  --title-grad: linear-gradient(
-    180deg,
-    #ffffff 0%,
-    #d6fff2 28%,
-    #4df2c0 56%,
-    #0fa87e 82%,
-    #b8ffea 100%
-  );
+  --aura-core: rgb(56 245 190 / 0.42);
+  --aura-mid: rgb(16 185 142 / 0.18);
+  --glow-tight: rgb(6 128 96 / 0.92);
+  --glow-mid: rgb(64 250 198 / 0.92);
+  --glow-outer: rgb(20 205 155 / 0.7);
+  --mote-color: #94ffe2;
+  --title-grad: linear-gradient(180deg, #ffffff 0%, #dcfff4 38%, #54f5c4 75%, #b8ffea 100%);
 }
 
-/* Theme 3: Cư Sĩ — Hồng Nhật Chu Sa (Imperial Amber & Sacred Vermilion) */
+/* Theme 3: Cư Sĩ — Hổ Phách Trang Nghiêm (Warm Sunset Amber Luminescence) */
 .nametag-title-pill[data-theme="cusi"] {
-  --aura-core: rgb(255 128 48 / 0.54);
-  --aura-mid: rgb(224 48 24 / 0.26);
-  --glow-inner: rgb(255 168 68 / 0.96);
-  --glow-outer: rgb(235 64 24 / 0.85);
-  --wing-color: #ffca70;
-  --flare-color: #ff8533;
-  --stroke-color: rgb(34 8 4 / 0.96);
-  --title-grad: linear-gradient(
-    180deg,
-    #ffffff 0%,
-    #ffe8b8 25%,
-    #ff9c38 54%,
-    #d93814 82%,
-    #ffd480 100%
-  );
+  --aura-core: rgb(255 138 56 / 0.45);
+  --aura-mid: rgb(235 64 28 / 0.2);
+  --glow-tight: rgb(186 48 12 / 0.92);
+  --glow-mid: rgb(255 152 60 / 0.92);
+  --glow-outer: rgb(240 78 32 / 0.72);
+  --mote-color: #ffd07a;
+  --title-grad: linear-gradient(180deg, #ffffff 0%, #ffebd0 38%, #ffa048 75%, #ffd994 100%);
 }
 
-/* Theme 4: Phước Huệ — Cửu Phẩm Bảo Liên (Supreme Celestial Gold & Lotus Rose) */
+/* Theme 4: Phước Huệ — Bảo Liên Cát Tường (Celestial Lotus Rose & Gold Luminescence) */
 .nametag-title-pill[data-theme="phuochue"] {
-  --aura-core: rgb(255 168 210 / 0.56);
-  --aura-mid: rgb(255 185 60 / 0.28);
-  --glow-inner: rgb(255 210 130 / 0.98);
-  --glow-outer: rgb(245 78 162 / 0.88);
-  --wing-color: #ffe694;
-  --flare-color: #ff94c8;
-  --stroke-color: rgb(36 8 24 / 0.96);
-  --title-grad: linear-gradient(
-    180deg,
-    #ffffff 0%,
-    #fff0b8 24%,
-    #ff9ec8 54%,
-    #e04888 80%,
-    #ffe898 100%
-  );
+  --aura-core: rgb(255 162 212 / 0.48);
+  --aura-mid: rgb(255 190 72 / 0.22);
+  --glow-tight: rgb(188 42 112 / 0.92);
+  --glow-mid: rgb(255 168 210 / 0.94);
+  --glow-outer: rgb(255 195 85 / 0.75);
+  --mote-color: #ffe89e;
+  --title-grad: linear-gradient(180deg, #ffffff 0%, #fff0cc 32%, #ff9ec8 72%, #ffe89c 100%);
 }
 
-@keyframes title-levitate {
+@keyframes title-pure-float {
   0%, 100% {
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
   50% {
-    transform: translateY(-2px) scale(1.03);
+    transform: translateY(-1.5px);
   }
 }
 
-@keyframes title-aura-breathe {
+@keyframes title-aura-pulse {
   0%, 100% {
-    opacity: 0.78;
+    opacity: 0.75;
     transform: scale(0.95);
   }
   50% {
     opacity: 1;
-    transform: scale(1.12);
+    transform: scale(1.1);
   }
 }
 
-@keyframes title-motes-rise {
+@keyframes title-motes-twinkle {
   0% {
-    opacity: 0.45;
-    transform: translateY(2px) scale(0.92);
+    opacity: 0.4;
+    transform: translateY(1.5px) scale(0.92);
   }
   100% {
     opacity: 1;
-    transform: translateY(-3px) scale(1.08);
+    transform: translateY(-2px) scale(1.06);
   }
 }
 
-@keyframes title-diamond-sweep {
+@keyframes title-shimmer-sweep {
   0% {
     background-position: 180% 0;
   }
@@ -320,7 +226,7 @@
 }
 
 /* ============================================================================
-   CRISP BORDERLESS CHARACTER NAMETAG (SPIRIT ARROW SVG + DUAL-LAYER NAME)
+   CHARACTER NAMETAG (LARGER THAN TITLE, GREEN GLOWING DOWNWARD ARROW, ZERO BLACK)
    ============================================================================ */
 .nametag {
   position: relative;
@@ -328,8 +234,8 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  max-width: 180px;
-  padding: 1px 4px;
+  max-width: 190px;
+  padding: 0 4px;
   border: none;
   background: none;
   box-shadow: none;
@@ -337,39 +243,23 @@
   isolation: isolate;
 }
 
-/* Subtle golden horizon aura under the player's own name */
-.nametag--self::after {
-  content: "";
-  position: absolute;
-  left: 12%;
-  right: 12%;
-  bottom: -1px;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgb(255 216 102 / 0.75),
-    transparent
-  );
-  box-shadow: 0 0 6px rgb(255 196 56 / 0.65);
-  pointer-events: none;
-}
-
+/* Glowing emerald-green downward-pointing arrow before the player's name */
 .nametag-arrow {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #ffd866;
+  color: #3dff8e;
   flex-shrink: 0;
   filter:
-    drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.95))
-    drop-shadow(0 0 5px rgb(255 196 48 / 0.85));
-  animation: nametag-arrow-pulse 1.6s ease-in-out infinite alternate;
+    drop-shadow(0 0 3px rgb(0 200 96 / 0.95))
+    drop-shadow(0 0 8px rgb(52 255 142 / 0.85))
+    drop-shadow(0 0 14px rgb(16 225 112 / 0.6));
+  animation: nametag-down-arrow-bob 1.5s ease-in-out infinite alternate;
 }
 
 .nametag-arrow-svg {
-  width: 13px;
-  height: 10px;
+  width: 11px;
+  height: 13px;
   display: block;
 }
 
@@ -377,58 +267,40 @@
   display: none;
 }
 
-@keyframes nametag-arrow-pulse {
+@keyframes nametag-down-arrow-bob {
   0% {
-    transform: translateX(-1px) scale(0.96);
+    transform: translateY(-1.5px);
   }
   100% {
-    transform: translateX(1px) scale(1.06);
+    transform: translateY(1.5px);
   }
 }
 
-/* Dual-layer character name: crisp dark stroke behind luminous pearl/champagne fill */
+/* Character Name: 14px (visibly larger than the 10.5px Dharma title), pure warm glow without black */
 .nametag-name {
   position: relative;
   display: inline-block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 1.25;
-  color: #fff8eb;
+  letter-spacing: 0.015em;
+  line-height: 1.2;
+  color: #fffdf7;
+  text-shadow:
+    0 0 3px rgb(138 92 24 / 0.85),
+    0 0 8px rgb(255 210 115 / 0.55);
 }
 
 .nametag--self .nametag-name {
-  background-image: linear-gradient(180deg, #ffffff 0%, #fff1c2 60%, #ffd97d 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.nametag--other .nametag-name {
-  color: #f4efe6;
-  font-weight: 600;
-}
-
-.nametag-name::before {
-  content: attr(data-text);
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  color: transparent;
-  -webkit-text-stroke: 2.8px rgb(14 18 15 / 0.94);
+  font-size: 14px;
+  font-weight: 800;
+  color: #ffffff;
   text-shadow:
-    0 1px 2px rgb(0 0 0 / 0.95),
-    0 0 8px rgb(0 0 0 / 0.75);
-  pointer-events: none;
-}
-
-.nametag--self .nametag-name::before {
-  text-shadow:
-    0 1px 2px rgb(0 0 0 / 0.95),
-    0 0 8px rgb(255 190 50 / 0.45);
+    0 0 3px rgb(168 102 12 / 0.9),
+    0 0 8px rgb(255 212 96 / 0.78),
+    0 0 16px rgb(255 182 48 / 0.48);
 }
 
 /* Dozing (D25): three letters drift up from the tag's top-right corner, one after another. */
@@ -439,10 +311,12 @@
   display: flex;
   align-items: flex-end;
   gap: 1px;
-  color: #f8f2e4;
+  color: #fffdf5;
   font-weight: 600;
   line-height: 1;
-  text-shadow: 0 1px 3px rgb(0 0 0 / 0.85);
+  text-shadow:
+    0 0 4px rgb(168 112 24 / 0.85),
+    0 0 10px rgb(255 214 102 / 0.65);
 }
 
 .zzz[hidden] {
