@@ -172,6 +172,13 @@ export type BuyOrEquipResult =
   | { action: "insufficient"; item: ShopItem; missing: number }
   | { action: "invalid" };
 
+export interface AdminResourcePatch {
+  merit?: number;
+  gems?: number;
+  lotus?: number;
+  level?: number;
+}
+
 type KeyValueStore = Pick<Storage, "getItem" | "setItem">;
 
 /**
@@ -494,6 +501,102 @@ export class Progression {
     this.save();
     this.emitChange();
     return { action: "equipped", item };
+  }
+
+  // ============================================================================
+  // ADMIN MANAGEMENT METHODS (IN-GAME MANAGEMENT PANEL)
+  // ============================================================================
+
+  /** Directly sets Merit, Gems, Lotus, or Level from the Admin Panel. */
+  adminSetResources(patch: AdminResourcePatch): void {
+    this.ensureToday();
+    if (typeof patch.merit === "number" && Number.isFinite(patch.merit)) {
+      this.data.merit = Math.max(0, Math.min(9_999_999, Math.floor(patch.merit)));
+    }
+    if (typeof patch.gems === "number" && Number.isFinite(patch.gems)) {
+      this.data.gems = Math.max(0, Math.min(9_999_999, Math.floor(patch.gems)));
+    }
+    if (typeof patch.lotus === "number" && Number.isFinite(patch.lotus)) {
+      this.data.lotus = Math.max(0, Math.min(9_999_999, Math.floor(patch.lotus)));
+    }
+    if (typeof patch.level === "number" && Number.isFinite(patch.level)) {
+      const targetLv = Math.max(1, Math.min(999, Math.floor(patch.level)));
+      this.data.exp = (targetLv - 1) * EXP_PER_LEVEL + this.expInLevel;
+      this.data.hp = this.maxHp;
+    }
+    this.save();
+    this.emitChange();
+  }
+
+  /** Unlocks all items in Pháp Bảo Các and equips the supreme set if nothing is equipped. */
+  adminUnlockAllItems(): void {
+    this.ensureToday();
+    for (const item of SHOP_ITEMS) {
+      if (!this.data.owned.includes(item.id)) {
+        this.data.owned.push(item.id);
+      }
+    }
+    this.data.equippedAura ??= "aura_jade";
+    this.data.equippedArtifact ??= "woodblock_jade";
+    this.data.equippedTitle ??= "title_phuochue";
+    this.save();
+    this.emitChange();
+  }
+
+  /** Clears all owned and equipped shop items. */
+  adminLockAllItems(): void {
+    this.ensureToday();
+    this.data.owned = [];
+    this.data.equippedAura = null;
+    this.data.equippedArtifact = null;
+    this.data.equippedTitle = null;
+    this.save();
+    this.emitChange();
+  }
+
+  /** Instantly marks all 5 daily quests as 100% completed so they can be claimed. */
+  adminCompleteAllQuests(): void {
+    this.ensureToday();
+    for (const def of QUEST_DEFS) {
+      this.data.questCounts[def.id] = def.target;
+    }
+    this.save();
+    this.emitChange();
+  }
+
+  /** Resets today's check-in and daily quest claim state so they can be tested again. */
+  adminResetToday(): void {
+    this.ensureToday();
+    this.data.lastCheckInDay = 0;
+    this.data.questCounts = {};
+    this.data.questClaimed = {};
+    this.data.allBonusClaimed = false;
+    this.save();
+    this.emitChange();
+  }
+
+  /** Resets the entire player progression back to fresh defaults. */
+  adminResetAll(): void {
+    const today = vnMidnight(this.now());
+    this.data = {
+      merit: 0,
+      gems: 0,
+      lotus: 0,
+      exp: DEFAULT_EXP,
+      hp: DEFAULT_HP,
+      lastCheckInDay: 0,
+      streak: 0,
+      questDay: today,
+      questCounts: {},
+      questClaimed: {},
+      allBonusClaimed: false,
+      owned: [],
+      equippedAura: null,
+      equippedArtifact: null,
+      equippedTitle: null,
+    };
+    this.save();
+    this.emitChange();
   }
 
   private gainExpAndHp(expDelta: number, hpDelta: number): void {
