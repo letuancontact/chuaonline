@@ -13,6 +13,7 @@ import {
   cushionOf,
   encodeDelta,
   makeName,
+  normalizeVisitorName,
   parseClientMsg,
   pickSpawn,
   residentsFor,
@@ -21,6 +22,7 @@ import {
   uniqueName,
   type DeltaFrame,
   type DeltaRecord,
+  type Pose,
   type PopulationConfig,
   type RoomInfo,
   type ServerMsg,
@@ -38,6 +40,7 @@ import {
   type ChatDeniedReason,
   type ChatLine,
   type ChatThrottle,
+  type ChatTier,
 } from "@santinh/shared";
 import type { Accounts } from "./accounts.ts";
 import { FakePeople } from "./fake-people.ts";
@@ -53,6 +56,34 @@ export interface ChatDeps {
   accounts: Pick<Accounts, "bySession" | "setDisplayName">;
   /** One throttle per account, shared by every room (P4-D6). */
   throttleFor(accountId: number): ChatThrottle;
+}
+
+export interface AdminVisitorView {
+  visitorId: string;
+  name: string;
+  color: string;
+  pose: Pose;
+  cushion: number | null;
+  asleep: boolean;
+  joinedAt: number;
+  x: number;
+  z: number;
+  accountId: number | null;
+  username: string | null;
+  tier: ChatTier | null;
+}
+
+export interface AdminRoomView {
+  id: string;
+  number: number;
+  name: string;
+  chatAllowed: boolean;
+  realCount: number;
+  botCount: number;
+  shownCount: number;
+  capacity: number;
+  visitors: AdminVisitorView[];
+  chatLines: ChatLine[];
 }
 
 /** A room built on its own (tests) knows no accounts: every `auth` is refused, so nobody can chat. */
@@ -178,6 +209,123 @@ export class Room {
 
   get size(): number {
     return this.members.size;
+  }
+
+  // ============================================================================
+  // ADMIN ROOM INSPECTION & MODERATION METHODS
+  // ============================================================================
+
+  /** Live snapshot of this room for `/api/admin/overview`. */
+  adminInspect(now: number = this.clock()): AdminRoomView {
+    const visitors: AdminVisitorView[] = [];
+    for (const m of this.members.values()) {
+      const v = m.visitor;
+      visitors.push({
+        visitorId: v.id,
+        name: v.name,
+        color: v.color,
+        pose: v.pose,
+        cushion: v.cushion,
+        asleep: Boolean(v.asleep),
+        joinedAt: v.joinedAt,
+        x: Math.round(v.position.x * 10) / 10,
+        z: Math.round(v.position.z * 10) / 10,
+        accountId: m.account?.id ?? null,
+        username: m.account?.view.username ?? null,
+        tier: m.account?.view.tier ?? null,
+      });
+    }
+    return {
+      id: this.id,
+      number: this.number,
+      name: this.name,
+      chatAllowed: roomAllowsChat(this.id),
+      realCount: this.state.realCount,
+      botCount: this.state.botCount,
+      shownCount: this.state.count(now),
+      capacity: this.capacity,
+      visitors,
+      chatLines: [...this.chatLines],
+    };
+  }
+
+  /** Broadcasts an official temple announcement into the room's chat & head bubble. */
+  adminBroadcast(rawText: string, senderName = "📢 Ban Quản Tự"): ChatLine | null {
+    const norm = normalizeChatText(rawText, "pro");
+    if (!norm.ok) return null;
+    const now = this.clock();
+    const cleanSender = normalizeVisitorName(senderName) ?? "📢 Ban Quản Tự";
+    const line: ChatLine = {
+      id: `admin-${++this.chatSeq}`,
+      visitorId: "resident:1",
+      name: cleanSender,
+      text: norm.text,
+      at: now,
+    };
+    if (roomAllowsChat(this.id)) {
+      this.chatLines.push(line);
+      if (this.chatLines.length > CHAT_HISTORY) {
+        this.chatLines.splice(0, this.chatLines.length - CHAT_HISTORY);
+      }
+    }
+    const payload = JSON.stringify({ type: "chat", line, serverTime: now } satisfies ServerMsg);
+    for (const m of this.members.values()) {
+      if (m.ws.readyState === m.ws.OPEN) m.ws.send(payload);
+    }
+    return line;
+  }
+
+  /** Kicks a visitor by `visitorId` and invalidates their resume token. */
+  adminKick(visitorId: string): boolean {
+    for (const m of this.members.values()) {
+      if (m.visitor.id !== visitorId) continue;
+      const tok = m.token;
+      this.leave(m.ws);
+      this.away.delete(tok);
+      m.ws.close(4003, "admin-kick");
+      return true;
+    }
+    return false;
+  }
+
+  /** Kicks all active sockets belonging to `accountId` in this room. */
+  adminKickAccount(accountId: number): number {
+    let count = 0;
+    for (const m of [...this.members.values()]) {
+      if (m.account?.id !== accountId) continue;
+      const tok = m.token;
+      this.leave(m.ws);
+      this.away.delete(tok);
+      m.ws.close(4003, "admin-kick");
+      count++;
+    }
+    return count;
+  }
+
+  /** Force-renames an active visitor in this room. */
+  adminRenameVisitor(visitorId: string, rawName: unknown): string | null {
+    const clean = normalizeVisitorName(rawName);
+    if (clean === null) return null;
+    for (const m of this.members.values()) {
+      if (m.visitor.id !== visitorId) continue;
+      this.rename(m, clean, this.clock());
+      return m.visitor.name;
+    }
+    return null;
+  }
+
+  /** Clears chat history in this room and syncs an empty history to connected clients. */
+  adminClearChat(): number {
+    const removed = this.chatLines.length;
+    this.chatLines.length = 0;
+    if (roomAllowsChat(this.id)) {
+      const now = this.clock();
+      const payload = JSON.stringify({ type: "chat-history", lines: [], serverTime: now } satisfies ServerMsg);
+      for (const m of this.members.values()) {
+        if (m.ws.readyState === m.ws.OPEN) m.ws.send(payload);
+      }
+    }
+    return removed;
   }
 
   /** `name`: wanted name, already normalised; it beats the old name on a resume (they may have renamed while away). */
