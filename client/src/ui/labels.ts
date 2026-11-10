@@ -122,7 +122,7 @@ export class NameLabels {
     if (self) {
       const arrow = document.createElement("i");
       arrow.className = "nametag-arrow";
-      arrow.textContent = "▸";
+      arrow.textContent = "☆";
       tag.append(arrow);
     }
     const nameSpan = document.createElement("span");
