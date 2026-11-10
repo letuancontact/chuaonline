@@ -10,6 +10,7 @@ import {
   normalizeUsername,
   normalizeVisitorName,
   type AccountView,
+  type ChatTier,
 } from "@santinh/shared";
 
 // P4-D2: salt 16 B, N=16384 r=8 p=1, 64 B key (~16 MB per hash, under Node's 32 MB maxmem default).
@@ -75,12 +76,36 @@ export interface SessionAccount {
   account: AccountView;
 }
 
+export interface AdminAccountRow {
+  id: number;
+  username: string;
+  displayName: string;
+  tier: ChatTier;
+  createdAt: number;
+  activeSessions: number;
+  lastSeen: number | null;
+}
+
 /** Accounts + sessions in SQLite (P4-D3 / D4). Passwords stored as scrypt, tokens as sha256 only. */
 export class Accounts {
   private readonly db: DatabaseSync;
   private readonly clock: () => number;
   private readonly q: Record<
-    "insertAccount" | "byUsername" | "insertSession" | "session" | "touch" | "deleteSession" | "prune" | "setName",
+    | "insertAccount"
+    | "byUsername"
+    | "insertSession"
+    | "session"
+    | "touch"
+    | "deleteSession"
+    | "prune"
+    | "setName"
+    | "countAll"
+    | "listAll"
+    | "listSearch"
+    | "setTier"
+    | "setPassword"
+    | "deleteAccountSessions"
+    | "deleteAccount",
     StatementSync
   >;
   private dummyHash: Promise<string> | null = null;
@@ -125,6 +150,32 @@ export class Accounts {
       deleteSession: this.db.prepare("DELETE FROM sessions WHERE token_hash = ?"),
       prune: this.db.prepare("DELETE FROM sessions WHERE last_seen <= ?"),
       setName: this.db.prepare("UPDATE accounts SET display_name = ? WHERE id = ?"),
+      countAll: this.db.prepare("SELECT COUNT(*) AS total FROM accounts"),
+      listAll: this.db.prepare(`
+        SELECT a.id, a.username, a.display_name, a.tier, a.created_at,
+               COUNT(s.token_hash) AS active_sessions,
+               MAX(s.last_seen) AS last_seen
+        FROM accounts a
+        LEFT JOIN sessions s ON s.account_id = a.id AND s.last_seen > ?
+        GROUP BY a.id
+        ORDER BY a.id DESC
+        LIMIT ?
+      `),
+      listSearch: this.db.prepare(`
+        SELECT a.id, a.username, a.display_name, a.tier, a.created_at,
+               COUNT(s.token_hash) AS active_sessions,
+               MAX(s.last_seen) AS last_seen
+        FROM accounts a
+        LEFT JOIN sessions s ON s.account_id = a.id AND s.last_seen > ?
+        WHERE a.username LIKE ? OR a.display_name LIKE ?
+        GROUP BY a.id
+        ORDER BY a.id DESC
+        LIMIT ?
+      `),
+      setTier: this.db.prepare("UPDATE accounts SET tier = ? WHERE id = ?"),
+      setPassword: this.db.prepare("UPDATE accounts SET pass_hash = ? WHERE id = ?"),
+      deleteAccountSessions: this.db.prepare("DELETE FROM sessions WHERE account_id = ?"),
+      deleteAccount: this.db.prepare("DELETE FROM accounts WHERE id = ?"),
     };
   }
 
@@ -180,6 +231,67 @@ export class Accounts {
     const name = normalizeVisitorName(raw);
     if (name === null) return false;
     return Number(this.q.setName.run(name, accountId).changes) > 0;
+  }
+
+  // ============================================================================
+  // ADMIN ACCOUNT MANAGEMENT METHODS
+  // ============================================================================
+
+  /** Total number of registered accounts in SQLite. */
+  countAccounts(): number {
+    const row = this.q.countAll.get() as Row | undefined;
+    return row ? num(row, "total") : 0;
+  }
+
+  /** Lists accounts for the `/admin` dashboard (newest first, optional search filter). */
+  listAccounts(search = "", limit = 100): AdminAccountRow[] {
+    const cap = Math.max(1, Math.min(500, Math.floor(limit)));
+    const activeCutoff = this.clock() - SESSION_IDLE_MS;
+    const clean = search.trim();
+    const rows = (
+      clean === ""
+        ? this.q.listAll.all(activeCutoff, cap)
+        : this.q.listSearch.all(activeCutoff, `%${clean}%`, `%${clean}%`, cap)
+    ) as Row[];
+
+    return rows.map((row) => {
+      const tier = row["tier"];
+      const rawLast = row["last_seen"];
+      return {
+        id: num(row, "id"),
+        username: str(row, "username"),
+        displayName: str(row, "display_name"),
+        tier: isChatTier(tier) ? tier : "free",
+        createdAt: num(row, "created_at"),
+        activeSessions: num(row, "active_sessions"),
+        lastSeen: typeof rawLast === "number" && Number.isFinite(rawLast) ? rawLast : null,
+      };
+    });
+  }
+
+  /** Updates an account's chat tier ("free" | "pro"). */
+  setTier(accountId: number, tier: unknown): boolean {
+    if (!Number.isSafeInteger(accountId) || accountId <= 0 || !isChatTier(tier)) return false;
+    return Number(this.q.setTier.run(tier, accountId).changes) > 0;
+  }
+
+  /** Resets an account's password and revokes its active sessions. */
+  async adminResetPassword(accountId: number, newPassword: unknown): Promise<boolean> {
+    if (!Number.isSafeInteger(accountId) || accountId <= 0 || !isValidPassword(newPassword) || typeof newPassword !== "string") {
+      return false;
+    }
+    const hash = await hashPassword(newPassword);
+    const changed = Number(this.q.setPassword.run(hash, accountId).changes) > 0;
+    if (changed) {
+      this.q.deleteAccountSessions.run(accountId);
+    }
+    return changed;
+  }
+
+  /** Deletes an account and cascades its sessions. */
+  deleteAccount(accountId: number): boolean {
+    if (!Number.isSafeInteger(accountId) || accountId <= 0) return false;
+    return Number(this.q.deleteAccount.run(accountId).changes) > 0;
   }
 
   close(): void {
