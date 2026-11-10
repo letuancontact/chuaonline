@@ -1,6 +1,5 @@
 import { CHAT_BUBBLE_MS } from "@santinh/shared";
 import { Vector3, type Camera } from "three";
-import { vi } from "../i18n/vi.ts";
 import "./labels.css";
 
 /** Labels farther than this from the camera are hidden (unreadable, and they pile up). */
@@ -20,7 +19,7 @@ function resolveTitleTheme(title: string): TitleTheme {
 }
 
 interface Label {
-  /** Positioned wrapper: stacks the glowing title badge above the character nametag. */
+  /** Positioned wrapper: stacks the glowing title above the character nametag. */
   el: HTMLSpanElement;
   titleEl: HTMLSpanElement;
   tag: HTMLSpanElement;
@@ -63,7 +62,7 @@ export class NameLabels {
     parent.append(this.root);
   }
 
-  /** Adds or renames a label; `self` adds the "Bạn" badge. */
+  /** Adds or renames a label; `self` adds the compact arrow indicator before the character name. */
   set(id: string, name: string, self = false): void {
     const existing = this.labels.get(id);
     if (existing && existing.name === name && existing.self === self) return;
@@ -83,7 +82,7 @@ export class NameLabels {
       const bubble = document.createElement("span");
       bubble.className = "chat-bubble";
       bubble.hidden = true;
-      // Stacked top-to-bottom: chat bubble (absolute above) -> luminous title badge -> character nametag
+      // Stacked top-to-bottom: chat bubble (above) -> borderless glowing title -> borderless arrow + character name
       el.append(bubble, titleEl, tag, zzz);
       this.root.append(el);
       this.labels.set(id, {
@@ -109,7 +108,7 @@ export class NameLabels {
     }
   }
 
-  /** Sets or clears an equipped spiritual title badge (e.g. "Tịnh Tâm") ABOVE a visitor's nametag. */
+  /** Sets or clears an equipped spiritual title (e.g. "Tịnh Tâm") ABOVE a visitor's nametag. */
   setTitle(id: string, title: string | null): void {
     const l = this.labels.get(id);
     if (!l || l.title === title) return;
@@ -121,9 +120,10 @@ export class NameLabels {
     tag.className = self ? "nametag" : "nametag nametag--other";
     tag.replaceChildren();
     if (self) {
-      const badge = document.createElement("i");
-      badge.textContent = vi.labels.you;
-      tag.append(badge);
+      const arrow = document.createElement("i");
+      arrow.className = "nametag-arrow";
+      arrow.textContent = "▸";
+      tag.append(arrow);
     }
     const nameSpan = document.createElement("span");
     nameSpan.className = "nametag-name";
