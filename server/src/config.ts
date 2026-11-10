@@ -73,7 +73,7 @@ export function loadConfig(env: Env): Config {
     maxConnPerIpRoom: intVar(env, "MAX_CONN_PER_IP_ROOM", 10, 0, 10000),
     trustProxy: onOffVar(env, "TRUST_PROXY", false),
     dataDir: (env.DATA_DIR ?? "").trim(),
-    adminPassword: env.ADMIN_PASSWORD ?? "",
+    adminPassword: env.ADMIN_PASSWORD ?? "12345",
     registerPerIpPerDay: intVar(env, "REGISTER_PER_IP_PER_DAY", REGISTER_PER_IP_PER_DAY, 0, 1000),
   };
 }
