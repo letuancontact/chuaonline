@@ -1,7 +1,9 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { DEFAULT_POPULATION, DEFAULT_ROOM_NAMES, MAX_MIN_BOTS, MAX_ROOM_NAME_CHARS, ROOM_COUNT } from "@santinh/shared";
+import type { Accounts } from "./accounts.ts";
 import { ADMIN_PAGE_CSP, ADMIN_PAGE_HTML } from "./admin-page.ts";
+import type { RoomHub } from "./hub.ts";
 import { isAllowedOrigin } from "./origin.ts";
 import type { PopulationStore } from "./population-store.ts";
 import type { RoomNamesStore } from "./room-names-store.ts";
@@ -16,16 +18,30 @@ function sha256(text: string): Buffer {
   return createHash("sha256").update(text, "utf8").digest();
 }
 
-/** Bearer check + failed attempts per IP in a sliding window. */
+/**
+ * Username + Password Bearer check + failed attempts per IP in a sliding window.
+ * Supports both `new AdminAuth(user, pass, clock)` (production) and `new AdminAuth(pass, clock)` (legacy tests).
+ */
 export class AdminAuth {
-  private readonly hash: Buffer;
+  private readonly expectedUserHash: Buffer;
+  private readonly expectedPassHash: Buffer;
+  private readonly requireUser: boolean;
   private readonly clock: () => number;
   private readonly fails = new Map<string, number[]>();
   private lastSweep = 0;
 
-  constructor(password: string, clock: () => number = Date.now) {
-    this.hash = sha256(password);
-    this.clock = clock;
+  constructor(userOrPass: string, passOrClock?: string | (() => number), clock: () => number = Date.now) {
+    if (typeof passOrClock === "string") {
+      this.expectedUserHash = sha256(userOrPass);
+      this.expectedPassHash = sha256(passOrClock);
+      this.requireUser = true;
+      this.clock = clock;
+    } else {
+      this.expectedUserHash = sha256("admin");
+      this.expectedPassHash = sha256(userOrPass);
+      this.requireUser = false;
+      this.clock = passOrClock ?? clock;
+    }
   }
 
   check(ip: string, authorization: string | undefined): AuthResult {
@@ -33,8 +49,26 @@ export class AdminAuth {
     // Locked out even with the right password: otherwise the 429 tells a guesser nothing.
     if (this.recentFails(ip, now).length >= ADMIN_MAX_FAILS) return "limited";
     const m = /^Bearer (.+)$/i.exec(authorization ?? "");
-    // Equal-length digests: timingSafeEqual leaks neither the password nor its length.
-    if (m?.[1] !== undefined && timingSafeEqual(sha256(m[1]), this.hash)) return "ok";
+    if (!m?.[1]) {
+      this.recordFail(ip, now);
+      return "unauthorized";
+    }
+    const raw = m[1];
+    const colon = raw.indexOf(":");
+    let userPart = "";
+    let passPart = raw;
+    if (colon !== -1) {
+      userPart = raw.slice(0, colon);
+      passPart = raw.slice(colon + 1);
+    }
+
+    const userOk =
+      colon !== -1
+        ? timingSafeEqual(sha256(userPart), this.expectedUserHash)
+        : !this.requireUser;
+    const passOk = timingSafeEqual(sha256(passPart), this.expectedPassHash);
+
+    if (userOk && passOk) return "ok";
     this.recordFail(ip, now);
     return "unauthorized";
   }
@@ -51,7 +85,6 @@ export class AdminAuth {
   }
 
   private recordFail(ip: string, now: number): void {
-    // Sweep so IPs that stopped guessing do not pile up; at most once per window, or a flood from many IPs costs O(n²).
     if (now - this.lastSweep >= ADMIN_FAIL_WINDOW_MS) {
       this.lastSweep = now;
       for (const [key, times] of this.fails) {
@@ -84,10 +117,36 @@ export async function readBody(req: IncomingMessage, max: number): Promise<strin
   return Buffer.concat(chunks).toString("utf8");
 }
 
+async function parseJsonObject(
+  req: IncomingMessage,
+  res: ServerResponse,
+  cors: Record<string, string>,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const parsed: unknown = JSON.parse(await readBody(req, ADMIN_MAX_BODY_BYTES));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      json(res, 400, { error: "bad-json" }, cors);
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch (err) {
+    if (err instanceof BodyTooLarge) {
+      json(res, 413, { error: "too-large" }, { ...cors, connection: "close" });
+    } else {
+      json(res, 400, { error: "bad-json" }, cors);
+    }
+    return null;
+  }
+}
+
 export interface AdminDeps {
+  user?: string;
   password: string;
   store: PopulationStore;
   roomNames: RoomNamesStore;
+  hub?: RoomHub;
+  accounts?: Accounts;
+  allowedOrigins?: readonly string[];
   capacity: number;
   clientIp: (req: IncomingMessage) => string;
   clock?: () => number;
@@ -98,11 +157,17 @@ const LIMITS_FOR = (capacity: number) => ({ rooms: ROOM_COUNT, maxBots: capacity
 /**
  * `/admin` + `/api/admin/*` (P3-D9). Returns false when the path is not ours.
  * - empty password = admin off → 404 on both;
- * - same origin only: no CORS headers, a foreign `Origin` → 403.
+ * - same origin or configured `allowedOrigins` only; foreign `Origin` → 403.
  */
 export function createAdminHandler(deps: AdminDeps): (req: IncomingMessage, res: ServerResponse, path: string) => Promise<boolean> {
-  const auth = deps.password === "" ? null : new AdminAuth(deps.password, deps.clock);
+  const auth =
+    deps.password === ""
+      ? null
+      : deps.user !== undefined
+        ? new AdminAuth(deps.user, deps.password, deps.clock)
+        : new AdminAuth(deps.password, deps.clock);
   const limits = LIMITS_FOR(deps.capacity);
+  const allowedOrigins = deps.allowedOrigins ?? [];
 
   return async (req, res, path) => {
     if (path !== "/admin" && path !== "/api/admin" && !path.startsWith("/api/admin/")) return false;
@@ -125,12 +190,156 @@ export function createAdminHandler(deps: AdminDeps): (req: IncomingMessage, res:
       res.end(req.method === "HEAD" ? undefined : ADMIN_PAGE_HTML);
       return true;
     }
-    // An empty allow-list means "Origin host equals Host": the public ALLOWED_ORIGINS must not reach admin.
-    if (!isAllowedOrigin(req.headers.origin, req.headers.host, [])) {
+
+    const origin = req.headers.origin;
+    if (!isAllowedOrigin(origin, req.headers.host, allowedOrigins)) {
       json(res, 403, { error: "forbidden" });
       return true;
     }
-    // Each setting: what GET shows, the store PUT writes to, the 400 hint.
+    const cors: Record<string, string> = {};
+    if (origin && !isAllowedOrigin(origin, req.headers.host, [])) {
+      cors["access-control-allow-origin"] = origin;
+      cors.vary = "Origin";
+    }
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        ...cors,
+        "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "access-control-allow-headers": "content-type, authorization",
+        "access-control-max-age": "600",
+      });
+      res.end();
+      return true;
+    }
+
+    const ip = deps.clientIp(req);
+    const result = auth.check(ip, req.headers.authorization);
+    if (result === "limited") {
+      json(res, 429, { error: "too-many-attempts" }, { ...cors, "retry-after": String(auth.retryAfter(ip)) });
+      return true;
+    }
+    if (result === "unauthorized") {
+      json(res, 401, { error: "unauthorized" }, { ...cors, "www-authenticate": "Bearer" });
+      return true;
+    }
+
+    // 1. Live Server & Room Overview + Moderation APIs
+    if (deps.hub) {
+      if (path === "/api/admin/overview" && req.method === "GET") {
+        json(res, 200, deps.hub.adminOverview(), cors);
+        return true;
+      }
+      if (path === "/api/admin/broadcast" && req.method === "POST") {
+        const b = await parseJsonObject(req, res, cors);
+        if (!b) return true;
+        const text = typeof b["text"] === "string" ? b["text"] : "";
+        const room = typeof b["room"] === "string" && b["room"] !== "" ? b["room"] : null;
+        const sender = typeof b["sender"] === "string" && b["sender"].trim() !== "" ? b["sender"] : undefined;
+        const sent = deps.hub.adminBroadcast(text, room, sender);
+        if (sent === 0) {
+          json(res, 400, { error: "invalid-broadcast" }, cors);
+          return true;
+        }
+        console.log(`admin: broadcast sent to ${sent} room(s) from ${ip}`);
+        json(res, 200, { ok: true, sent }, cors);
+        return true;
+      }
+      if (path === "/api/admin/kick" && req.method === "POST") {
+        const b = await parseJsonObject(req, res, cors);
+        if (!b) return true;
+        const room = typeof b["room"] === "string" ? b["room"] : "";
+        const visitorId = typeof b["visitorId"] === "string" ? b["visitorId"] : "";
+        const ok = deps.hub.adminKick(room, visitorId);
+        json(res, ok ? 200 : 404, { ok }, cors);
+        return true;
+      }
+      if (path === "/api/admin/rename-visitor" && req.method === "POST") {
+        const b = await parseJsonObject(req, res, cors);
+        if (!b) return true;
+        const room = typeof b["room"] === "string" ? b["room"] : "";
+        const visitorId = typeof b["visitorId"] === "string" ? b["visitorId"] : "";
+        const name = deps.hub.adminRenameVisitor(room, visitorId, b["name"]);
+        if (name === null) {
+          json(res, 400, { error: "bad-name-or-not-found" }, cors);
+          return true;
+        }
+        json(res, 200, { ok: true, name }, cors);
+        return true;
+      }
+      if (path === "/api/admin/clear-chat" && req.method === "POST") {
+        const b = await parseJsonObject(req, res, cors);
+        if (!b) return true;
+        const room = typeof b["room"] === "string" && b["room"] !== "" ? b["room"] : null;
+        const cleared = deps.hub.adminClearChat(room);
+        console.log(`admin: cleared ${cleared} chat line(s) from ${ip}`);
+        json(res, 200, { ok: true, cleared }, cors);
+        return true;
+      }
+    }
+
+    // 2. Registered Accounts Management APIs
+    if (deps.accounts) {
+      if (path === "/api/admin/accounts" && req.method === "GET") {
+        const urlObj = new URL(req.url ?? "/", "http://localhost");
+        const search = urlObj.searchParams.get("q") ?? "";
+        const rawLimit = Number(urlObj.searchParams.get("limit") ?? 100);
+        const limit = Number.isFinite(rawLimit) ? rawLimit : 100;
+        const accounts = deps.accounts.listAccounts(search, limit);
+        const total = deps.accounts.countAccounts();
+        json(res, 200, { total, accounts }, cors);
+        return true;
+      }
+
+      const accMatch = /^\/api\/admin\/accounts\/(\d+)(?:\/(tier|password|name))?$/.exec(path);
+      if (accMatch) {
+        const accountId = Number(accMatch[1]);
+        const subRoute = accMatch[2];
+        if (!subRoute && req.method === "DELETE") {
+          const ok = deps.accounts.deleteAccount(accountId);
+          const kicked = deps.hub ? deps.hub.adminKickAccount(accountId) : 0;
+          console.log(`admin: deleted account #${accountId} (kicked ${kicked}) from ${ip}`);
+          json(res, ok ? 200 : 404, { ok, kicked }, cors);
+          return true;
+        }
+        if (subRoute && req.method === "PUT") {
+          const b = await parseJsonObject(req, res, cors);
+          if (!b) return true;
+          if (subRoute === "tier") {
+            const ok = deps.accounts.setTier(accountId, b["tier"]);
+            if (!ok) {
+              json(res, 400, { error: "bad-tier-or-not-found" }, cors);
+              return true;
+            }
+            json(res, 200, { ok: true }, cors);
+            return true;
+          }
+          if (subRoute === "name") {
+            const ok = deps.accounts.setDisplayName(accountId, b["displayName"]);
+            if (!ok) {
+              json(res, 400, { error: "bad-name-or-not-found" }, cors);
+              return true;
+            }
+            json(res, 200, { ok: true }, cors);
+            return true;
+          }
+          if (subRoute === "password") {
+            const ok = await deps.accounts.adminResetPassword(accountId, b["password"]);
+            if (!ok) {
+              json(res, 400, { error: "bad-password-or-not-found" }, cors);
+              return true;
+            }
+            deps.hub?.adminKickAccount(accountId);
+            console.log(`admin: reset password for account #${accountId} from ${ip}`);
+            json(res, 200, { ok: true }, cors);
+            return true;
+          }
+        }
+        json(res, 405, { error: "method-not-allowed" }, cors);
+        return true;
+      }
+    }
+
+    // 3. Population & Room Names Store APIs
     const route =
       path === "/api/admin/population"
         ? { store: deps.store, view: () => ({ config: deps.store.current, defaults: DEFAULT_POPULATION, limits }), hint: { limits }, log: "population" }
@@ -143,25 +352,16 @@ export function createAdminHandler(deps: AdminDeps): (req: IncomingMessage, res:
             }
           : null;
     if (!route) {
-      json(res, 404, { error: "not-found" });
+      json(res, 404, { error: "not-found" }, cors);
       return true;
     }
     if (req.method !== "GET" && req.method !== "PUT") {
-      json(res, 405, { error: "method-not-allowed" }, { allow: "GET, PUT" });
+      json(res, 405, { error: "method-not-allowed" }, { ...cors, allow: "GET, PUT" });
       return true;
     }
-    const ip = deps.clientIp(req);
-    const result = auth.check(ip, req.headers.authorization);
-    if (result === "limited") {
-      json(res, 429, { error: "too-many-attempts" }, { "retry-after": String(auth.retryAfter(ip)) });
-      return true;
-    }
-    if (result === "unauthorized") {
-      json(res, 401, { error: "unauthorized" }, { "www-authenticate": "Bearer" });
-      return true;
-    }
+
     if (req.method === "GET") {
-      json(res, 200, route.view());
+      json(res, 200, route.view(), cors);
       return true;
     }
     let raw: unknown;
@@ -169,10 +369,9 @@ export function createAdminHandler(deps: AdminDeps): (req: IncomingMessage, res:
       raw = JSON.parse(await readBody(req, ADMIN_MAX_BODY_BYTES));
     } catch (err) {
       if (err instanceof BodyTooLarge) {
-        // Close: the rest of an oversized body is not worth draining.
-        json(res, 413, { error: "too-large" }, { connection: "close" });
+        json(res, 413, { error: "too-large" }, { ...cors, connection: "close" });
       } else {
-        json(res, 400, { error: "bad-json" });
+        json(res, 400, { error: "bad-json" }, cors);
       }
       return true;
     }
@@ -181,15 +380,15 @@ export function createAdminHandler(deps: AdminDeps): (req: IncomingMessage, res:
       saved = await route.store.save(raw);
     } catch (err) {
       console.error(`admin: saving ${route.log} failed`, err);
-      json(res, 500, { error: "save-failed" });
+      json(res, 500, { error: "save-failed" }, cors);
       return true;
     }
     if (!saved) {
-      json(res, 400, { error: "invalid-config", ...route.hint });
+      json(res, 400, { error: "invalid-config", ...route.hint }, cors);
       return true;
     }
     console.log(`admin: ${route.log} updated from ${ip}`);
-    json(res, 200, route.view());
+    json(res, 200, route.view(), cors);
     return true;
   };
 }
