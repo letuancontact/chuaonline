@@ -7,6 +7,7 @@ export const LABEL_MAX_DISTANCE = 30;
 /** Matches `.chat-bubble` max-width; used when the bubble cannot be measured (label hidden). */
 const BUBBLE_MAX_PX = 200;
 const EDGE_PX = 6;
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 export type TitleTheme = "tinhtam" | "annhien" | "cusi" | "phuochue";
 
@@ -16,6 +17,63 @@ function resolveTitleTheme(title: string): TitleTheme {
   if (norm.includes("cư sĩ")) return "cusi";
   if (norm.includes("phước huệ")) return "phuochue";
   return "tinhtam";
+}
+
+/** Builds the ornate sacred cloud-and-lotus filigree wing SVG flanking the title text. */
+function createTitleWingSvg(side: "left" | "right"): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 38 16");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("class", `nametag-title-wing nametag-title-wing--${side}`);
+
+  // Main sweeping lotus-cloud blade
+  const mainWing = document.createElementNS(SVG_NS, "path");
+  mainWing.setAttribute(
+    "d",
+    "M35 8 C27 8 23 2.8 14 3.8 C8 4.4 4.2 6.8 0.5 8 C5.5 9.6 10.5 11.8 17.5 11.2 C24.5 10.6 28.5 8.5 35 8 Z",
+  );
+  mainWing.setAttribute("fill", "currentColor");
+
+  // Upper delicate filigree curl
+  const upperCurl = document.createElementNS(SVG_NS, "path");
+  upperCurl.setAttribute(
+    "d",
+    "M32 5.8 C26.5 4.6 22.5 1.2 16 2.2 C21 3.4 25.2 5.8 32 5.8 Z",
+  );
+  upperCurl.setAttribute("fill", "currentColor");
+  upperCurl.setAttribute("opacity", "0.82");
+
+  // Inner sacred star-diamond gem next to the title letters
+  const gem = document.createElementNS(SVG_NS, "path");
+  gem.setAttribute("d", "M35.2 4.8 L38 8 L35.2 11.2 L32.4 8 Z");
+  gem.setAttribute("fill", "#ffffff");
+
+  svg.append(mainWing, upperCurl, gem);
+  return svg;
+}
+
+/** Builds a faceted double-chevron golden spirit arrow SVG pointing at the player's own name. */
+function createSelfArrowSvg(): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 18 14");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("class", "nametag-arrow-svg");
+
+  const tail = document.createElementNS(SVG_NS, "path");
+  tail.setAttribute("d", "M1 2.2 L6.6 7 L1 11.8 L3.4 7 Z");
+  tail.setAttribute("fill", "currentColor");
+  tail.setAttribute("opacity", "0.78");
+
+  const head = document.createElementNS(SVG_NS, "path");
+  head.setAttribute("d", "M5.2 1.2 L16.8 7 L5.2 12.8 L8.6 7 Z");
+  head.setAttribute("fill", "currentColor");
+
+  const core = document.createElementNS(SVG_NS, "path");
+  core.setAttribute("d", "M8.0 4.2 L14.2 7 L8.0 9.8 L9.8 7 Z");
+  core.setAttribute("fill", "#ffffff");
+
+  svg.append(tail, head, core);
+  return svg;
 }
 
 interface Label {
@@ -62,7 +120,7 @@ export class NameLabels {
     parent.append(this.root);
   }
 
-  /** Adds or renames a label; `self` adds the compact arrow indicator before the character name. */
+  /** Adds or renames a label; `self` adds the faceted golden spirit arrow before the character name. */
   set(id: string, name: string, self = false): void {
     const existing = this.labels.get(id);
     if (existing && existing.name === name && existing.self === self) return;
@@ -82,7 +140,6 @@ export class NameLabels {
       const bubble = document.createElement("span");
       bubble.className = "chat-bubble";
       bubble.hidden = true;
-      // Stacked top-to-bottom: chat bubble (above) -> borderless glowing title -> borderless arrow + character name
       el.append(bubble, titleEl, tag, zzz);
       this.root.append(el);
       this.labels.set(id, {
@@ -117,16 +174,17 @@ export class NameLabels {
   }
 
   private renderTagContent(tag: HTMLSpanElement, name: string, self: boolean): void {
-    tag.className = self ? "nametag" : "nametag nametag--other";
+    tag.className = self ? "nametag nametag--self" : "nametag nametag--other";
     tag.replaceChildren();
     if (self) {
-      const arrow = document.createElement("i");
-      arrow.className = "nametag-arrow";
-      arrow.textContent = "☆";
-      tag.append(arrow);
+      const arrowWrap = document.createElement("i");
+      arrowWrap.className = "nametag-arrow";
+      arrowWrap.append(createSelfArrowSvg());
+      tag.append(arrowWrap);
     }
     const nameSpan = document.createElement("span");
     nameSpan.className = "nametag-name";
+    nameSpan.dataset.text = name;
     nameSpan.textContent = name;
     tag.append(nameSpan);
   }
@@ -144,19 +202,27 @@ export class NameLabels {
     titleEl.dataset.theme = theme;
     titleEl.hidden = false;
 
-    const leftSpark = document.createElement("span");
-    leftSpark.className = "nametag-title-ornament";
-    leftSpark.textContent = "✦";
+    const aura = document.createElement("span");
+    aura.className = "nametag-title-aura";
+
+    const motes = document.createElement("span");
+    motes.className = "nametag-title-motes";
+
+    const row = document.createElement("span");
+    row.className = "nametag-title-row";
 
     const textSpan = document.createElement("span");
     textSpan.className = "nametag-title-text";
+    textSpan.dataset.text = title;
     textSpan.textContent = title;
 
-    const rightSpark = document.createElement("span");
-    rightSpark.className = "nametag-title-ornament";
-    rightSpark.textContent = "✦";
+    row.append(createTitleWingSvg("left"), textSpan, createTitleWingSvg("right"));
 
-    titleEl.replaceChildren(leftSpark, textSpan, rightSpark);
+    const flare = document.createElement("span");
+    flare.className = "nametag-title-flare";
+    flare.append(document.createElement("i"));
+
+    titleEl.replaceChildren(aura, motes, row, flare);
   }
 
   /** D25: floating "z z Z" beside the tag while that person dozes. */
