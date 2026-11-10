@@ -9,9 +9,20 @@ export const LABEL_MAX_DISTANCE = 30;
 const BUBBLE_MAX_PX = 200;
 const EDGE_PX = 6;
 
+export type TitleTheme = "tinhtam" | "annhien" | "cusi" | "phuochue";
+
+function resolveTitleTheme(title: string): TitleTheme {
+  const norm = title.trim().toLowerCase();
+  if (norm.includes("an nhiên")) return "annhien";
+  if (norm.includes("cư sĩ")) return "cusi";
+  if (norm.includes("phước huệ")) return "phuochue";
+  return "tinhtam";
+}
+
 interface Label {
-  /** Positioned wrapper: the tag clips its text, so the "z z Z" floats beside it, not inside. */
+  /** Positioned wrapper: stacks the glowing title badge above the character nametag. */
   el: HTMLSpanElement;
+  titleEl: HTMLSpanElement;
   tag: HTMLSpanElement;
   zzz: HTMLSpanElement;
   /** Chat bubble above the tag (P4-D9): built once, text swapped per line. */
@@ -57,8 +68,10 @@ export class NameLabels {
     const existing = this.labels.get(id);
     if (existing && existing.name === name && existing.self === self) return;
     const tag = existing?.tag ?? document.createElement("span");
+    const titleEl = existing?.titleEl ?? document.createElement("span");
     const title = existing?.title ?? null;
-    this.renderTagContent(tag, name, self, title);
+    this.renderTagContent(tag, name, self);
+    this.renderTitleBadge(titleEl, title);
     if (!existing) {
       const el = document.createElement("span");
       el.className = "nametag-wrap";
@@ -70,10 +83,12 @@ export class NameLabels {
       const bubble = document.createElement("span");
       bubble.className = "chat-bubble";
       bubble.hidden = true;
-      el.append(bubble, tag, zzz);
+      // Stacked top-to-bottom: chat bubble (absolute above) -> luminous title badge -> character nametag
+      el.append(bubble, titleEl, tag, zzz);
       this.root.append(el);
       this.labels.set(id, {
         el,
+        titleEl,
         tag,
         zzz,
         bubble,
@@ -94,15 +109,15 @@ export class NameLabels {
     }
   }
 
-  /** Sets or clears an equipped spiritual title badge (e.g. "Tịnh Tâm") on a visitor's nametag. */
+  /** Sets or clears an equipped spiritual title badge (e.g. "Tịnh Tâm") ABOVE a visitor's nametag. */
   setTitle(id: string, title: string | null): void {
     const l = this.labels.get(id);
     if (!l || l.title === title) return;
     l.title = title;
-    this.renderTagContent(l.tag, l.name, l.self, l.title);
+    this.renderTitleBadge(l.titleEl, l.title);
   }
 
-  private renderTagContent(tag: HTMLSpanElement, name: string, self: boolean, title: string | null): void {
+  private renderTagContent(tag: HTMLSpanElement, name: string, self: boolean): void {
     tag.className = self ? "nametag" : "nametag nametag--other";
     tag.replaceChildren();
     if (self) {
@@ -110,13 +125,38 @@ export class NameLabels {
       badge.textContent = vi.labels.you;
       tag.append(badge);
     }
-    if (title) {
-      const titleEl = document.createElement("b");
-      titleEl.className = "nametag-title";
-      titleEl.textContent = title;
-      tag.append(titleEl);
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "nametag-name";
+    nameSpan.textContent = name;
+    tag.append(nameSpan);
+  }
+
+  private renderTitleBadge(titleEl: HTMLSpanElement, title: string | null): void {
+    if (!title) {
+      titleEl.hidden = true;
+      titleEl.className = "nametag-title-pill";
+      titleEl.removeAttribute("data-theme");
+      titleEl.replaceChildren();
+      return;
     }
-    tag.append(name);
+    const theme = resolveTitleTheme(title);
+    titleEl.className = "nametag-title-pill";
+    titleEl.dataset.theme = theme;
+    titleEl.hidden = false;
+
+    const leftSpark = document.createElement("span");
+    leftSpark.className = "nametag-title-ornament";
+    leftSpark.textContent = "✦";
+
+    const textSpan = document.createElement("span");
+    textSpan.className = "nametag-title-text";
+    textSpan.textContent = title;
+
+    const rightSpark = document.createElement("span");
+    rightSpark.className = "nametag-title-ornament";
+    rightSpark.textContent = "✦";
+
+    titleEl.replaceChildren(leftSpark, textSpan, rightSpark);
   }
 
   /** D25: floating "z z Z" beside the tag while that person dozes. */
