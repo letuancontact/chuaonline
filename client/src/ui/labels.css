@@ -1,18 +1,317 @@
 /* Name tags (design/base.css .nametag). Positioned by transform from labels.ts, so left/top stay 0. */
-.visitor-labels { position: fixed; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }
-.nametag-wrap { position: absolute; left: 0; top: 0; will-change: transform; }
-.nametag-wrap[hidden] { display: none; }
-.nametag { display: flex; align-items: center; gap: 6px; max-width: 142px; height: 24px; padding: 0 9px; border: 1px solid rgb(255 247 229 / .11); border-radius: 14px; background: rgb(32 42 35 / .48); color: #f8f2e4; font-size: var(--text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
-.nametag i { display: inline-grid; place-items: center; height: 16px; padding: 0 5px; border-radius: 8px; background: rgb(242 220 168 / .9); color: var(--color-ink); font-style: normal; font-size: var(--text-2xs); font-weight: 600; }
-.nametag--other i { display: none; }
+.visitor-labels {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Vertical stack: Spiritual Title Badge on TOP, Character Nametag on BOTTOM */
+.nametag-wrap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  will-change: transform;
+}
+
+.nametag-wrap[hidden] {
+  display: none;
+}
+
+/* ============================================================================
+   LUMINOUS SPIRITUAL TITLE BADGE (PHÁP BẢO CÁC) — STACKED ABOVE CHARACTER NAME
+   ============================================================================ */
+.nametag-title-pill {
+  --title-bg: linear-gradient(135deg, rgb(78 44 10 / 0.88), rgb(42 22 4 / 0.92));
+  --title-border: #ffd666;
+  --title-glow: rgb(255 196 56 / 0.65);
+  --title-glow-outer: rgb(255 162 24 / 0.38);
+  --title-text-grad: linear-gradient(180deg, #fffdf0 0%, #ffe078 52%, #f5a623 100%);
+  --title-ornament: #ffdf75;
+
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 21px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1.25px solid var(--title-border);
+  background: var(--title-bg);
+  box-shadow:
+    0 0 10px var(--title-glow),
+    0 0 20px var(--title-glow-outer),
+    inset 0 1px 1px rgb(255 255 255 / 0.45);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  white-space: nowrap;
+  overflow: hidden;
+  animation: title-aura-pulse 2.6s ease-in-out infinite;
+}
+
+.nametag-title-pill[hidden] {
+  display: none !important;
+}
+
+/* Sweeping light shimmer across the title badge */
+.nametag-title-pill::after {
+  content: "";
+  position: absolute;
+  top: -20%;
+  left: -120%;
+  width: 65%;
+  height: 140%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgb(255 255 255 / 0.05) 30%,
+    rgb(255 255 255 / 0.55) 50%,
+    rgb(255 255 255 / 0.05) 70%,
+    transparent 100%
+  );
+  transform: skewX(-22deg);
+  animation: title-shimmer-sweep 3.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  pointer-events: none;
+}
+
+.nametag-title-ornament {
+  font-size: 9px;
+  line-height: 1;
+  color: var(--title-ornament);
+  filter: drop-shadow(0 0 4px var(--title-glow));
+  animation: title-sparkle-spin 2.2s ease-in-out infinite alternate;
+}
+
+.nametag-title-text {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  background: var(--title-text-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.85));
+}
+
+/* Theme 1: Tịnh Tâm — Kim Liên Tịnh Quang (Radiant Golden Lotus) */
+.nametag-title-pill[data-theme="tinhtam"] {
+  --title-bg: linear-gradient(135deg, rgb(86 48 10 / 0.88), rgb(44 22 4 / 0.92));
+  --title-border: #ffda6b;
+  --title-glow: rgb(255 204 68 / 0.72);
+  --title-glow-outer: rgb(255 166 28 / 0.42);
+  --title-text-grad: linear-gradient(180deg, #ffffff 0%, #ffe688 55%, #f5a623 100%);
+  --title-ornament: #ffe484;
+}
+
+/* Theme 2: An Nhiên — Bích Ngọc Thanh Lương (Luminous Jade Emerald) */
+.nametag-title-pill[data-theme="annhien"] {
+  --title-bg: linear-gradient(135deg, rgb(12 68 54 / 0.88), rgb(6 38 30 / 0.92));
+  --title-border: #6bffd0;
+  --title-glow: rgb(72 245 190 / 0.7);
+  --title-glow-outer: rgb(32 195 145 / 0.4);
+  --title-text-grad: linear-gradient(180deg, #ffffff 0%, #b3ffe6 55%, #3be8b0 100%);
+  --title-ornament: #8affdb;
+}
+
+/* Theme 3: Cư Sĩ — Hổ Phách Trang Nghiêm (Sacred Crimson & Imperial Amber) */
+.nametag-title-pill[data-theme="cusi"] {
+  --title-bg: linear-gradient(135deg, rgb(108 26 18 / 0.9), rgb(56 12 8 / 0.94));
+  --title-border: #ffc459;
+  --title-glow: rgb(255 142 54 / 0.75);
+  --title-glow-outer: rgb(224 68 32 / 0.45);
+  --title-text-grad: linear-gradient(180deg, #fffdf2 0%, #ffd885 52%, #ff9436 100%);
+  --title-ornament: #ffd275;
+}
+
+/* Theme 4: Phước Huệ — Bảo Liên Cát Tường (Supreme Celestial Lotus Gold & Rose) */
+.nametag-title-pill[data-theme="phuochue"] {
+  --title-bg: linear-gradient(135deg, rgb(98 24 62 / 0.9), rgb(58 28 10 / 0.94));
+  --title-border: #ffe082;
+  --title-glow: rgb(255 182 115 / 0.82);
+  --title-glow-outer: rgb(255 105 180 / 0.5);
+  --title-text-grad: linear-gradient(180deg, #ffffff 0%, #ffe999 45%, #ff9ec6 100%);
+  --title-ornament: #ffe694;
+}
+
+@keyframes title-aura-pulse {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+    box-shadow:
+      0 0 8px var(--title-glow),
+      0 0 16px var(--title-glow-outer),
+      inset 0 1px 1px rgb(255 255 255 / 0.45);
+  }
+  50% {
+    transform: translateY(-1px) scale(1.03);
+    box-shadow:
+      0 0 13px var(--title-glow),
+      0 0 26px var(--title-glow-outer),
+      inset 0 1px 2px rgb(255 255 255 / 0.7);
+  }
+}
+
+@keyframes title-shimmer-sweep {
+  0% {
+    left: -120%;
+  }
+  38%, 100% {
+    left: 160%;
+  }
+}
+
+@keyframes title-sparkle-spin {
+  0% {
+    transform: scale(0.88) rotate(-8deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.15) rotate(8deg);
+    opacity: 1;
+  }
+}
+
+/* ============================================================================
+   CHARACTER NAMETAG (BOTTOM ROW)
+   ============================================================================ */
+.nametag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 156px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid rgb(255 247 229 / 0.14);
+  border-radius: 14px;
+  background: rgb(32 42 35 / 0.54);
+  color: #f8f2e4;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.nametag i {
+  display: inline-grid;
+  place-items: center;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgb(242 220 168 / 0.9);
+  color: var(--color-ink);
+  font-style: normal;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.nametag--other i {
+  display: none;
+}
+
+.nametag-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Dozing (D25): three letters drift up from the tag's top-right corner, one after another. */
-.zzz { position: absolute; left: calc(100% - 6px); bottom: 70%; display: flex; align-items: flex-end; gap: 1px; color: #f8f2e4; font-weight: 600; line-height: 1; text-shadow: 0 1px 3px rgb(0 0 0 / .55); }
-.zzz[hidden] { display: none; }
-.zzz b { opacity: 0; font-size: 10px; animation: zzz-drift 3s ease-out infinite; }
-.zzz b:nth-child(2) { font-size: 12px; animation-delay: .6s; }
-.zzz b:nth-child(3) { font-size: 15px; animation-delay: 1.2s; }
-@keyframes zzz-drift { 0% { opacity: 0; transform: translateY(4px); } 25% { opacity: .95; } 80% { opacity: .7; } 100% { opacity: 0; transform: translateY(-10px); } }
-@media (prefers-reduced-motion: reduce) { .zzz b { opacity: .9; animation: none; } }
-/* Chat bubble (P4-D9): above the tag in the same wrapper, so it follows the label and hides with it. */
-.chat-bubble { position: absolute; left: 50%; bottom: calc(100% + 6px); width: max-content; max-width: 200px; padding: 5px 10px; border: 1px solid var(--color-glass-edge); border-radius: var(--radius-sm); background: var(--color-dialog); color: var(--color-dialog-ink); font-size: var(--text-sm); line-height: 1.35; text-align: center; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; transform: translateX(-50%); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
-.chat-bubble[hidden] { display: none; }
+.zzz {
+  position: absolute;
+  left: calc(100% - 4px);
+  bottom: 6px;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  color: #f8f2e4;
+  font-weight: 600;
+  line-height: 1;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.55);
+}
+
+.zzz[hidden] {
+  display: none;
+}
+
+.zzz b {
+  opacity: 0;
+  font-size: 10px;
+  animation: zzz-drift 3s ease-out infinite;
+}
+
+.zzz b:nth-child(2) {
+  font-size: 12px;
+  animation-delay: 0.6s;
+}
+
+.zzz b:nth-child(3) {
+  font-size: 15px;
+  animation-delay: 1.2s;
+}
+
+@keyframes zzz-drift {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  25% {
+    opacity: 0.95;
+  }
+  80% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zzz b,
+  .nametag-title-pill,
+  .nametag-title-pill::after,
+  .nametag-title-ornament {
+    animation: none;
+  }
+  .zzz b {
+    opacity: 0.9;
+  }
+}
+
+/* Chat bubble (P4-D9): above the entire stacked wrapper, so it sits cleanly above the title badge. */
+.chat-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  width: max-content;
+  max-width: 200px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-glass-edge);
+  border-radius: var(--radius-sm);
+  background: var(--color-dialog);
+  color: var(--color-dialog-ink);
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  text-align: center;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  transform: translateX(-50%);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.chat-bubble[hidden] {
+  display: none;
+}
