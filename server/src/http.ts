@@ -70,7 +70,6 @@ async function serveStatic(root: string, urlPath: string, res: ServerResponse): 
 
 export function clientIp(req: IncomingMessage, trustProxy: boolean): string {
   if (trustProxy) {
-    // Caddy drops X-Forwarded-For from untrusted clients and writes the peer it saw, so the last entry is real.
     const xff = req.headers["x-forwarded-for"];
     const last = (Array.isArray(xff) ? xff.join(",") : (xff ?? "")).split(",").pop()?.trim();
     if (last) return last;
@@ -88,14 +87,15 @@ export function createAppServer(
   accounts: Accounts = new Accounts(""),
 ): Server {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
-  // Without a cap one script could hold every slot of every room (ws auto-answers pings, so it never idles out).
-  // Counted per IP *and room*: many real people share one IP (office Wi-Fi, mobile carrier NAT), and a room switch
-  // briefly holds 2 sockets — both in different rooms, so not double counted here.
   const connsByIpRoom = new Map<string, number>();
   const admin = createAdminHandler({
+    user: config.adminUser,
     password: config.adminPassword,
     store: population,
     roomNames,
+    hub,
+    accounts,
+    allowedOrigins: config.allowedOrigins,
     capacity: config.capacity,
     clientIp: (req) => clientIp(req, config.trustProxy),
     clock,
@@ -110,21 +110,18 @@ export function createAppServer(
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const handle = async (): Promise<void> => {
       const url = new URL(req.url ?? "/", "http://localhost");
-      // Before the generic /api/ branch: admin routes must never get its CORS headers.
       if (await admin(req, res, url.pathname)) return;
       if (url.pathname.startsWith("/api/")) {
         const origin = req.headers.origin;
         const cors: Record<string, string> = {};
-        // No Origin header = same-origin fetch or curl; CORS headers only matter for browsers on another origin.
         if (origin && isAllowedOrigin(origin, req.headers.host, config.allowedOrigins)) {
           cors["access-control-allow-origin"] = origin;
           cors.vary = "Origin";
         }
         if (req.method === "OPTIONS") {
-          // POST + authorization: the account API is called from santinh.com while the server is rt.santinh.com.
           res.writeHead(204, {
             ...cors,
-            "access-control-allow-methods": "GET, POST, OPTIONS",
+            "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
             "access-control-allow-headers": "content-type, authorization",
             "access-control-max-age": "600",
           });
@@ -164,15 +161,12 @@ export function createAppServer(
       const near = parseNearId(url.searchParams.get("near"));
       const resume = parseResumeToken(url.searchParams.get("resume"));
       const name = normalizeVisitorName(url.searchParams.get("name"));
-      // A resume that replaces our own live socket is the same person, not one more.
       const over =
         config.maxConnPerIpRoom > 0 &&
         (connsByIpRoom.get(key) ?? 0) >= config.maxConnPerIpRoom &&
         !(resume !== null && hub.holds(room, resume));
       wss.handleUpgrade(req, socket, head, (ws) => {
         if (over) {
-          // After the upgrade, not a 429: browsers cannot read an HTTP status on a failed upgrade, so the page would
-          // only see a drop and say "reconnecting" forever. This error lets it say why and offer another room.
           ws.send(JSON.stringify({ type: "error", code: "too-many", serverTime: clock() } satisfies ServerMsg));
           ws.close(4002, "too-many");
           return;
