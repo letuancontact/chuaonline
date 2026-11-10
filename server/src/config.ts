@@ -12,7 +12,9 @@ export interface Config {
   trustProxy: boolean;
   /** Where runtime data (`population.json`) is kept; "" = memory only (tests, local). */
   dataDir: string;
-  /** Bearer secret for `/admin`; "" = admin off (404). Kept verbatim, never logged. */
+  /** Admin login username for `/admin` (defaults to "admin"). */
+  adminUser: string;
+  /** Bearer secret / password for `/admin` (defaults to "681995"); "" = admin off (404). Kept verbatim, never logged. */
   adminPassword: string;
   /** Successful sign-ups per IP per day; 0 = no limit (trying many accounts locally). */
   registerPerIpPerDay: number;
@@ -60,6 +62,7 @@ export function normalizeOrigin(entry: string): string {
 export function loadConfig(env: Env): Config {
   // Renamed when the cap became per room: a leftover would otherwise be ignored without a word.
   if (env.MAX_CONN_PER_IP !== undefined) throw new Error("MAX_CONN_PER_IP was replaced by MAX_CONN_PER_IP_ROOM (per room)");
+  const rawUser = (env.ADMIN_USER ?? "").trim();
   return {
     port: intVar(env, "PORT", 4663, 0, 65535),
     capacity: intVar(env, "CAPACITY", ROOM_CAPACITY, 1, 1000),
@@ -73,7 +76,8 @@ export function loadConfig(env: Env): Config {
     maxConnPerIpRoom: intVar(env, "MAX_CONN_PER_IP_ROOM", 10, 0, 10000),
     trustProxy: onOffVar(env, "TRUST_PROXY", false),
     dataDir: (env.DATA_DIR ?? "").trim(),
-    adminPassword: env.ADMIN_PASSWORD ?? "12345",
+    adminUser: rawUser === "" ? "admin" : rawUser,
+    adminPassword: env.ADMIN_PASSWORD ?? "681995",
     registerPerIpPerDay: intVar(env, "REGISTER_PER_IP_PER_DAY", REGISTER_PER_IP_PER_DAY, 0, 1000),
   };
 }
